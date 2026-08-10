@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>THỦY LỢI AI</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f3f7fa;
+            color: #123;
+        }
+
+        .container {
+            width: 92%;
+            max-width: 900px;
+            margin: 40px auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 42px;
+            margin-bottom: 8px;
+        }
+
+        h1 {
+            margin: 0;
+            color: #0077a8;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            margin-top: 8px;
+            color: #667;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 16px;
+            border: 1px solid #cbd8df;
+            border-radius: 12px;
+            font-size: 16px;
+            resize: vertical;
+            outline: none;
+            background: white;
+        }
+
+        textarea:focus {
+            border-color: #0099d1;
+            box-shadow: 0 0 0 3px rgba(0,153,209,0.12);
+        }
+
+        button {
+            width: 100%;
+            margin-top: 15px;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            background: #078dcc;
+            color: white;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0579ae;
+        }
+
+        .answer-box {
+            margin-top: 28px;
+        }
+
+        #answer {
+            background: white;
+            border: 1px solid #cbd8df;
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 150px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            color: #687780;
+            font-size: 14px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                width: 94%;
+                margin: 20px auto;
+            }
+
+            h1 {
+                font-size: 27px;
+            }
+
+            .logo {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <div class="logo">💧</div>
+        <h1>THỦY LỢI AI</h1>
+        <div class="subtitle">
+            Trợ lý AI chuyên ngành Thủy lợi
+        </div>
+    </div>
+
+    <label for="question">Câu hỏi</label>
+
+    <textarea
+        id="question"
+        placeholder="Nhập câu hỏi về công trình, hồ chứa, trạm bơm, vận hành thủy lợi..."
+    ></textarea>
+
+    <button onclick="askAI()">
+        HỎI AI
+    </button>
+
+    <div class="answer-box">
+
+        <label>Câu trả lời</label>
+
+        <div id="answer">
+            Chưa có câu hỏi.
+        </div>
+
+    </div>
+
+    <div class="status">
+        THỦY LỢI AI • Phiên bản thử nghiệm
+    </div>
+
+</div>
+
+<script>
+
+async function askAI() {
+
+    const question =
+        document.getElementById("question").value.trim();
+
+    const answer =
+        document.getElementById("answer");
+
+    if (!question) {
+        answer.innerText = "Vui lòng nhập câu hỏi.";
+        return;
+    }
+
+    answer.innerText = "⏳ Đang hỏi THỦY LỢI AI...";
+
+    /*
+     * CHƯA KẾT NỐI SERVER Ở BƯỚC NÀY.
+     * Sẽ kết nối sau khi GitHub Pages chạy thành công.
+     */
+
+    setTimeout(() => {
+
+        answer.innerText =
+            "Trang THỦY LỢI AI đã hoạt động.\n\n" +
+            "Câu hỏi của bạn:\n" +
+            question +
+            "\n\n" +
+            "Bước tiếp theo sẽ kết nối trang web này " +
+            "với hệ thống NotebookLM.";
+
+    }, 500);
+}
+
+</script>
+
+</body>
+</html>
