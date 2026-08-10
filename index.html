@@ -2,178 +2,373 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>THỦY LỢI AI</title>
 
+    <meta
+        name="description"
+        content="Trợ lý AI chuyên ngành Thủy lợi"
+    >
+
     <style>
+
         * {
             box-sizing: border-box;
         }
 
         body {
             margin: 0;
+            padding: 0;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #f4f9fc,
+                    #eef5f8
+                );
+
+            color: #17324d;
             min-height: 100vh;
-            font-family: Arial, Helvetica, sans-serif;
-            background: #f4f8fb;
-            color: #12344d;
         }
 
         .container {
-            width: min(900px, 94%);
+            width: 100%;
+            max-width: 820px;
+
             margin: 0 auto;
-            padding: 40px 0;
+
+            padding:
+                45px 20px 30px;
         }
+
+        /* =========================
+           HEADER
+        ========================= */
 
         .header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 35px;
         }
 
         .logo {
-            font-size: 52px;
+            font-size: 58px;
             line-height: 1;
-            margin-bottom: 10px;
+
+            margin-bottom: 12px;
         }
 
-        h1 {
+        .title {
             margin: 0;
-            font-size: 32px;
-            color: #087caf;
+
+            font-size: 34px;
             font-weight: 700;
+
+            letter-spacing: 0.5px;
+
+            color: #006fae;
         }
 
         .subtitle {
             margin-top: 8px;
-            color: #718096;
+
             font-size: 16px;
+
+            color: #71869a;
         }
+
+        /* =========================
+           CARD
+        ========================= */
 
         .card {
             background: white;
+
             border-radius: 18px;
-            padding: 28px;
+
+            padding: 25px;
+
+            margin-bottom: 22px;
+
             box-shadow:
-                0 8px 30px rgba(0, 80, 120, 0.08);
-            border: 1px solid #dce8ef;
+                0 8px 30px
+                rgba(0, 80, 120, 0.08);
+
+            border:
+                1px solid
+                rgba(0, 130, 190, 0.10);
         }
 
-        label {
+        .label {
             display: block;
-            font-weight: 700;
+
             margin-bottom: 10px;
-            color: #173f59;
+
+            font-size: 15px;
+
+            font-weight: 700;
+
+            color: #17324d;
         }
+
+        /* =========================
+           QUESTION
+        ========================= */
 
         textarea {
             width: 100%;
-            min-height: 150px;
+
+            min-height: 145px;
+
             resize: vertical;
+
             padding: 16px;
-            border: 1px solid #cbdce7;
+
             border-radius: 12px;
-            font-size: 16px;
-            line-height: 1.6;
+
+            border:
+                1px solid
+                #cbd9e3;
+
             outline: none;
-            font-family: inherit;
+
+            font-size: 16px;
+
+            line-height: 1.6;
+
+            color: #17324d;
+
+            background: #fbfdff;
+
+            transition:
+                border-color 0.2s,
+                box-shadow 0.2s;
         }
 
         textarea:focus {
-            border-color: #079bd3;
-            box-shadow: 0 0 0 3px rgba(7, 155, 211, 0.12);
+            border-color: #0798d4;
+
+            box-shadow:
+                0 0 0 3px
+                rgba(7, 152, 212, 0.12);
         }
 
-        button {
+        textarea::placeholder {
+            color: #9aaab7;
+        }
+
+        /* =========================
+           BUTTON
+        ========================= */
+
+        .button {
             width: 100%;
+
             margin-top: 16px;
+
             padding: 15px;
+
             border: none;
-            border-radius: 10px;
-            background: #078dcc;
-            color: white;
-            font-size: 17px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: 0.2s;
-        }
 
-        button:hover {
-            background: #0678ad;
-        }
-
-        button:disabled {
-            background: #9bb9c8;
-            cursor: wait;
-        }
-
-        .answer-title {
-            margin-top: 28px;
-            margin-bottom: 10px;
-            font-weight: 700;
-        }
-
-        #answer {
-            min-height: 120px;
-            padding: 18px;
-            background: #f8fbfd;
-            border: 1px solid #dce8ef;
             border-radius: 12px;
-            white-space: pre-wrap;
-            line-height: 1.7;
-            font-size: 16px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #078dcc,
+                    #0076b6
+                );
+
+            color: white;
+
+            font-size: 17px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+
+            transition:
+                transform 0.15s,
+                box-shadow 0.15s,
+                opacity 0.15s;
         }
 
-        .loading {
+        .button:hover {
+            transform: translateY(-1px);
+
+            box-shadow:
+                0 7px 18px
+                rgba(0, 120, 180, 0.22);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        .button:disabled {
+            cursor: wait;
+
+            opacity: 0.65;
+
+            transform: none;
+
+            box-shadow: none;
+        }
+
+        /* =========================
+           ANSWER
+        ========================= */
+
+        .answer {
+            min-height: 150px;
+
+            padding: 18px;
+
+            border-radius: 12px;
+
+            background:
+                #f7fafc;
+
+            border:
+                1px solid
+                #dce7ee;
+
+            white-space: pre-wrap;
+
+            word-wrap: break-word;
+
+            font-size: 16px;
+
+            line-height: 1.75;
+
+            color: #263f54;
+        }
+
+        .answer.loading {
             color: #078dcc;
         }
 
-        .error {
+        .answer.error {
             color: #c0392b;
+
+            background: #fff8f7;
+
+            border-color: #f0c7c2;
         }
+
+        /* =========================
+           STATUS
+        ========================= */
+
+        .status {
+            text-align: center;
+
+            font-size: 13px;
+
+            color: #8a9aa7;
+
+            margin-top: 18px;
+        }
+
+        .status-dot {
+            display: inline-block;
+
+            width: 8px;
+            height: 8px;
+
+            border-radius: 50%;
+
+            background: #28a745;
+
+            margin-right: 5px;
+        }
+
+        /* =========================
+           FOOTER
+        ========================= */
 
         .footer {
             text-align: center;
-            margin-top: 22px;
-            color: #8295a2;
-            font-size: 14px;
+
+            margin-top: 28px;
+
+            font-size: 13px;
+
+            color: #8a9aa7;
         }
+
+        /* =========================
+           MOBILE
+        ========================= */
 
         @media (max-width: 600px) {
 
             .container {
-                padding: 22px 0;
+                padding:
+                    28px 14px 20px;
+            }
+
+            .title {
+                font-size: 27px;
+            }
+
+            .subtitle {
+                font-size: 14px;
+            }
+
+            .logo {
+                font-size: 48px;
             }
 
             .card {
                 padding: 18px;
-                border-radius: 14px;
-            }
 
-            h1 {
-                font-size: 26px;
-            }
-
-            .logo {
-                font-size: 44px;
+                border-radius: 15px;
             }
 
             textarea {
                 min-height: 130px;
+
+                font-size: 16px;
+            }
+
+            .answer {
+                font-size: 15px;
+
+                line-height: 1.65;
             }
         }
+
     </style>
 </head>
+
 
 <body>
 
 <div class="container">
 
+    <!-- =========================
+         HEADER
+    ========================== -->
+
     <div class="header">
 
-        <div class="logo">💧</div>
+        <div class="logo">
+            💧
+        </div>
 
-        <h1>THỦY LỢI AI</h1>
+        <h1 class="title">
+            THỦY LỢI AI
+        </h1>
 
         <div class="subtitle">
             Trợ lý AI chuyên ngành Thủy lợi
@@ -182,38 +377,78 @@
     </div>
 
 
+    <!-- =========================
+         QUESTION
+    ========================== -->
+
     <div class="card">
 
-        <label for="question">
+        <label
+            class="label"
+            for="question"
+        >
             Câu hỏi
         </label>
 
         <textarea
             id="question"
             placeholder="Nhập câu hỏi về công trình, hồ chứa, trạm bơm, vận hành thủy lợi..."
+            autocomplete="off"
         ></textarea>
 
 
         <button
             id="askButton"
-            onclick="askAI()">
+            class="button"
+            onclick="askAI()"
+        >
             HỎI AI
         </button>
 
+    </div>
 
-        <div class="answer-title">
+
+    <!-- =========================
+         ANSWER
+    ========================== -->
+
+    <div class="card">
+
+        <label class="label">
             Câu trả lời
-        </div>
+        </label>
 
-        <div id="answer">
-            Câu trả lời của AI sẽ xuất hiện tại đây...
+        <div
+            id="answer"
+            class="answer"
+        >
+            Hãy nhập câu hỏi để bắt đầu.
         </div>
 
     </div>
 
 
+    <!-- =========================
+         STATUS
+    ========================== -->
+
+    <div class="status">
+
+        <span class="status-dot"></span>
+
+        THỦY LỢI AI đang kết nối NotebookLM
+
+    </div>
+
+
+    <!-- =========================
+         FOOTER
+    ========================== -->
+
     <div class="footer">
+
         THỦY LỢI AI • Phiên bản thử nghiệm
+
     </div>
 
 </div>
@@ -222,15 +457,26 @@
 <script>
 
     /*
-     * ==========================================
-     * THỦY LỢI AI
-     * KẾT NỐI SERVER NOTEBOOKLM
-     * ==========================================
-     */
+    ==========================================
+    CẤU HÌNH API
+    ==========================================
+
+    Cloudflare Tunnel hiện tại:
+
+    https://data-confidentiality-transmission-provide.trycloudflare.com
+
+    ==========================================
+    */
 
     const API_URL =
-        "https://lol-integrated-save-node.trycloudflare.com";
+        "https://data-confidentiality-transmission-provide.trycloudflare.com";
 
+
+    /*
+    ==========================================
+    HÀM HỎI AI
+    ==========================================
+    */
 
     async function askAI() {
 
@@ -248,10 +494,16 @@
             questionElement.value.trim();
 
 
-        // Kiểm tra câu hỏi
+        /*
+        -------------------------------
+        Kiểm tra câu hỏi
+        -------------------------------
+        */
+
         if (!question) {
 
-            answerElement.className = "error";
+            answerElement.className =
+                "answer error";
 
             answerElement.innerText =
                 "Vui lòng nhập câu hỏi.";
@@ -262,86 +514,111 @@
         }
 
 
-        // Trạng thái đang xử lý
+        /*
+        -------------------------------
+        Trạng thái đang xử lý
+        -------------------------------
+        */
+
         buttonElement.disabled = true;
 
         buttonElement.innerText =
             "ĐANG HỎI AI...";
 
-        answerElement.className = "loading";
+
+        answerElement.className =
+            "answer loading";
 
         answerElement.innerText =
-            "⏳ Đang kết nối THỦY LỢI AI...\n\n" +
-            "Đang gửi câu hỏi đến hệ thống NotebookLM...";
+            "⏳ Đang kết nối NotebookLM...\n\n" +
+            "Vui lòng chờ trong giây lát.";
 
 
         try {
 
             /*
-             * Gửi câu hỏi đến FastAPI
-             */
+            -------------------------------
+            Gửi câu hỏi tới FastAPI
+            -------------------------------
+            */
 
-            const response = await fetch(
-                API_URL + "/ask",
-                {
-                    method: "POST",
+            const response =
+                await fetch(
+                    API_URL + "/ask",
+                    {
+                        method: "POST",
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
 
-                    body: JSON.stringify({
-                        question: question
-                    })
-                }
-            );
+                        body:
+                            JSON.stringify({
+                                question:
+                                    question
+                            })
+                    }
+                );
 
 
             /*
-             * Kiểm tra HTTP
-             */
+            -------------------------------
+            Kiểm tra HTTP
+            -------------------------------
+            */
 
             if (!response.ok) {
 
                 throw new Error(
-                    "Server trả về HTTP " +
+                    "Máy chủ trả về HTTP " +
                     response.status
                 );
             }
 
 
             /*
-             * Đọc JSON
-             */
+            -------------------------------
+            Nhận JSON
+            -------------------------------
+            */
 
             const data =
                 await response.json();
 
 
             /*
-             * Hiển thị câu trả lời
-             */
+            -------------------------------
+            Hiển thị câu trả lời
+            -------------------------------
+            */
 
-            if (data.answer) {
+            if (
+                data &&
+                typeof data.answer === "string"
+            ) {
 
-                answerElement.className = "";
+                answerElement.className =
+                    "answer";
 
                 answerElement.innerText =
                     data.answer;
 
             } else {
 
-                answerElement.className =
-                    "error";
-
-                answerElement.innerText =
-                    "Server không trả về nội dung câu trả lời.";
-
+                throw new Error(
+                    "Dữ liệu trả về không hợp lệ."
+                );
             }
 
 
         } catch (error) {
+
+            /*
+            -------------------------------
+            Lỗi kết nối
+            -------------------------------
+            */
 
             console.error(
                 "Lỗi THỦY LỢI AI:",
@@ -350,35 +627,47 @@
 
 
             answerElement.className =
-                "error";
+                "answer error";
 
 
             answerElement.innerText =
-                "❌ Không kết nối được THỦY LỢI AI.\n\n" +
-                "Chi tiết lỗi:\n" +
+                "❌ Không kết nối được với THỦY LỢI AI.\n\n" +
+
+                "Chi tiết: " +
                 error.message +
                 "\n\n" +
-                "Hãy kiểm tra Cloudflare Tunnel và server Python.";
-        }
 
+                "Hãy kiểm tra:\n" +
 
-        finally {
+                "• Python/FastAPI đang chạy\n" +
 
-            buttonElement.disabled =
-                false;
+                "• Cloudflare Tunnel đang chạy\n" +
+
+                "• Máy tính đang bật\n" +
+
+                "• Kết nối Internet đang hoạt động";
+
+        } finally {
+
+            /*
+            -------------------------------
+            Trả nút về trạng thái bình thường
+            -------------------------------
+            */
+
+            buttonElement.disabled = false;
 
             buttonElement.innerText =
                 "HỎI AI";
         }
-
     }
 
 
     /*
-     * ==========================================
-     * CTRL + ENTER ĐỂ HỎI
-     * ==========================================
-     */
+    ==========================================
+    CTRL + ENTER ĐỂ HỎI AI
+    ==========================================
+    */
 
     document
         .getElementById("question")
@@ -398,6 +687,15 @@
 
             }
         );
+
+
+    /*
+    ==========================================
+    ENTER KHÔNG GỬI
+    CTRL + ENTER MỚI GỬI
+    ==========================================
+    */
+
 
 </script>
 
