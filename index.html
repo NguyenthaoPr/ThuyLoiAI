@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <meta name="theme-color" content="#0b2035">
 
@@ -13,34 +13,20 @@
     box-sizing:border-box;
 }
 
-html{
-    scroll-behavior:smooth;
-}
-
 body{
     margin:0;
     background:#f3f6f9;
     color:#17202a;
-    font-family:
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Roboto,
-        Arial,
-        sans-serif;
+    font-family:-apple-system,BlinkMacSystemFont,
+    "Segoe UI",Roboto,Arial,sans-serif;
 }
 
-/* =========================
-   HEADER
-========================= */
+/* ================= HEADER ================= */
 
 .header{
     background:#0b2035;
     color:white;
-    padding:14px 16px;
-    position:sticky;
-    top:0;
-    z-index:100;
+    padding:12px 15px;
     box-shadow:0 2px 12px rgba(0,0,0,.12);
 }
 
@@ -49,47 +35,37 @@ body{
     margin:auto;
     display:flex;
     align-items:center;
-    gap:12px;
+    gap:11px;
 }
 
 .logo{
-    width:48px;
-    height:48px;
+    width:46px;
+    height:46px;
     flex:none;
-    display:flex;
-    align-items:center;
-    justify-content:center;
 }
 
 .logo img{
     width:100%;
     height:100%;
     object-fit:contain;
-    display:block;
-}
-
-.brand{
-    min-width:0;
 }
 
 .brand h1{
     margin:0;
-    font-size:22px;
+    font-size:21px;
     font-weight:750;
-    letter-spacing:.2px;
 }
 
 .brand p{
-    margin:3px 0 0;
-    font-size:12px;
-    color:rgba(255,255,255,.72);
+    margin:2px 0 0;
+    font-size:11px;
+    color:rgba(255,255,255,.7);
 }
 
 .connection{
     margin-left:auto;
-    white-space:nowrap;
     font-size:11px;
-    color:rgba(255,255,255,.8);
+    white-space:nowrap;
 }
 
 .connection-dot{
@@ -97,7 +73,7 @@ body{
     width:8px;
     height:8px;
     border-radius:50%;
-    background:#f2a900;
+    background:#f0a000;
     margin-right:5px;
 }
 
@@ -105,239 +81,123 @@ body{
     background:#22c55e;
 }
 
-/* =========================
-   MAIN
-========================= */
+/* ================= MAIN ================= */
 
 .container{
     width:94%;
     max-width:900px;
-    margin:14px auto 30px;
+    margin:12px auto 22px;
 }
-
-/* =========================
-   CARD
-========================= */
 
 .card{
     background:white;
     border:1px solid #e0e7ee;
-    border-radius:18px;
-    box-shadow:0 6px 22px rgba(16,32,48,.06);
-    margin-bottom:12px;
+    border-radius:17px;
+    box-shadow:0 5px 18px rgba(16,32,48,.055);
+    margin-bottom:10px;
 }
 
-/* =========================
-   INTRO
-========================= */
+/* ================= INTRO ================= */
 
 .intro{
-    padding:18px;
+    padding:16px 17px;
 }
 
 .intro h2{
-    margin:0 0 8px;
-    font-size:25px;
-    line-height:1.25;
+    margin:0 0 7px;
+    font-size:24px;
 }
 
 .intro p{
     margin:0;
-    color:#657384;
-    font-size:15px;
-    line-height:1.6;
+    color:#687584;
+    font-size:14px;
+    line-height:1.55;
 }
 
 .intro strong{
-    color:#405568;
+    color:#435667;
 }
 
-/* =========================
-   ASK BOX
-========================= */
-
-.ask-card{
-    padding:13px;
-}
-
-.ask-title{
-    margin:0 0 9px 2px;
-    font-size:14px;
-    font-weight:700;
-    color:#344454;
-}
-
-.ask-row{
-    display:flex;
-    gap:8px;
-    align-items:stretch;
-}
-
-#question{
-    flex:1;
-    width:100%;
-    min-height:54px;
-    max-height:160px;
-
-    resize:vertical;
-
-    padding:13px 14px;
-
-    border:1px solid #cbd5df;
-    border-radius:14px;
-
-    background:white;
-
-    color:#17202a;
-
-    font-family:inherit;
-    font-size:16px;
-    line-height:1.45;
-
-    outline:none;
-
-    transition:.15s;
-}
-
-#question:focus{
-    border-color:#1683ff;
-    box-shadow:0 0 0 3px rgba(22,131,255,.11);
-}
-
-#question::placeholder{
-    color:#9aa5b1;
-}
-
-.send-btn{
-    width:76px;
-    min-width:76px;
-
-    border:0;
-    border-radius:14px;
-
-    background:#1677f2;
-    color:white;
-
-    font-size:15px;
-    font-weight:700;
-
-    cursor:pointer;
-
-    transition:.15s;
-}
-
-.send-btn:hover{
-    background:#0967df;
-}
-
-.send-btn:active{
-    transform:scale(.97);
-}
-
-.send-btn:disabled{
-    opacity:.55;
-    cursor:not-allowed;
-}
-
-.ask-hint{
-    margin:7px 2px 0;
-    color:#8a96a3;
-    font-size:11px;
-}
-
-/* =========================
-   QUICK QUESTIONS
-========================= */
+/* ================= QUICK ================= */
 
 .quick{
-    padding:0 13px 13px;
+    padding:10px 12px;
 
     display:flex;
     flex-wrap:wrap;
-    gap:7px;
+    gap:6px;
 }
 
 .quick button{
     border:1px solid #d7e0e8;
-
     background:#f8fafc;
-
     color:#1671c7;
+    border-radius:18px;
 
-    border-radius:20px;
-
-    padding:8px 12px;
+    padding:7px 11px;
 
     font-family:inherit;
-    font-size:13px;
+    font-size:12px;
 
     cursor:pointer;
-
-    transition:.15s;
 }
 
-.quick button:hover{
-    background:#edf6ff;
-    border-color:#b9d8f5;
-}
+/* ================= CHAT ================= */
 
-.quick button:active{
-    transform:scale(.97);
+.chat-card{
+    overflow:hidden;
 }
-
-/* =========================
-   CHAT
-========================= */
 
 .chat-head{
-    padding:14px 16px;
+    height:45px;
+
+    padding:0 14px;
 
     display:flex;
     align-items:center;
     justify-content:space-between;
 
-    border-bottom:1px solid #e2e8ee;
+    border-bottom:1px solid #e1e7ed;
 }
 
 .chat-title{
-    font-size:15px;
+    font-size:14px;
     font-weight:700;
 }
 
 .clear-btn{
     border:0;
     background:none;
-
-    color:#718096;
-
-    font-family:inherit;
-    font-size:13px;
-
+    color:#778392;
+    font-size:12px;
     cursor:pointer;
 }
 
-.clear-btn:hover{
-    color:#1677f2;
-}
+/*
+   QUAN TRỌNG:
+   Khung trao đổi được thu gọn.
+   Người dùng cuộn bên trong khung,
+   không phải cuộn cả trang.
+*/
 
 .messages{
-    min-height:300px;
-    max-height:58vh;
+    height:310px;
 
     overflow-y:auto;
 
-    padding:15px;
+    padding:12px;
 
     background:#fbfcfd;
+
+    scroll-behavior:smooth;
 }
 
-/* =========================
-   MESSAGE
-========================= */
+/* ================= MESSAGE ================= */
 
 .message{
     display:flex;
-    margin-bottom:12px;
+    margin-bottom:10px;
 }
 
 .message.user{
@@ -347,12 +207,12 @@ body{
 .bubble{
     max-width:88%;
 
-    padding:11px 14px;
+    padding:9px 12px;
 
-    border-radius:16px;
+    border-radius:14px;
 
-    font-size:15px;
-    line-height:1.6;
+    font-size:14px;
+    line-height:1.5;
 
     white-space:pre-wrap;
     word-break:break-word;
@@ -360,43 +220,109 @@ body{
 
 .message.assistant .bubble{
     background:white;
-
     border:1px solid #dfe6ed;
-
     border-top-left-radius:5px;
-
     color:#263746;
 }
 
 .message.user .bubble{
     background:#1677f2;
-
     color:white;
-
     border-top-right-radius:5px;
 }
 
-/* =========================
-   TYPING
-========================= */
+/* ================= TYPING ================= */
 
 .typing{
     display:none;
 
-    padding:0 15px 12px;
+    padding:7px 13px;
 
-    color:#697786;
+    background:#fbfcfd;
 
-    font-size:12px;
+    color:#718096;
+
+    font-size:11px;
+
+    border-top:1px solid #edf1f4;
 }
 
 .typing.show{
     display:block;
 }
 
-/* =========================
-   FOOTER
-========================= */
+/* ================= INPUT ================= */
+
+.input-area{
+    padding:9px;
+
+    border-top:1px solid #e1e7ed;
+
+    background:white;
+}
+
+.ask-row{
+    display:flex;
+    gap:7px;
+}
+
+#question{
+    flex:1;
+
+    min-height:48px;
+    max-height:100px;
+
+    resize:none;
+
+    padding:12px 13px;
+
+    border:1px solid #cbd5df;
+    border-radius:13px;
+
+    font-family:inherit;
+    font-size:15px;
+    line-height:1.4;
+
+    outline:none;
+}
+
+#question:focus{
+    border-color:#1677f2;
+
+    box-shadow:
+        0 0 0 2px
+        rgba(22,119,242,.1);
+}
+
+.send-btn{
+    width:67px;
+    min-width:67px;
+
+    border:0;
+    border-radius:13px;
+
+    background:#1677f2;
+    color:white;
+
+    font-size:14px;
+    font-weight:700;
+
+    cursor:pointer;
+}
+
+.send-btn:disabled{
+    opacity:.55;
+}
+
+.ask-hint{
+    margin:4px 2px 0;
+
+    color:#929ca7;
+
+    font-size:10px;
+}
+
+/* ================= FOOTER ================= */
 
 .footer{
     text-align:center;
@@ -405,29 +331,20 @@ body{
 
     font-size:11px;
 
-    padding:12px 0 20px;
+    padding:8px 0 15px;
 }
 
-/* =========================
-   MOBILE
-========================= */
+/* ================= MOBILE ================= */
 
 @media(max-width:600px){
 
     .header{
-        padding:
-            10px
-            12px
-            11px;
-    }
-
-    .header-inner{
-        gap:10px;
+        padding:9px 12px;
     }
 
     .logo{
-        width:42px;
-        height:42px;
+        width:40px;
+        height:40px;
     }
 
     .brand h1{
@@ -444,147 +361,110 @@ body{
 
     .container{
         width:96%;
-        margin:8px auto 20px;
+        margin:7px auto 16px;
     }
 
     .card{
-        border-radius:16px;
-        margin-bottom:8px;
+        border-radius:15px;
+        margin-bottom:7px;
     }
 
     .intro{
-        padding:15px;
+        padding:14px 15px;
     }
 
     .intro h2{
-        font-size:23px;
-        margin-bottom:7px;
+        font-size:22px;
+        margin-bottom:6px;
     }
 
     .intro p{
-        font-size:14px;
-        line-height:1.55;
-    }
-
-    .ask-card{
-        padding:11px;
-    }
-
-    .ask-title{
-        font-size:13px;
-        margin-bottom:7px;
-    }
-
-    .ask-row{
-        gap:6px;
-    }
-
-    #question{
-        min-height:53px;
-        padding:12px;
-        font-size:16px;
-    }
-
-    .send-btn{
-        width:68px;
-        min-width:68px;
-        font-size:14px;
+        font-size:13.5px;
+        line-height:1.5;
     }
 
     .quick{
-        padding:0 11px 11px;
-        gap:6px;
+        padding:8px 10px;
     }
 
     .quick button{
-        font-size:12px;
-        padding:7px 10px;
+        font-size:11.5px;
+        padding:6px 9px;
+    }
+
+    /*
+       Điện thoại:
+       Khung trao đổi nhỏ gọn.
+    */
+
+    .messages{
+        height:300px;
+        padding:10px;
     }
 
     .chat-head{
-        padding:12px 14px;
+        height:43px;
     }
 
     .chat-title{
-        font-size:14px;
-    }
-
-    .messages{
-        max-height:60vh;
-        min-height:280px;
-        padding:12px;
+        font-size:13.5px;
     }
 
     .bubble{
         max-width:94%;
-        font-size:14px;
-        padding:10px 12px;
-    }
-}
-
-/* =========================
-   SMALL PHONES
-========================= */
-
-@media(max-width:380px){
-
-    .brand h1{
-        font-size:18px;
+        font-size:13.5px;
+        padding:8px 10px;
+        line-height:1.48;
     }
 
-    .intro h2{
-        font-size:21px;
+    .input-area{
+        padding:8px;
     }
 
-    .intro p{
-        font-size:13px;
+    #question{
+        min-height:47px;
+        font-size:15px;
+        padding:11px 12px;
     }
 
     .send-btn{
-        width:64px;
-        min-width:64px;
+        width:62px;
+        min-width:62px;
     }
 
+    .ask-hint{
+        font-size:9.5px;
+    }
 }
 </style>
 </head>
 
-
 <body>
 
-<!-- =========================
-     HEADER
-========================= -->
+<!-- ================= HEADER ================= -->
 
 <header class="header">
 
     <div class="header-inner">
 
         <div class="logo">
-
             <img
                 src="https://drive.google.com/thumbnail?id=1dv5ued76Mq2uQ2LivGWDroa5D7l0dEWr&sz=w200"
-                alt="Logo THỦY LỢI AI"
+                alt="THỦY LỢI AI"
             >
-
         </div>
 
         <div class="brand">
-
             <h1>THỦY LỢI AI</h1>
-
-            <p>
-                Trợ lý AI chuyên ngành Thủy lợi
-            </p>
-
+            <p>Trợ lý AI chuyên ngành Thủy lợi</p>
         </div>
 
         <div class="connection">
 
             <span
                 id="connectionDot"
-                class="connection-dot"
-            ></span>
+                class="connection-dot">
+            </span>
 
             <span id="connectionText">
                 Đang kiểm tra...
@@ -599,10 +479,7 @@ body{
 
 <main class="container">
 
-
-<!-- =========================
-     GIỚI THIỆU
-========================= -->
+<!-- ================= INTRO ================= -->
 
 <section class="card intro">
 
@@ -622,72 +499,31 @@ body{
 </section>
 
 
-<!-- =========================
-     NHẬP CÂU HỎI
-========================= -->
-
-<section class="card ask-card">
-
-    <div class="ask-title">
-        💬 Đặt câu hỏi cho THỦY LỢI AI
-    </div>
-
-    <div class="ask-row">
-
-        <textarea
-            id="question"
-            placeholder="Nhập câu hỏi về thủy lợi..."
-            autocomplete="off"
-        ></textarea>
-
-        <button
-            id="sendButton"
-            class="send-btn"
-            type="button"
-        >
-            Gửi
-        </button>
-
-    </div>
-
-    <div class="ask-hint">
-        Enter để gửi • Shift + Enter để xuống dòng
-    </div>
-
-</section>
-
-
-<!-- =========================
-     CÂU HỎI NHANH
-========================= -->
+<!-- ================= QUICK ================= -->
 
 <section class="card">
 
     <div class="quick">
 
         <button
-            type="button"
             data-question="Hãy cho tôi biết quy trình vận hành công trình thủy lợi."
         >
             Quy trình vận hành
         </button>
 
         <button
-            type="button"
             data-question="Hãy cho tôi biết các quy định liên quan trong hồ sơ."
         >
             Quy định
         </button>
 
         <button
-            type="button"
             data-question="Hãy phân tích nội dung tài liệu liên quan đến vấn đề này."
         >
             Phân tích tài liệu
         </button>
 
         <button
-            type="button"
             data-question="Hãy giúp tôi soạn báo cáo theo nội dung trong hồ sơ."
         >
             Soạn báo cáo
@@ -698,11 +534,9 @@ body{
 </section>
 
 
-<!-- =========================
-     TRAO ĐỔI
-========================= -->
+<!-- ================= CHAT ================= -->
 
-<section class="card">
+<section class="card chat-card">
 
     <div class="chat-head">
 
@@ -712,26 +546,25 @@ body{
 
         <button
             id="clearButton"
-            class="clear-btn"
-            type="button"
-        >
+            class="clear-btn">
             Xóa
         </button>
 
     </div>
 
 
+    <!-- LỊCH SỬ TRAO ĐỔI -->
+
     <div
         id="messages"
-        class="messages"
-    >
+        class="messages">
 
         <div class="message assistant">
 
             <div class="bubble">
                 Xin chào! Tôi đã sẵn sàng hỗ trợ bạn. 🌿
 
-                Hãy nhập câu hỏi ở phía trên.
+                Hãy đặt câu hỏi bên dưới.
             </div>
 
         </div>
@@ -739,11 +572,40 @@ body{
     </div>
 
 
+    <!-- ĐANG XỬ LÝ -->
+
     <div
         id="typing"
-        class="typing"
-    >
-        ⏳ THỦY LỢI AI đang tra cứu và phân tích hồ sơ...
+        class="typing">
+
+        ⏳ THỦY LỢI AI đang tra cứu hồ sơ...
+
+    </div>
+
+
+    <!-- NHẬP CÂU HỎI -->
+
+    <div class="input-area">
+
+        <div class="ask-row">
+
+            <textarea
+                id="question"
+                placeholder="Nhập câu hỏi về thủy lợi..."
+            ></textarea>
+
+            <button
+                id="sendButton"
+                class="send-btn">
+                Gửi
+            </button>
+
+        </div>
+
+        <div class="ask-hint">
+            Enter để gửi • Shift + Enter để xuống dòng
+        </div>
+
     </div>
 
 </section>
@@ -755,7 +617,6 @@ body{
 
 </div>
 
-
 </main>
 
 
@@ -763,13 +624,7 @@ body{
 
 /* =====================================================
    THỦY LỢI AI
-   Frontend kết nối FastAPI /ask
 ===================================================== */
-
-
-/* =========================
-   ELEMENTS
-========================= */
 
 const questionInput =
     document.getElementById("question");
@@ -812,7 +667,6 @@ function addMessage(text, role){
     bubble.className =
         "bubble";
 
-
     bubble.textContent =
         text;
 
@@ -821,6 +675,11 @@ function addMessage(text, role){
 
     messages.appendChild(message);
 
+
+    /*
+       Chỉ cuộn KHUNG TRAO ĐỔI,
+       không cuộn toàn trang.
+    */
 
     messages.scrollTop =
         messages.scrollHeight;
@@ -839,19 +698,12 @@ async function checkHealth(){
             await fetch(
                 "/health",
                 {
-                    method:"GET",
                     cache:"no-store"
                 }
             );
 
-
-        if(!response.ok){
-
-            throw new Error(
-                "Server không phản hồi"
-            );
-
-        }
+        if(!response.ok)
+            throw new Error();
 
 
         const data =
@@ -863,22 +715,17 @@ async function checkHealth(){
         );
 
 
-        if(
-            data &&
-            data.notebooklm === false
-        ){
+        if(data && data.notebooklm === false){
 
             connectionText.textContent =
                 "NotebookLM chưa kết nối";
 
-        }
-        else{
+        }else{
 
             connectionText.textContent =
                 "NotebookLM đã kết nối";
 
         }
-
 
     }
     catch(error){
@@ -888,10 +735,9 @@ async function checkHealth(){
         );
 
         connectionText.textContent =
-            "Server đang không kết nối";
+            "Server không kết nối";
 
     }
-
 }
 
 
@@ -913,7 +759,7 @@ async function askAI(){
     }
 
 
-    /* Hiển thị câu hỏi */
+    /* Hiện câu hỏi */
 
     addMessage(
         question,
@@ -926,16 +772,22 @@ async function askAI(){
     questionInput.value = "";
 
 
-    /* Khóa giao diện */
+    /* Khóa */
 
     sendButton.disabled = true;
 
     questionInput.disabled = true;
 
+    typing.classList.add("show");
 
-    typing.classList.add(
-        "show"
-    );
+
+    /*
+       Đưa thanh cuộn của khung
+       xuống cuối.
+    */
+
+    messages.scrollTop =
+        messages.scrollHeight;
 
 
     try{
@@ -985,12 +837,6 @@ async function askAI(){
         }
 
 
-        /*
-         * Hệ thống hỗ trợ nhiều dạng
-         * response để tránh lỗi khi server
-         * trả về answer / response / message.
-         */
-
         const answer =
             data?.answer ??
             data?.response ??
@@ -1033,9 +879,7 @@ async function askAI(){
 
         questionInput.disabled = false;
 
-        typing.classList.remove(
-            "show"
-        );
+        typing.classList.remove("show");
 
         questionInput.focus();
 
@@ -1045,7 +889,7 @@ async function askAI(){
 
 
 /* =========================
-   NÚT GỬI
+   GỬI
 ========================= */
 
 sendButton.addEventListener(
@@ -1055,7 +899,7 @@ sendButton.addEventListener(
 
 
 /* =========================
-   ENTER GỬI
+   ENTER
 ========================= */
 
 questionInput.addEventListener(
@@ -1082,36 +926,36 @@ questionInput.addEventListener(
 ========================= */
 
 document
-.querySelectorAll(
-    ".quick button"
-)
-.forEach(
-    function(button){
+.querySelectorAll(".quick button")
+.forEach(function(button){
 
-        button.addEventListener(
-            "click",
-            function(){
+    button.addEventListener(
+        "click",
+        function(){
 
-                questionInput.value =
-                    button.dataset.question;
+            questionInput.value =
+                button.dataset.question;
 
-                questionInput.focus();
+            questionInput.focus();
 
+            /*
+               Đưa người dùng xuống ô nhập
+               bên dưới khung trao đổi.
+            */
 
-                questionInput.scrollIntoView({
-                    behavior:"smooth",
-                    block:"center"
-                });
+            questionInput.scrollIntoView({
+                behavior:"smooth",
+                block:"center"
+            });
 
-            }
-        );
+        }
+    );
 
-    }
-);
+});
 
 
 /* =========================
-   XÓA CUỘC TRÒ CHUYỆN
+   XÓA
 ========================= */
 
 clearButton.addEventListener(
@@ -1123,7 +967,7 @@ clearButton.addEventListener(
                 <div class="bubble">
                     Đã xóa cuộc trò chuyện. 🌿
 
-                    Hãy đặt câu hỏi mới ở phía trên.
+                    Hãy đặt câu hỏi mới.
                 </div>
             </div>
         `;
@@ -1139,12 +983,6 @@ clearButton.addEventListener(
 ========================= */
 
 checkHealth();
-
-
-/*
- * Kiểm tra lại trạng thái
- * mỗi 30 giây.
- */
 
 setInterval(
     checkHealth,
