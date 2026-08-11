@@ -2,142 +2,1156 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0b1f33">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+<meta name="theme-color" content="#0b2035">
+
 <title>THỦY LỢI AI</title>
+
 <style>
-*{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f4f7fa;color:#17202a}
-.top{background:#0b1f33;color:white;padding:18px}
-.topin{max-width:1000px;margin:auto;display:flex;align-items:center;gap:12px}
-.logo{font-size:30px}.brand h1{margin:0;font-size:22px}.brand p{margin:3px 0 0;opacity:.75;font-size:12px}
-.status{margin-left:auto;font-size:12px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#f5a623;margin-right:5px}.online{background:#29c46d}
-main{max-width:1000px;margin:auto;padding:18px 12px 35px}
-.card{background:white;border:1px solid #dfe6ee;border-radius:18px;box-shadow:0 10px 30px #10203012;margin-bottom:16px}
-.hero{padding:22px}.hero h2{margin:0 0 8px}.hero p{color:#687585;line-height:1.6}
-.quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}.quick button{border:1px solid #dfe6ee;background:#f8fafc;border-radius:20px;padding:9px 12px;cursor:pointer}
-.chathead{padding:15px 18px;border-bottom:1px solid #dfe6ee;display:flex;justify-content:space-between}.clear{border:0;background:none;color:#667;cursor:pointer}
-.messages{height:52vh;min-height:360px;overflow:auto;padding:16px;background:#fbfcfd}
-.msg{display:flex;margin-bottom:13px}.user{justify-content:flex-end}
-.bubble{max-width:88%;padding:12px 15px;border-radius:16px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
-.assistant .bubble{background:white;border:1px solid #dfe6ee;border-top-left-radius:5px}.user .bubble{background:#1677ff;color:white;border-top-right-radius:5px}
-.typing{display:none;padding:0 18px 10px;color:#687585;font-size:13px}.typing.show{display:block}
-.compose{padding:13px;border-top:1px solid #dfe6ee}
-.row{display:flex;gap:9px}textarea{flex:1;min-height:54px;border:1px solid #cfd8e3;border-radius:14px;padding:13px;font:inherit;resize:vertical;outline:none}textarea:focus{border-color:#1677ff}
-.send{width:90px;border:0;border-radius:14px;background:#1677ff;color:white;font-weight:bold;cursor:pointer}.send:disabled{opacity:.55}
-.hint{font-size:11px;color:#687585;margin-top:7px}
-footer{text-align:center;color:#687585;font-size:12px;padding:15px}
-@media(max-width:600px){.status{display:none}.messages{height:58vh}.bubble{max-width:93%}.send{width:75px}}
+*{
+    box-sizing:border-box;
+}
+
+html{
+    scroll-behavior:smooth;
+}
+
+body{
+    margin:0;
+    background:#f3f6f9;
+    color:#17202a;
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+}
+
+/* =========================
+   HEADER
+========================= */
+
+.header{
+    background:#0b2035;
+    color:white;
+    padding:14px 16px;
+    position:sticky;
+    top:0;
+    z-index:100;
+    box-shadow:0 2px 12px rgba(0,0,0,.12);
+}
+
+.header-inner{
+    max-width:900px;
+    margin:auto;
+    display:flex;
+    align-items:center;
+    gap:12px;
+}
+
+.logo{
+    width:48px;
+    height:48px;
+    flex:none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+
+.logo img{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    display:block;
+}
+
+.brand{
+    min-width:0;
+}
+
+.brand h1{
+    margin:0;
+    font-size:22px;
+    font-weight:750;
+    letter-spacing:.2px;
+}
+
+.brand p{
+    margin:3px 0 0;
+    font-size:12px;
+    color:rgba(255,255,255,.72);
+}
+
+.connection{
+    margin-left:auto;
+    white-space:nowrap;
+    font-size:11px;
+    color:rgba(255,255,255,.8);
+}
+
+.connection-dot{
+    display:inline-block;
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:#f2a900;
+    margin-right:5px;
+}
+
+.connection-dot.online{
+    background:#22c55e;
+}
+
+/* =========================
+   MAIN
+========================= */
+
+.container{
+    width:94%;
+    max-width:900px;
+    margin:14px auto 30px;
+}
+
+/* =========================
+   CARD
+========================= */
+
+.card{
+    background:white;
+    border:1px solid #e0e7ee;
+    border-radius:18px;
+    box-shadow:0 6px 22px rgba(16,32,48,.06);
+    margin-bottom:12px;
+}
+
+/* =========================
+   INTRO
+========================= */
+
+.intro{
+    padding:18px;
+}
+
+.intro h2{
+    margin:0 0 8px;
+    font-size:25px;
+    line-height:1.25;
+}
+
+.intro p{
+    margin:0;
+    color:#657384;
+    font-size:15px;
+    line-height:1.6;
+}
+
+.intro strong{
+    color:#405568;
+}
+
+/* =========================
+   ASK BOX
+========================= */
+
+.ask-card{
+    padding:13px;
+}
+
+.ask-title{
+    margin:0 0 9px 2px;
+    font-size:14px;
+    font-weight:700;
+    color:#344454;
+}
+
+.ask-row{
+    display:flex;
+    gap:8px;
+    align-items:stretch;
+}
+
+#question{
+    flex:1;
+    width:100%;
+    min-height:54px;
+    max-height:160px;
+
+    resize:vertical;
+
+    padding:13px 14px;
+
+    border:1px solid #cbd5df;
+    border-radius:14px;
+
+    background:white;
+
+    color:#17202a;
+
+    font-family:inherit;
+    font-size:16px;
+    line-height:1.45;
+
+    outline:none;
+
+    transition:.15s;
+}
+
+#question:focus{
+    border-color:#1683ff;
+    box-shadow:0 0 0 3px rgba(22,131,255,.11);
+}
+
+#question::placeholder{
+    color:#9aa5b1;
+}
+
+.send-btn{
+    width:76px;
+    min-width:76px;
+
+    border:0;
+    border-radius:14px;
+
+    background:#1677f2;
+    color:white;
+
+    font-size:15px;
+    font-weight:700;
+
+    cursor:pointer;
+
+    transition:.15s;
+}
+
+.send-btn:hover{
+    background:#0967df;
+}
+
+.send-btn:active{
+    transform:scale(.97);
+}
+
+.send-btn:disabled{
+    opacity:.55;
+    cursor:not-allowed;
+}
+
+.ask-hint{
+    margin:7px 2px 0;
+    color:#8a96a3;
+    font-size:11px;
+}
+
+/* =========================
+   QUICK QUESTIONS
+========================= */
+
+.quick{
+    padding:0 13px 13px;
+
+    display:flex;
+    flex-wrap:wrap;
+    gap:7px;
+}
+
+.quick button{
+    border:1px solid #d7e0e8;
+
+    background:#f8fafc;
+
+    color:#1671c7;
+
+    border-radius:20px;
+
+    padding:8px 12px;
+
+    font-family:inherit;
+    font-size:13px;
+
+    cursor:pointer;
+
+    transition:.15s;
+}
+
+.quick button:hover{
+    background:#edf6ff;
+    border-color:#b9d8f5;
+}
+
+.quick button:active{
+    transform:scale(.97);
+}
+
+/* =========================
+   CHAT
+========================= */
+
+.chat-head{
+    padding:14px 16px;
+
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+
+    border-bottom:1px solid #e2e8ee;
+}
+
+.chat-title{
+    font-size:15px;
+    font-weight:700;
+}
+
+.clear-btn{
+    border:0;
+    background:none;
+
+    color:#718096;
+
+    font-family:inherit;
+    font-size:13px;
+
+    cursor:pointer;
+}
+
+.clear-btn:hover{
+    color:#1677f2;
+}
+
+.messages{
+    min-height:300px;
+    max-height:58vh;
+
+    overflow-y:auto;
+
+    padding:15px;
+
+    background:#fbfcfd;
+}
+
+/* =========================
+   MESSAGE
+========================= */
+
+.message{
+    display:flex;
+    margin-bottom:12px;
+}
+
+.message.user{
+    justify-content:flex-end;
+}
+
+.bubble{
+    max-width:88%;
+
+    padding:11px 14px;
+
+    border-radius:16px;
+
+    font-size:15px;
+    line-height:1.6;
+
+    white-space:pre-wrap;
+    word-break:break-word;
+}
+
+.message.assistant .bubble{
+    background:white;
+
+    border:1px solid #dfe6ed;
+
+    border-top-left-radius:5px;
+
+    color:#263746;
+}
+
+.message.user .bubble{
+    background:#1677f2;
+
+    color:white;
+
+    border-top-right-radius:5px;
+}
+
+/* =========================
+   TYPING
+========================= */
+
+.typing{
+    display:none;
+
+    padding:0 15px 12px;
+
+    color:#697786;
+
+    font-size:12px;
+}
+
+.typing.show{
+    display:block;
+}
+
+/* =========================
+   FOOTER
+========================= */
+
+.footer{
+    text-align:center;
+
+    color:#7c8793;
+
+    font-size:11px;
+
+    padding:12px 0 20px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+
+@media(max-width:600px){
+
+    .header{
+        padding:
+            10px
+            12px
+            11px;
+    }
+
+    .header-inner{
+        gap:10px;
+    }
+
+    .logo{
+        width:42px;
+        height:42px;
+    }
+
+    .brand h1{
+        font-size:19px;
+    }
+
+    .brand p{
+        font-size:10px;
+    }
+
+    .connection{
+        display:none;
+    }
+
+    .container{
+        width:96%;
+        margin:8px auto 20px;
+    }
+
+    .card{
+        border-radius:16px;
+        margin-bottom:8px;
+    }
+
+    .intro{
+        padding:15px;
+    }
+
+    .intro h2{
+        font-size:23px;
+        margin-bottom:7px;
+    }
+
+    .intro p{
+        font-size:14px;
+        line-height:1.55;
+    }
+
+    .ask-card{
+        padding:11px;
+    }
+
+    .ask-title{
+        font-size:13px;
+        margin-bottom:7px;
+    }
+
+    .ask-row{
+        gap:6px;
+    }
+
+    #question{
+        min-height:53px;
+        padding:12px;
+        font-size:16px;
+    }
+
+    .send-btn{
+        width:68px;
+        min-width:68px;
+        font-size:14px;
+    }
+
+    .quick{
+        padding:0 11px 11px;
+        gap:6px;
+    }
+
+    .quick button{
+        font-size:12px;
+        padding:7px 10px;
+    }
+
+    .chat-head{
+        padding:12px 14px;
+    }
+
+    .chat-title{
+        font-size:14px;
+    }
+
+    .messages{
+        max-height:60vh;
+        min-height:280px;
+        padding:12px;
+    }
+
+    .bubble{
+        max-width:94%;
+        font-size:14px;
+        padding:10px 12px;
+    }
+}
+
+/* =========================
+   SMALL PHONES
+========================= */
+
+@media(max-width:380px){
+
+    .brand h1{
+        font-size:18px;
+    }
+
+    .intro h2{
+        font-size:21px;
+    }
+
+    .intro p{
+        font-size:13px;
+    }
+
+    .send-btn{
+        width:64px;
+        min-width:64px;
+    }
+
+}
 </style>
 </head>
+
+
 <body>
-<header class="top">
-<div class="topin">
-<div class="logo">💧</div>
-<div class="brand"><h1>THỦY LỢI AI</h1><p>Trợ lý AI chuyên ngành Thủy lợi</p></div>
-<div class="status"><span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span></div>
-</div>
+
+<!-- =========================
+     HEADER
+========================= -->
+
+<header class="header">
+
+    <div class="header-inner">
+
+        <div class="logo">
+
+            <img
+                src="https://drive.google.com/thumbnail?id=1dv5ued76Mq2uQ2LivGWDroa5D7l0dEWr&sz=w200"
+                alt="Logo THỦY LỢI AI"
+            >
+
+        </div>
+
+        <div class="brand">
+
+            <h1>THỦY LỢI AI</h1>
+
+            <p>
+                Trợ lý AI chuyên ngành Thủy lợi
+            </p>
+
+        </div>
+
+        <div class="connection">
+
+            <span
+                id="connectionDot"
+                class="connection-dot"
+            ></span>
+
+            <span id="connectionText">
+                Đang kiểm tra...
+            </span>
+
+        </div>
+
+    </div>
+
 </header>
 
-<main>
-<section class="card hero">
-<h2>Xin chào 👋</h2>
-<p>THỦY LỢI AI được kết nối với kho tài liệu NotebookLM. Hãy đặt câu hỏi về quy định, quy trình, vận hành công trình, hồ sơ và nghiệp vụ thủy lợi.</p>
-<div class="quick">
-<button data-q="Quy trình vận hành công trình thủy lợi như thế nào?">Quy trình vận hành</button>
-<button data-q="Các quy định quan trọng cần lưu ý trong công tác quản lý thủy lợi?">Quy định</button>
-<button data-q="Hãy phân tích vấn đề này dựa trên các tài liệu đã được cung cấp.">Phân tích tài liệu</button>
-<button data-q="Hãy giúp tôi soạn một báo cáo ngắn gọn, đúng văn phong hành chính.">Soạn báo cáo</button>
-</div>
+
+<main class="container">
+
+
+<!-- =========================
+     GIỚI THIỆU
+========================= -->
+
+<section class="card intro">
+
+    <h2>
+        Xin chào 👋
+    </h2>
+
+    <p>
+        THỦY LỢI AI là kho dữ liệu về hồ sơ của
+        <strong>
+            Chi nhánh Thủy lợi Vu Gia - Thu Bồn
+        </strong>.
+        Hãy đặt câu hỏi về quy định, quy trình,
+        vận hành công trình, hồ sơ và nghiệp vụ thủy lợi.
+    </p>
+
 </section>
+
+
+<!-- =========================
+     NHẬP CÂU HỎI
+========================= -->
+
+<section class="card ask-card">
+
+    <div class="ask-title">
+        💬 Đặt câu hỏi cho THỦY LỢI AI
+    </div>
+
+    <div class="ask-row">
+
+        <textarea
+            id="question"
+            placeholder="Nhập câu hỏi về thủy lợi..."
+            autocomplete="off"
+        ></textarea>
+
+        <button
+            id="sendButton"
+            class="send-btn"
+            type="button"
+        >
+            Gửi
+        </button>
+
+    </div>
+
+    <div class="ask-hint">
+        Enter để gửi • Shift + Enter để xuống dòng
+    </div>
+
+</section>
+
+
+<!-- =========================
+     CÂU HỎI NHANH
+========================= -->
 
 <section class="card">
-<div class="chathead"><strong>💬 Trao đổi với THỦY LỢI AI</strong><button class="clear" id="clear">Xóa</button></div>
-<div class="messages" id="messages">
-<div class="msg assistant"><div class="bubble">Xin chào! Tôi đã sẵn sàng hỗ trợ bạn. 🌿<br><br>Hãy nhập câu hỏi bên dưới.</div></div>
-</div>
-<div class="typing" id="typing">⏳ THỦY LỢI AI đang phân tích tài liệu...</div>
-<div class="compose">
-<div class="row"><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send">Gửi</button></div>
-<div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
-</div>
+
+    <div class="quick">
+
+        <button
+            type="button"
+            data-question="Hãy cho tôi biết quy trình vận hành công trình thủy lợi."
+        >
+            Quy trình vận hành
+        </button>
+
+        <button
+            type="button"
+            data-question="Hãy cho tôi biết các quy định liên quan trong hồ sơ."
+        >
+            Quy định
+        </button>
+
+        <button
+            type="button"
+            data-question="Hãy phân tích nội dung tài liệu liên quan đến vấn đề này."
+        >
+            Phân tích tài liệu
+        </button>
+
+        <button
+            type="button"
+            data-question="Hãy giúp tôi soạn báo cáo theo nội dung trong hồ sơ."
+        >
+            Soạn báo cáo
+        </button>
+
+    </div>
+
 </section>
-<footer>THỦY LỢI AI • FastAPI • NotebookLM</footer>
+
+
+<!-- =========================
+     TRAO ĐỔI
+========================= -->
+
+<section class="card">
+
+    <div class="chat-head">
+
+        <div class="chat-title">
+            💬 Trao đổi với THỦY LỢI AI
+        </div>
+
+        <button
+            id="clearButton"
+            class="clear-btn"
+            type="button"
+        >
+            Xóa
+        </button>
+
+    </div>
+
+
+    <div
+        id="messages"
+        class="messages"
+    >
+
+        <div class="message assistant">
+
+            <div class="bubble">
+                Xin chào! Tôi đã sẵn sàng hỗ trợ bạn. 🌿
+
+                Hãy nhập câu hỏi ở phía trên.
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="typing"
+        class="typing"
+    >
+        ⏳ THỦY LỢI AI đang tra cứu và phân tích hồ sơ...
+    </div>
+
+</section>
+
+
+<div class="footer">
+
+    THỦY LỢI AI • FastAPI • NotebookLM
+
+</div>
+
+
 </main>
 
+
 <script>
-const q=document.getElementById("question");
-const send=document.getElementById("send");
-const messages=document.getElementById("messages");
-const typing=document.getElementById("typing");
-const dot=document.getElementById("dot");
-const status=document.getElementById("status");
 
-function add(text,role){
-  const m=document.createElement("div");
-  m.className="msg "+role;
-  const b=document.createElement("div");
-  b.className="bubble";
-  b.textContent=text;
-  m.appendChild(b);
-  messages.appendChild(m);
-  messages.scrollTop=messages.scrollHeight;
+/* =====================================================
+   THỦY LỢI AI
+   Frontend kết nối FastAPI /ask
+===================================================== */
+
+
+/* =========================
+   ELEMENTS
+========================= */
+
+const questionInput =
+    document.getElementById("question");
+
+const sendButton =
+    document.getElementById("sendButton");
+
+const messages =
+    document.getElementById("messages");
+
+const typing =
+    document.getElementById("typing");
+
+const clearButton =
+    document.getElementById("clearButton");
+
+const connectionDot =
+    document.getElementById("connectionDot");
+
+const connectionText =
+    document.getElementById("connectionText");
+
+
+/* =========================
+   THÊM TIN NHẮN
+========================= */
+
+function addMessage(text, role){
+
+    const message =
+        document.createElement("div");
+
+    message.className =
+        "message " + role;
+
+
+    const bubble =
+        document.createElement("div");
+
+    bubble.className =
+        "bubble";
+
+
+    bubble.textContent =
+        text;
+
+
+    message.appendChild(bubble);
+
+    messages.appendChild(message);
+
+
+    messages.scrollTop =
+        messages.scrollHeight;
 }
 
-async function health(){
-  try{
-    const r=await fetch("/health",{cache:"no-store"});
-    const d=await r.json();
-    dot.classList.toggle("online",!!d.notebooklm);
-    status.textContent=d.notebooklm?"NotebookLM đã kết nối":"Server đang hoạt động";
-  }catch(e){
-    dot.classList.remove("online");
-    status.textContent="Không kết nối server";
-  }
+
+/* =========================
+   KIỂM TRA SERVER
+========================= */
+
+async function checkHealth(){
+
+    try{
+
+        const response =
+            await fetch(
+                "/health",
+                {
+                    method:"GET",
+                    cache:"no-store"
+                }
+            );
+
+
+        if(!response.ok){
+
+            throw new Error(
+                "Server không phản hồi"
+            );
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        connectionDot.classList.add(
+            "online"
+        );
+
+
+        if(
+            data &&
+            data.notebooklm === false
+        ){
+
+            connectionText.textContent =
+                "NotebookLM chưa kết nối";
+
+        }
+        else{
+
+            connectionText.textContent =
+                "NotebookLM đã kết nối";
+
+        }
+
+
+    }
+    catch(error){
+
+        connectionDot.classList.remove(
+            "online"
+        );
+
+        connectionText.textContent =
+            "Server đang không kết nối";
+
+    }
+
 }
 
-async function ask(){
-  const question=q.value.trim();
-  if(!question)return;
-  add(question,"user");
-  q.value="";
-  send.disabled=true;
-  q.disabled=true;
-  typing.classList.add("show");
-  try{
-    const r=await fetch("/ask",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({question})
-    });
-    const d=await r.json();
-    if(!r.ok || d.status==="error") throw new Error(d.answer||"Server xảy ra lỗi.");
-    add(d.answer||"Không có câu trả lời.","assistant");
-  }catch(e){
-    add("⚠️ Không thể lấy câu trả lời.\n\n"+e.message,"assistant");
-  }finally{
-    send.disabled=false;
-    q.disabled=false;
-    typing.classList.remove("show");
-    q.focus();
-  }
+
+/* =========================
+   HỎI AI
+========================= */
+
+async function askAI(){
+
+    const question =
+        questionInput.value.trim();
+
+
+    if(!question){
+
+        questionInput.focus();
+
+        return;
+    }
+
+
+    /* Hiển thị câu hỏi */
+
+    addMessage(
+        question,
+        "user"
+    );
+
+
+    /* Xóa ô nhập */
+
+    questionInput.value = "";
+
+
+    /* Khóa giao diện */
+
+    sendButton.disabled = true;
+
+    questionInput.disabled = true;
+
+
+    typing.classList.add(
+        "show"
+    );
+
+
+    try{
+
+        const response =
+            await fetch(
+                "/ask",
+                {
+                    method:"POST",
+
+                    headers:{
+                        "Content-Type":
+                        "application/json"
+                    },
+
+                    body:JSON.stringify({
+                        question:question
+                    })
+                }
+            );
+
+
+        let data = null;
+
+
+        try{
+
+            data =
+                await response.json();
+
+        }
+        catch(e){
+
+            data = null;
+
+        }
+
+
+        if(!response.ok){
+
+            throw new Error(
+                data?.answer ||
+                data?.detail ||
+                "Không thể kết nối THỦY LỢI AI."
+            );
+
+        }
+
+
+        /*
+         * Hệ thống hỗ trợ nhiều dạng
+         * response để tránh lỗi khi server
+         * trả về answer / response / message.
+         */
+
+        const answer =
+            data?.answer ??
+            data?.response ??
+            data?.message ??
+            data?.result ??
+            "";
+
+
+        if(!answer){
+
+            throw new Error(
+                "THỦY LỢI AI không trả về nội dung."
+            );
+
+        }
+
+
+        addMessage(
+            answer,
+            "assistant"
+        );
+
+
+    }
+    catch(error){
+
+        addMessage(
+            "⚠️ Không thể lấy câu trả lời.\n\n" +
+            (
+                error.message ||
+                "Vui lòng thử lại."
+            ),
+            "assistant"
+        );
+
+    }
+    finally{
+
+        sendButton.disabled = false;
+
+        questionInput.disabled = false;
+
+        typing.classList.remove(
+            "show"
+        );
+
+        questionInput.focus();
+
+    }
+
 }
 
-send.onclick=ask;
-q.addEventListener("keydown",e=>{
-  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}
-});
 
-document.getElementById("clear").onclick=()=>{
-  messages.innerHTML='<div class="msg assistant"><div class="bubble">Đã xóa cuộc trò chuyện. 🌿<br><br>Hãy đặt câu hỏi mới.</div></div>';
-};
+/* =========================
+   NÚT GỬI
+========================= */
 
-document.querySelectorAll(".quick button").forEach(b=>{
-  b.onclick=()=>{q.value=b.dataset.q;q.focus();}
-});
+sendButton.addEventListener(
+    "click",
+    askAI
+);
 
-health();
-setInterval(health,30000);
+
+/* =========================
+   ENTER GỬI
+========================= */
+
+questionInput.addEventListener(
+    "keydown",
+    function(event){
+
+        if(
+            event.key === "Enter" &&
+            !event.shiftKey
+        ){
+
+            event.preventDefault();
+
+            askAI();
+
+        }
+
+    }
+);
+
+
+/* =========================
+   CÂU HỎI NHANH
+========================= */
+
+document
+.querySelectorAll(
+    ".quick button"
+)
+.forEach(
+    function(button){
+
+        button.addEventListener(
+            "click",
+            function(){
+
+                questionInput.value =
+                    button.dataset.question;
+
+                questionInput.focus();
+
+
+                questionInput.scrollIntoView({
+                    behavior:"smooth",
+                    block:"center"
+                });
+
+            }
+        );
+
+    }
+);
+
+
+/* =========================
+   XÓA CUỘC TRÒ CHUYỆN
+========================= */
+
+clearButton.addEventListener(
+    "click",
+    function(){
+
+        messages.innerHTML = `
+            <div class="message assistant">
+                <div class="bubble">
+                    Đã xóa cuộc trò chuyện. 🌿
+
+                    Hãy đặt câu hỏi mới ở phía trên.
+                </div>
+            </div>
+        `;
+
+        questionInput.focus();
+
+    }
+);
+
+
+/* =========================
+   KHỞI ĐỘNG
+========================= */
+
+checkHealth();
+
+
+/*
+ * Kiểm tra lại trạng thái
+ * mỗi 30 giây.
+ */
+
+setInterval(
+    checkHealth,
+    30000
+);
+
 </script>
+
 </body>
 </html>
