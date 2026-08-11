@@ -11,8 +11,12 @@ from notebooklm import NotebookLMClient
 # =========================================================
 # THỦY LỢI AI - CẤU HÌNH
 # =========================================================
+import os
 
-NOTEBOOK_ID = "dea8fcc6-bc21-432c-b3f6-0619b619b5d2"
+NOTEBOOK_ID = os.environ.get(
+    "NOTEBOOKLM_NOTEBOOK",
+    "e9719e1a-bd4a-45c9-a296-02136d6beb0e"
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
