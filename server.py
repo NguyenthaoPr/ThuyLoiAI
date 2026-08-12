@@ -31,7 +31,7 @@ else:
 
 
 # ============================================================
-# THỦY LỢI AI - SERVER NOTEBOOKLM V10
+# THỦY LỢI AI - SERVER NOTEBOOKLM V11
 # Kiến trúc: NotebookLM (nguồn chính) + nhiều tầng tự phục hồi
 #            + nguồn dự phòng (fallback) + hàng đợi/giới hạn tải
 # ============================================================
@@ -46,14 +46,14 @@ NOTEBOOK_ID = (
 AUTH_JSON = os.getenv("NOTEBOOKLM_AUTH_JSON", "").strip()
 ADMIN_TOKEN = os.getenv("THUYLOIA_ADMIN_TOKEN", "").strip()
 
-MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "3")))
+MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "1")))
 REQUEST_TIMEOUT = max(30, int(os.getenv("REQUEST_TIMEOUT", "180")))
-MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "3")))
+MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "2")))
 WATCHDOG_SECONDS = max(60, int(os.getenv("WATCHDOG_SECONDS", "300")))
 CACHE_TTL = max(0, int(os.getenv("ANSWER_CACHE_TTL", "600")))
 CACHE_SIZE = max(10, int(os.getenv("ANSWER_CACHE_SIZE", "100")))
-CIRCUIT_THRESHOLD = max(1, int(os.getenv("CIRCUIT_THRESHOLD", "3")))
-CIRCUIT_COOLDOWN = max(30, int(os.getenv("CIRCUIT_COOLDOWN", "120")))
+CIRCUIT_THRESHOLD = max(1, int(os.getenv("CIRCUIT_THRESHOLD", "4")))
+CIRCUIT_COOLDOWN = max(30, int(os.getenv("CIRCUIT_COOLDOWN", "180")))
 HEADLESS_REAUTH = os.getenv("NOTEBOOKLM_HEADLESS_REAUTH", "0").strip() == "1"
 
 # --- V9: tự giám sát / phân loại sự cố ---
@@ -63,10 +63,17 @@ RECOVERY_LOCK_TIMEOUT = max(5, int(os.getenv("RECOVERY_LOCK_TIMEOUT", "20")))
 HEALTH_STALE_SECONDS = max(60, int(os.getenv("HEALTH_STALE_SECONDS", "900")))
 APP_INCIDENT_ENABLED = os.getenv("APP_INCIDENT_ENABLED", "1").strip() == "1"
 
-# --- V10: bảo vệ vòng đời client / chống race khi reconnect ---
+# --- V11: chống rate-limit + serialize chat + bảo vệ vòng đời client ---
 CLIENT_DRAIN_TIMEOUT = max(10, int(os.getenv("CLIENT_DRAIN_TIMEOUT", "45")))
 RECOVERY_TOTAL_TIMEOUT = max(30, int(os.getenv("RECOVERY_TOTAL_TIMEOUT", "180")))
 KEEPALIVE_SECONDS = max(60, int(os.getenv("NOTEBOOKLM_KEEPALIVE", "900")))
+
+# --- V11: bảo vệ rate-limit của NotebookLM ---
+# NotebookLM có rate limit không công khai; retry quá nhanh chỉ làm tình hình xấu hơn.
+CHAT_MIN_INTERVAL = max(0.5, float(os.getenv("NOTEBOOKLM_CHAT_MIN_INTERVAL", "4")))
+RATE_LIMIT_COOLDOWN = max(10, int(os.getenv("NOTEBOOKLM_RATE_LIMIT_COOLDOWN", "30")))
+RATE_LIMIT_MAX_COOLDOWN = max(RATE_LIMIT_COOLDOWN, int(os.getenv("NOTEBOOKLM_RATE_LIMIT_MAX_COOLDOWN", "180")))
+HEALTH_SKIP_WHEN_BUSY = os.getenv("HEALTH_SKIP_WHEN_BUSY", "1").strip() == "1"
 
 
 # --- Auth recovery ---
@@ -143,6 +150,9 @@ log = logging.getLogger("thuyloiai")
 client = None
 client_lock = asyncio.Lock()
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+chat_lock = asyncio.Lock()
+chat_timing_lock = asyncio.Lock()
+next_chat_at = 0.0
 
 pending_count = 0
 pending_lock = asyncio.Lock()
@@ -171,7 +181,11 @@ state = {
     "active_rpcs": 0,
     "last_health_probe": None,
     "last_health_probe_ok": None,
+    "rate_limited_until": 0.0,
+    "rate_limit_count": 0,
+    "retry_after_seconds": 0,
 }
+
 
 
 metrics = {
@@ -297,6 +311,9 @@ def mark_success():
     state["last_recovery_level"] = 0
     state["last_error_kind"] = None
     state["auth_recovery_exhausted"] = False
+    state["rate_limited_until"] = 0.0
+    state["rate_limit_count"] = 0
+    state["retry_after_seconds"] = 0
 
 
 def mark_failure(error: Exception):
@@ -307,6 +324,9 @@ def mark_failure(error: Exception):
     state["consecutive_failures"] += 1
     state["recovery_needed"] = True
     kind = classify_error(error)
+    if kind == "RATE_LIMIT":
+        mark_rate_limited(error)
+        return
     state["last_error_kind"] = kind
     state["auth_expired_suspected"] = kind == "AUTH"
     state["status"] = "auth_error" if kind == "AUTH" else "degraded"
@@ -324,17 +344,19 @@ def classify_error(error: Exception) -> str:
     if is_auth_error(error):
         return "AUTH"
     text = str(error).lower()
+    if is_rate_limit_error(error):
+        return "RATE_LIMIT"
     if any(x in text for x in ("timeout", "timed out")):
         return "TIMEOUT"
-    if any(x in text for x in ("429", "rate limit", "resource exhausted")):
-        return "RATE_LIMIT"
     if any(x in text for x in ("connection", "network", "reset", "unavailable")):
         return "NETWORK"
     return "UNKNOWN"
 
 
 def recovery_level() -> int:
-    """0=normal, 1=retry, 2=refresh, 3=reconnect, 4=fallback, 5=human/auth action."""
+    """0=normal, 1=retry/rate-limit, 2=refresh, 3=reconnect, 4=fallback, 5=human/auth action."""
+    if rate_limit_remaining() > 0:
+        return 1
     if state.get("connected"):
         return 0
     if state.get("recovery_in_progress"):
@@ -383,7 +405,51 @@ def is_auth_error(error: Exception) -> bool:
     return any(word in text for word in words)
 
 
+def is_rate_limit_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return any(x in text for x in (
+        "429", "rate limit", "rate limited", "resource exhausted",
+        "too many requests", "wait a few seconds", "rejected by the api"
+    ))
+
+
+def rate_limit_remaining() -> int:
+    return max(0, int(state.get("rate_limited_until", 0.0) - time.time()))
+
+
+async def wait_chat_turn():
+    """Một cửa duy nhất cho chat NotebookLM + khoảng nghỉ tối thiểu."""
+    global next_chat_at
+    async with chat_timing_lock:
+        now = time.time()
+        cooldown = max(0.0, state.get("rate_limited_until", 0.0) - now)
+        target = max(next_chat_at, now + cooldown)
+        delay = target - now
+        if delay > 0:
+            log.info("CHAT-GATE: chờ %.1fs trước khi gọi NotebookLM.", delay)
+            await asyncio.sleep(delay)
+        next_chat_at = time.time() + CHAT_MIN_INTERVAL
+
+
+def mark_rate_limited(error: Exception, cooldown: int | None = None):
+    cooldown = cooldown or min(
+        RATE_LIMIT_MAX_COOLDOWN,
+        RATE_LIMIT_COOLDOWN * (2 ** min(int(state.get("rate_limit_count", 0)), 3))
+    )
+    state["rate_limit_count"] = int(state.get("rate_limit_count", 0)) + 1
+    state["rate_limited_until"] = time.time() + cooldown
+    state["retry_after_seconds"] = cooldown
+    state["last_error_kind"] = "RATE_LIMIT"
+    state["status"] = "rate_limited"
+    state["connected"] = True  # session vẫn có thể hợp lệ; chỉ API đang giới hạn tốc độ
+    state["last_error"] = str(error)[:500]
+    state["last_error_time"] = now_text()
+    state["recovery_needed"] = False
+
+
 def is_retryable(error: Exception) -> bool:
+    if is_rate_limit_error(error):
+        return False
     if is_auth_error(error):
         return True
 
@@ -634,126 +700,110 @@ async def reconnect(reason="unknown", allow_headless=False):
 
 
 async def ask_notebooklm(question: str, request_id: str):
-    global client
+    """Gọi NotebookLM với 4 lớp bảo vệ: gate -> single chat -> retry -> recovery.
 
+    V11 không reconnect khi gặp 429. 429 là rate-limit, không phải mất phiên.
+    Reconnect trong tình huống này thường làm tăng số request và có thể làm nặng hơn.
+    """
+    global client
     last_error = None
 
-    for attempt in range(MAX_RETRIES):
-        if not circuit_available():
-            raise RuntimeError("Circuit Breaker đang mở; hệ thống đang tự phục hồi.")
+    # Một notebook chỉ cho phép một chat thực thi tại một thời điểm ở tầng app.
+    async with chat_lock:
+        for attempt in range(MAX_RETRIES):
+            if not circuit_available():
+                ok = await reconnect("circuit_breaker")
+                if not ok:
+                    raise RuntimeError("NotebookLM đang trong chế độ tự phục hồi.")
 
-        try:
-            async with acquire_slot(QUEUE_MAX_WAIT):
-                if client is None:
-                    ok = await reconnect("client_none")
-                    if not ok:
-                        raise RuntimeError("Không kết nối được NotebookLM.")
-
-                nb_client = client[0]
-
-                await rpc_enter()
-                try:
-                    result = await asyncio.wait_for(
-                        nb_client.chat.ask(
-                            NOTEBOOK_ID,
-                            f"{SYSTEM_PROMPT}\n\nCÂU HỎI:\n{question}",
-                        ),
-                        timeout=REQUEST_TIMEOUT,
-                    )
-                finally:
-                    await rpc_exit()
-
-            answer = (getattr(result, "answer", "") or "").strip()
-
-            if not answer:
-                raise RuntimeError("NotebookLM không trả về nội dung.")
-
-            references = []
-            for ref in (getattr(result, "references", []) or []):
-                item = {}
-                for attr in ("source_id", "cited_text", "start_char", "end_char"):
-                    value = getattr(ref, attr, None)
-                    if value is not None:
-                        item[attr] = value
-                if item:
-                    references.append(item)
-
-            mark_success()
-
-            return {
-                "status": "ok",
-                "answer": answer,
-                "engine": "NotebookLM",
-                "grounded": True,
-                "sources": references,
-            }
-
-        except asyncio.TimeoutError as exc:
-            # Timeout ở đây có thể đến từ hàng đợi hoặc lời gọi NotebookLM.
-            # Tách rõ thông báo để tránh chẩn đoán sai.
-            last_error = RuntimeError(
-                "NotebookLM hoặc hàng đợi xử lý đã vượt thời gian cho phép."
-            )
-            log.warning(
-                "[%s] NotebookLM: timeout ở tầng xử lý (lần %s/%s): %s",
-                request_id, attempt + 1, MAX_RETRIES, exc
-            )
-            mark_failure(last_error)
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(1 + attempt)
-                continue
-            break
-
-        except Exception as exc:
-            last_error = exc
-            log.warning(
-                "[%s] NotebookLM lỗi lần %s/%s: %s",
-                request_id, attempt + 1, MAX_RETRIES, exc,
-            )
-            mark_failure(exc)
-
-            # Tầng 1: retry.
-            if attempt < MAX_RETRIES - 1 and is_retryable(exc):
-                delay = min(12, 2 ** attempt) + random.uniform(0, 0.7)
-                await asyncio.sleep(delay)
-                continue
-
-            # Tầng 2/3: auth refresh + reconnect.
-            if is_auth_error(exc):
-                ok = await reconnect(
-                    "authentication_error",
-                    allow_headless=HEADLESS_REAUTH,
+            remaining = rate_limit_remaining()
+            if remaining > 0:
+                state["retry_after_seconds"] = remaining
+                raise RuntimeError(
+                    f"NotebookLM đang giới hạn tốc độ. Vui lòng thử lại sau khoảng {remaining} giây."
                 )
-                if ok:
-                    try:
-                        async with acquire_slot(QUEUE_MAX_WAIT):
-                            nb_client = client[0]
-                            await rpc_enter()
-                            try:
-                                result = await asyncio.wait_for(
-                                    nb_client.chat.ask(
-                                        NOTEBOOK_ID,
-                                        f"{SYSTEM_PROMPT}\n\nCÂU HỎI:\n{question}",
-                                    ),
-                                    timeout=REQUEST_TIMEOUT,
-                                )
-                            finally:
-                                await rpc_exit()
-                        answer = (getattr(result, "answer", "") or "").strip()
-                        if answer:
-                            mark_success()
-                            return {
-                                "status": "ok",
-                                "answer": answer,
-                                "engine": "NotebookLM",
-                                "grounded": True,
-                                "sources": [],
-                            }
-                    except Exception as retry_exc:
-                        last_error = retry_exc
-                        mark_failure(retry_exc)
 
-            break
+            try:
+                async with acquire_slot(QUEUE_MAX_WAIT):
+                    if client is None:
+                        ok = await reconnect("client_none")
+                        if not ok:
+                            raise RuntimeError("Không kết nối được NotebookLM.")
+
+                    await wait_chat_turn()
+                    nb_client = client[0]
+                    await rpc_enter()
+                    try:
+                        result = await asyncio.wait_for(
+                            nb_client.chat.ask(
+                                NOTEBOOK_ID,
+                                f"{SYSTEM_PROMPT}\n\nCÂU HỎI:\n{question}",
+                            ),
+                            timeout=REQUEST_TIMEOUT,
+                        )
+                    finally:
+                        await rpc_exit()
+
+                answer = (getattr(result, "answer", "") or "").strip()
+                if not answer:
+                    raise RuntimeError("NotebookLM không trả về nội dung.")
+
+                references = []
+                for ref in (getattr(result, "references", []) or []):
+                    item = {}
+                    for attr in ("source_id", "cited_text", "start_char", "end_char"):
+                        value = getattr(ref, attr, None)
+                        if value is not None:
+                            item[attr] = value
+                    if item:
+                        references.append(item)
+
+                mark_success()
+                return {
+                    "status": "ok",
+                    "answer": answer,
+                    "engine": "NotebookLM",
+                    "grounded": True,
+                    "sources": references,
+                }
+
+            except asyncio.TimeoutError as exc:
+                last_error = RuntimeError("NotebookLM vượt thời gian xử lý cho phép.")
+                log.warning("[%s] NotebookLM timeout lần %s/%s", request_id, attempt + 1, MAX_RETRIES)
+                mark_failure(last_error)
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(2 + attempt * 2)
+                    continue
+
+            except Exception as exc:
+                last_error = exc
+                kind = classify_error(exc)
+                log.warning("[%s] NotebookLM lỗi lần %s/%s | kind=%s | %s", request_id, attempt + 1, MAX_RETRIES, kind, exc)
+
+                if kind == "RATE_LIMIT":
+                    # Tuyệt đối không reconnect ở đây.
+                    mark_rate_limited(exc)
+                    log.warning(
+                        "[%s] RATE LIMIT: nghỉ %ss; không reconnect client.",
+                        request_id, state["retry_after_seconds"]
+                    )
+                    raise RuntimeError(
+                        f"NotebookLM đang giới hạn tốc độ. Hệ thống sẽ tự chờ khoảng {state['retry_after_seconds']} giây rồi phục vụ lại."
+                    )
+
+                mark_failure(exc)
+
+                if is_auth_error(exc):
+                    ok = await reconnect("authentication_error", allow_headless=HEADLESS_REAUTH)
+                    if ok and attempt < MAX_RETRIES - 1:
+                        continue
+                    break
+
+                if is_retryable(exc) and attempt < MAX_RETRIES - 1:
+                    delay = min(15, 2 ** attempt) + random.uniform(0, 0.5)
+                    await asyncio.sleep(delay)
+                    continue
+                break
 
     raise last_error or RuntimeError("NotebookLM không thể xử lý câu hỏi.")
 
@@ -883,6 +933,10 @@ async def watchdog():
 
             if client is None:
                 await reconnect("watchdog_client_none")
+            elif HEALTH_SKIP_WHEN_BUSY and state.get("active_rpcs", 0) > 0:
+                log.info("WATCHDOG: bỏ qua probe vì đang có RPC chat chạy.")
+            elif rate_limit_remaining() > 0:
+                log.info("WATCHDOG: bỏ qua probe vì NotebookLM đang rate-limit (%ss).", rate_limit_remaining())
             elif circuit_available():
                 try:
                     nb_client = client[0]
@@ -906,8 +960,11 @@ async def watchdog():
 
                 except Exception as exc:
                     log.warning("WATCHDOG lỗi: %s", exc)
-                    mark_failure(exc)
-                    await reconnect("watchdog_failure")
+                    if is_rate_limit_error(exc):
+                        mark_rate_limited(exc)
+                    else:
+                        mark_failure(exc)
+                        await reconnect("watchdog_failure")
 
         except Exception as exc:
             log.error("WATCHDOG ngoại lệ: %s", exc)
@@ -925,7 +982,7 @@ async def watchdog():
 
 async def lifespan(app: FastAPI):
     log.info("==========================================")
-    log.info("       KHỞI ĐỘNG THỦY LỢI AI V10")
+    log.info("       KHỞI ĐỘNG THỦY LỢI AI V11")
     log.info("       ENGINE CHÍNH: NOTEBOOKLM")
     log.info("       FALLBACK: %s", "BẬT" if ENABLE_FALLBACK else "TẮT")
     log.info("       AUTO AUTH REFRESH: %s", "BẬT" if AUTH_REFRESH_BEFORE_RECONNECT else "TẮT")
@@ -985,7 +1042,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM + nhiều tầng tự phục hồi + fallback",
-    version="10.0",
+    version="11.0",
     lifespan=lifespan,
 )
 
@@ -1016,19 +1073,23 @@ async def home():
 @app.get("/live")
 async def live():
     # Liveness: process còn sống, không phụ thuộc NotebookLM.
-    return {"status": "ok", "service": "THỦY LỢI AI", "version": "10.0"}
+    return {"status": "ok", "service": "THỦY LỢI AI", "version": "11.0"}
 
 
 @app.get("/ready")
 async def ready():
-    # Readiness: chỉ sẵn sàng hoàn toàn khi NotebookLM đã xác thực.
-    if state.get("connected"):
-        return {"status": "ready", "engine": "NotebookLM", "version": "10.0"}
-    return JSONResponse(status_code=503, content={
+    # Readiness: không báo READY khi NotebookLM đang rate-limit.
+    if state.get("connected") and rate_limit_remaining() == 0:
+        return {"status": "ready", "engine": "NotebookLM", "version": "11.0"}
+    return JSONResponse(status_code=429 if rate_limit_remaining() > 0 else 503, content={
         "status": "not_ready",
         "engine": "NotebookLM",
         "recovery_level": recovery_level(),
-        "action": "AUTH_REQUIRED" if recovery_level() == 5 else "AUTO_RECOVERY",
+        "action": (
+            "RETRY_AFTER_COOLDOWN" if rate_limit_remaining() > 0
+            else ("AUTH_REQUIRED" if recovery_level() == 5 else "AUTO_RECOVERY")
+        ),
+        "retry_after_seconds": rate_limit_remaining(),
     })
 
 
@@ -1069,6 +1130,11 @@ async def health():
         "auth_recovery_exhausted": state["auth_recovery_exhausted"],
         "last_health_probe": state["last_health_probe"],
         "last_health_probe_ok": state["last_health_probe_ok"],
+        "rate_limited": rate_limit_remaining() > 0,
+        "rate_limited_until": state["rate_limited_until"],
+        "retry_after_seconds": rate_limit_remaining(),
+        "rate_limit_count": state["rate_limit_count"],
+        "chat_min_interval": CHAT_MIN_INTERVAL,
         "keepalive_seconds": KEEPALIVE_SECONDS,
     }
 
@@ -1087,7 +1153,7 @@ async def get_metrics():
 async def diagnostics():
     return {
         "service": "THỦY LỢI AI",
-        "version": "10.0",
+        "version": "11.0",
         "engine": "NotebookLM",
         "notebooklm_package_loaded": NotebookLMClient is not None,
         "notebooklm_import_error": NOTEBOOKLM_IMPORT_ERROR,
@@ -1119,6 +1185,10 @@ async def diagnostics():
             "recovery_backoff_base": RECOVERY_BACKOFF_BASE,
             "recovery_total_timeout": RECOVERY_TOTAL_TIMEOUT,
             "client_drain_timeout": CLIENT_DRAIN_TIMEOUT,
+            "chat_min_interval": CHAT_MIN_INTERVAL,
+            "rate_limit_cooldown": RATE_LIMIT_COOLDOWN,
+            "rate_limit_max_cooldown": RATE_LIMIT_MAX_COOLDOWN,
+            "health_skip_when_busy": HEALTH_SKIP_WHEN_BUSY,
             "queue_max_wait": QUEUE_MAX_WAIT,
             "queue_max_pending": QUEUE_MAX_PENDING,
             "hard_deadline": HARD_DEADLINE,
@@ -1136,7 +1206,7 @@ async def api_info():
     return {
         "name": "THỦY LỢI AI",
         "engine": "NotebookLM",
-        "version": "10.0",
+        "version": "11.0",
         "notebook_configured": bool(NOTEBOOK_ID),
         "endpoints": {
             "home": "/",
@@ -1365,7 +1435,7 @@ async def recovery_status():
     }
     return {
         "service": "THỦY LỢI AI",
-        "version": "10.0",
+        "version": "11.0",
         "notebooklm_connected": bool(state["connected"]),
         "status": state["status"],
         "recovery_level": level,
@@ -1382,6 +1452,9 @@ async def recovery_status():
         "last_recovery_reason": state["last_recovery_reason"],
         "circuit_open": state["circuit_open"],
         "circuit_until": state["circuit_until"],
+        "rate_limited": rate_limit_remaining() > 0,
+        "retry_after_seconds": rate_limit_remaining(),
+        "rate_limit_count": state["rate_limit_count"],
         "admin_recovery_available": bool(ADMIN_TOKEN),
         "note": (
             "Nếu AUTH đã hết hạn hoàn toàn và NOTEBOOKLM_AUTH_JSON là secret tĩnh, "
@@ -1400,11 +1473,18 @@ async def incident():
     info = await recovery_status()
     return {
         "ok": info["notebooklm_connected"],
-        "severity": "NORMAL" if info["recovery_level"] == 0 else ("CRITICAL" if info["recovery_level"] == 5 else "WARNING"),
+        "severity": (
+            "NORMAL" if info["recovery_level"] == 0 and not info.get("rate_limited")
+            else ("CRITICAL" if info["recovery_level"] == 5 else "WARNING")
+        ),
         "message": (
             "THỦY LỢI AI hoạt động bình thường."
-            if info["recovery_level"] == 0
-            else "THỦY LỢI AI đang tự khắc phục sự cố NotebookLM."
+            if info["recovery_level"] == 0 and not info.get("rate_limited")
+            else (
+                f"NotebookLM đang giới hạn tốc độ. Hệ thống tự chờ khoảng {info.get('retry_after_seconds', 0)} giây."
+                if info.get("rate_limited")
+                else "THỦY LỢI AI đang tự khắc phục sự cố NotebookLM."
+            )
         ),
         "recovery": info,
     }
