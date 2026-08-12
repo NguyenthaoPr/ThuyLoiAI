@@ -29,7 +29,10 @@ else:
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 
-NOTEBOOK_ID = os.getenv("NOTEBOOKLM_NOTEBOOK_ID", "").strip()
+NOTEBOOK_ID = (
+    os.getenv("NOTEBOOKLM_NOTEBOOK", "").strip()
+    or os.getenv("NOTEBOOKLM_NOTEBOOK_ID", "").strip()
+)
 AUTH_JSON = os.getenv("NOTEBOOKLM_AUTH_JSON", "").strip()
 ADMIN_TOKEN = os.getenv("THUYLOIA_ADMIN_TOKEN", "").strip()
 
@@ -239,13 +242,19 @@ async def create_client():
         )
 
     if not NOTEBOOK_ID:
-        raise RuntimeError("Chưa cấu hình NOTEBOOKLM_NOTEBOOK_ID.")
+        raise RuntimeError("Chưa cấu hình NOTEBOOKLM_NOTEBOOK (hoặc NOTEBOOKLM_NOTEBOOK_ID).")
 
     if not AUTH_JSON:
         raise RuntimeError("Chưa cấu hình NOTEBOOKLM_AUTH_JSON.")
 
-    # Vẫn dùng env NOTEBOOKLM_AUTH_JSON; không ghi credential ra log.
-    cm = NotebookLMClient.from_storage()
+    # NOTEBOOKLM_AUTH_JSON được thư viện tự đọc từ Environment.
+    # keepalive giúp client sống ổn định hơn trong thời gian process còn chạy.
+    # Không ghi credential ra log.
+    cm = NotebookLMClient.from_storage(
+        keepalive=max(60, int(os.getenv("NOTEBOOKLM_KEEPALIVE", "900"))),
+        timeout=min(60.0, float(REQUEST_TIMEOUT)),
+        max_concurrent_rpcs=max(1, MAX_CONCURRENT),
+    )
     new_client = await cm.__aenter__()
 
     client = (new_client, cm)
@@ -271,7 +280,7 @@ async def reconnect(reason="unknown", allow_headless=False):
 
             if not found:
                 raise RuntimeError(
-                    "Đã xác thực được NotebookLM nhưng không tìm thấy NOTEBOOKLM_NOTEBOOK_ID."
+                    "Đã xác thực NotebookLM nhưng không tìm thấy notebook được cấu hình."
                 )
 
             mark_success()
@@ -464,7 +473,7 @@ async def lifespan(app: FastAPI):
     log.info("==========================================")
 
     if not NOTEBOOK_ID:
-        log.error("NOTEBOOKLM_NOTEBOOK_ID: CHƯA CÓ")
+        log.error("NOTEBOOKLM_NOTEBOOK: CHƯA CÓ")
     else:
         log.info("NOTEBOOK ID: ĐÃ CẤU HÌNH")
 
@@ -503,7 +512,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM",
-    version="5.0",
+    version="6.0",
     lifespan=lifespan,
 )
 
@@ -541,6 +550,10 @@ async def health():
         "notebooklm_connected": bool(state["connected"]),
         "notebooklm_status": state["status"],
         "notebook_id_configured": bool(NOTEBOOK_ID),
+        "notebook_env_source": (
+            "NOTEBOOKLM_NOTEBOOK" if os.getenv("NOTEBOOKLM_NOTEBOOK", "").strip()
+            else ("NOTEBOOKLM_NOTEBOOK_ID" if os.getenv("NOTEBOOKLM_NOTEBOOK_ID", "").strip() else None)
+        ),
         "auth_configured": bool(AUTH_JSON),
         "last_check": state["last_check"],
         "last_success": state["last_success"],
@@ -562,11 +575,15 @@ async def status():
 async def diagnostics():
     return {
         "service": "THỦY LỢI AI",
-        "version": "5.0",
+        "version": "6.0",
         "engine": "NotebookLM",
         "notebooklm_package_loaded": NotebookLMClient is not None,
         "notebooklm_import_error": NOTEBOOKLM_IMPORT_ERROR,
         "notebook_id_configured": bool(NOTEBOOK_ID),
+        "notebook_env_source": (
+            "NOTEBOOKLM_NOTEBOOK" if os.getenv("NOTEBOOKLM_NOTEBOOK", "").strip()
+            else ("NOTEBOOKLM_NOTEBOOK_ID" if os.getenv("NOTEBOOKLM_NOTEBOOK_ID", "").strip() else None)
+        ),
         "auth_configured": bool(AUTH_JSON),
         "runtime": dict(state),
         "configuration": {
@@ -579,6 +596,7 @@ async def diagnostics():
             "circuit_threshold": CIRCUIT_THRESHOLD,
             "circuit_cooldown": CIRCUIT_COOLDOWN,
             "headless_reauth": HEADLESS_REAUTH,
+            "keepalive_seconds": max(60, int(os.getenv("NOTEBOOKLM_KEEPALIVE", "900"))),
         },
     }
 
@@ -588,7 +606,7 @@ async def api_info():
     return {
         "name": "THỦY LỢI AI",
         "engine": "NotebookLM",
-        "version": "5.0",
+        "version": "6.0",
         "notebook_configured": bool(NOTEBOOK_ID),
         "endpoints": {
             "home": "/",
