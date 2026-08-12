@@ -4,6 +4,7 @@ import asyncio
 import random
 import time
 import logging
+import json
 from pathlib import Path
 from contextlib import asynccontextmanager
 from collections import OrderedDict, defaultdict
@@ -31,7 +32,7 @@ else:
 
 
 # ============================================================
-# THỦY LỢI AI - SERVER NOTEBOOKLM V12
+# THỦY LỢI AI - SERVER NOTEBOOKLM V13
 # Kiến trúc: NotebookLM (nguồn chính) + nhiều tầng tự phục hồi
 #            + nguồn dự phòng (fallback) + hàng đợi/giới hạn tải
 # ============================================================
@@ -45,6 +46,17 @@ NOTEBOOK_ID = (
 )
 AUTH_JSON = os.getenv("NOTEBOOKLM_AUTH_JSON", "").strip()
 ADMIN_TOKEN = os.getenv("THUYLOIA_ADMIN_TOKEN", "").strip()
+
+# V13: runtime storage để cookie được refresh có thể được ghi lại trong process.
+NOTEBOOKLM_STORAGE_PATH = os.getenv(
+    "NOTEBOOKLM_STORAGE_PATH",
+    "/tmp/thuyloiai/notebooklm/storage_state.json",
+).strip()
+
+# V13: auth recovery có giới hạn, tránh reconnect lặp vô hạn khi session đã chết.
+AUTH_RECOVERY_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_RECOVERY_MAX_ATTEMPTS", "1")))
+AUTH_RECOVERY_COOLDOWN = max(60, int(os.getenv("AUTH_RECOVERY_COOLDOWN", "300")))
+AUTH_HEADLESS_ONCE = os.getenv("AUTH_HEADLESS_ONCE", "1").strip() == "1"
 
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "1")))
 REQUEST_TIMEOUT = max(30, int(os.getenv("REQUEST_TIMEOUT", "180")))
@@ -104,7 +116,7 @@ RATE_LIMIT_BURST = max(1, int(os.getenv("RATE_LIMIT_BURST", "5")))
 RATE_LIMIT_CLEANUP_SECONDS = max(60, int(os.getenv("RATE_LIMIT_CLEANUP_SECONDS", "600")))
 
 # --- Nguồn dự phòng (fallback) khi NotebookLM không phản hồi được ---
-ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "1").strip() == "1"
+ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "0").strip() == "1"
 FALLBACK_TIMEOUT = max(10, int(os.getenv("FALLBACK_TIMEOUT", "60")))
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
@@ -195,7 +207,12 @@ state = {
     "last_incident_message": None,
     "last_incident_action": None,
     "auto_retry_count": 0,
+    "auth_recovery_attempts": 0,
+    "last_auth_recovery": None,
+    "auth_recovery_next_at": 0.0,
+    "storage_path": NOTEBOOKLM_STORAGE_PATH,
 }
+
 
 
 
@@ -580,6 +597,52 @@ async def wait_for_rpcs_to_drain(timeout_seconds: int | None = None):
     return True
 
 
+def prepare_auth_storage():
+    """Nạp NOTEBOOKLM_AUTH_JSON vào storage file để notebooklm-py có thể
+    persist cookie mới sau refresh trong suốt vòng đời process."""
+    path = Path(NOTEBOOKLM_STORAGE_PATH).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if AUTH_JSON:
+        try:
+            payload = json.loads(AUTH_JSON)
+        except Exception as exc:
+            raise RuntimeError(
+                f"NOTEBOOKLM_AUTH_JSON không phải JSON hợp lệ: {exc}"
+            ) from exc
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("cookies"), list):
+            raise RuntimeError(
+                "NOTEBOOKLM_AUTH_JSON không đúng storage_state.json: thiếu trường cookies."
+            )
+
+        normalized = json.dumps(payload, ensure_ascii=False)
+        current = None
+        if path.exists():
+            try:
+                current = path.read_text(encoding="utf-8")
+            except Exception:
+                current = None
+
+        if current != normalized:
+            path.write_text(normalized, encoding="utf-8")
+
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+        log.info(
+            "NotebookLM AUTH: đã nạp NOTEBOOKLM_AUTH_JSON vào runtime storage."
+        )
+    elif not path.exists():
+        raise RuntimeError(
+            "Chưa có NOTEBOOKLM_AUTH_JSON và cũng không có runtime storage."
+        )
+
+    return str(path)
+
+
 async def create_client():
     global client
 
@@ -589,15 +652,15 @@ async def create_client():
         )
 
     if not NOTEBOOK_ID:
-        raise RuntimeError("Chưa cấu hình NOTEBOOKLM_NOTEBOOK (hoặc NOTEBOOKLM_NOTEBOOK_ID).")
+        raise RuntimeError(
+            "Chưa cấu hình NOTEBOOKLM_NOTEBOOK (hoặc NOTEBOOKLM_NOTEBOOK_ID)."
+        )
 
-    if not AUTH_JSON:
-        raise RuntimeError("Chưa cấu hình NOTEBOOKLM_AUTH_JSON.")
+    storage_path = prepare_auth_storage()
 
-    # NOTEBOOKLM_AUTH_JSON được thư viện tự đọc từ Environment.
-    # keepalive giúp client sống ổn định hơn trong thời gian process còn chạy.
-    # Không ghi credential ra log.
+    # Explicit path có ưu tiên cao hơn NOTEBOOKLM_AUTH_JSON.
     cm = NotebookLMClient.from_storage(
+        storage_path,
         keepalive=KEEPALIVE_SECONDS,
         timeout=min(60.0, float(REQUEST_TIMEOUT)),
         max_concurrent_rpcs=max(1, MAX_CONCURRENT),
@@ -605,8 +668,7 @@ async def create_client():
     new_client = await cm.__aenter__()
 
     client = (new_client, cm)
-
-    log.info("NotebookLM: client đã khởi tạo.")
+    log.info("NotebookLM: client đã khởi tạo từ runtime storage.")
     return new_client
 
 
@@ -662,85 +724,113 @@ async def _try_refresh_existing_client(allow_headless=False):
 
 
 async def reconnect(reason="unknown", allow_headless=False):
-    global client
+    """Recovery V13 có giới hạn.
+
+    AUTH: refresh một chu kỳ -> reconnect một lần -> AUTH_REQUIRED.
+    RATE_LIMIT: không reconnect.
+    """
+    global client, last_auth_refresh
 
     async with client_lock:
+        if state.get("recovery_in_progress"):
+            return False
+
         state["recovery_in_progress"] = True
         state["auth_recovery_exhausted"] = False
-        recovery_deadline = time.time() + RECOVERY_TOTAL_TIMEOUT
-        last_error = None
 
         try:
-            log.warning("RECOVERY: reconnect NotebookLM | reason=%s", reason)
+            log.warning("RECOVERY V13: %s", reason)
 
-            # TẦNG 1: refresh client hiện tại trước khi đóng.
-            if await _try_refresh_existing_client(allow_headless):
-                set_recovery_state(1, reason)
-                return True
+            if rate_limit_remaining() > 0:
+                set_recovery_state(1, "rate_limit_cooldown")
+                return False
 
-            # TẦNG 2: nhiều lần tạo client mới + verify, có backoff.
-            for attempt in range(1, RECOVERY_MAX_ATTEMPTS + 1):
-                if time.time() >= recovery_deadline:
-                    break
+            if time.time() < float(state.get("auth_recovery_next_at", 0.0)):
+                log.warning(
+                    "RECOVERY V13: auth cooldown còn %ss.",
+                    int(state["auth_recovery_next_at"] - time.time()),
+                )
+                return False
 
-                await close_client()
-                set_recovery_state(3, f"reconnect_attempt_{attempt}")
+            # Tầng 1: refresh client hiện tại.
+            if client is not None:
+                drained = await wait_for_rpcs_to_drain(CLIENT_DRAIN_TIMEOUT)
+                if drained:
+                    try:
+                        last_auth_refresh = time.time()
+                        state["auth_recovery_attempts"] += 1
+                        state["last_auth_recovery"] = now_text()
 
-                try:
-                    nb_client = await create_client()
-                    await _verify_notebook(nb_client)
-                    mark_success()
-                    state["recovery_count"] += 1
-                    state["last_recovery"] = now_text()
-                    log.info("RECOVERY: reconnect attempt %s thành công.", attempt)
-                    return True
-                except Exception as exc:
-                    last_error = exc
-                    log.error("RECOVERY: reconnect attempt %s/%s thất bại: %s", attempt, RECOVERY_MAX_ATTEMPTS, exc)
-                    if is_rate_limit_error(exc):
-                        # 429 không phải lỗi session. Tuyệt đối không tiếp tục
-                        # reconnect nhiều lần vì sẽ làm rate-limit nặng hơn.
-                        mark_rate_limited(exc)
                         log.warning(
-                            "RECOVERY: phát hiện RATE_LIMIT trong reconnect; dừng reconnect và chuyển sang cooldown."
+                            "RECOVERY V13: refresh_auth lần %s.",
+                            state["auth_recovery_attempts"],
                         )
-                        return False
-                    mark_failure(exc)
+                        await client[0].refresh_auth(
+                            allow_headless=(
+                                AUTH_HEADLESS_ONCE
+                                or allow_headless
+                                or HEADLESS_REAUTH
+                            )
+                        )
+                        await _verify_notebook(client[0])
 
-                    # TẦNG 3: refresh_auth trên client mới nếu có.
-                    if client is not None:
-                        try:
-                            set_recovery_state(2, "refresh_auth_after_reconnect_failure")
-                            await client[0].refresh_auth(allow_headless=allow_headless or HEADLESS_REAUTH)
-                            await _verify_notebook(client[0])
-                            mark_success()
-                            state["recovery_count"] += 1
-                            state["last_recovery"] = now_text()
-                            log.info("RECOVERY: refresh_auth sau reconnect thành công.")
-                            return True
-                        except Exception as refresh_exc:
-                            last_error = refresh_exc
-                            log.error("RECOVERY: refresh_auth sau reconnect thất bại: %s", refresh_exc)
-                            mark_failure(refresh_exc)
+                        mark_success()
+                        state["recovery_count"] += 1
+                        state["last_recovery"] = now_text()
+                        state["last_incident_action"] = "AUTH_REFRESH_OK"
+                        return True
+                    except Exception as exc:
+                        log.error("RECOVERY V13: refresh_auth thất bại: %s", exc)
+                        if is_rate_limit_error(exc):
+                            mark_rate_limited(exc)
+                            return False
+                else:
+                    log.warning("RECOVERY V13: còn RPC đang chạy, bỏ qua refresh.")
 
-                    if time.time() < recovery_deadline and attempt < RECOVERY_MAX_ATTEMPTS:
-                        delay = min(20, RECOVERY_BACKOFF_BASE * (2 ** (attempt - 1))) + random.uniform(0, 0.8)
-                        await asyncio.sleep(delay)
+            # Tầng 2: tạo lại client đúng một lần.
+            try:
+                await close_client()
+                set_recovery_state(3, "reconnect_once")
+                await create_client()
+                await _verify_notebook(client[0])
 
-            # V10: chỉ kết luận AUTH_REQUIRED sau khi đã dùng hết recovery path.
-            if last_error is not None:
-                kind = classify_error(last_error)
-                if kind == "AUTH":
+                mark_success()
+                state["recovery_count"] += 1
+                state["last_recovery"] = now_text()
+                state["last_incident_action"] = "RECONNECT_OK"
+                return True
+            except Exception as exc:
+                log.error("RECOVERY V13: reconnect thất bại: %s", exc)
+
+                if is_rate_limit_error(exc):
+                    mark_rate_limited(exc)
+                    return False
+
+                if is_auth_error(exc):
                     state["auth_recovery_exhausted"] = True
                     state["auth_expired_suspected"] = True
-                    set_recovery_state(5, "auth_recovery_exhausted")
-                else:
-                    set_recovery_state(3, "recovery_exhausted")
+                    state["status"] = "auth_required"
+                    state["connected"] = False
+                    state["last_error_kind"] = "AUTH"
+                    state["last_incident_id"] = uuid.uuid4().hex[:10]
+                    state["last_incident_message"] = (
+                        "Phiên Google/NotebookLM đã hết hạn. "
+                        "Server không thể tự tạo đăng nhập Google mới nếu không có "
+                        "profile/master-token hoặc cơ chế refresh bên ngoài."
+                    )
+                    state["last_incident_action"] = "AUTH_REQUIRED"
+                    set_recovery_state(5, "auth_session_expired")
+                    state["auth_recovery_next_at"] = (
+                        time.time() + AUTH_RECOVERY_COOLDOWN
+                    )
+                    return False
 
-            return False
+                mark_failure(exc)
+                set_recovery_state(3, "reconnect_failed")
+                return False
+
         finally:
             state["recovery_in_progress"] = False
-
 
 
 async def ask_notebooklm(question: str, request_id: str):
@@ -1094,7 +1184,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM + nhiều tầng tự phục hồi + fallback",
-    version="12.0",
+    version="13.0",
     lifespan=lifespan,
 )
 
@@ -1125,14 +1215,14 @@ async def home():
 @app.get("/live")
 async def live():
     # Liveness: process còn sống, không phụ thuộc NotebookLM.
-    return {"status": "ok", "service": "THỦY LỢI AI", "version": "12.0"}
+    return {"status": "ok", "service": "THỦY LỢI AI", "version": "13.0"}
 
 
 @app.get("/ready")
 async def ready():
     # Readiness: không báo READY khi NotebookLM đang rate-limit.
     if state.get("connected") and rate_limit_remaining() == 0:
-        return {"status": "ready", "engine": "NotebookLM", "version": "12.0"}
+        return {"status": "ready", "engine": "NotebookLM", "version": "13.0"}
     return JSONResponse(status_code=429 if rate_limit_remaining() > 0 else 503, content={
         "status": "not_ready",
         "engine": "NotebookLM",
@@ -1188,6 +1278,9 @@ async def health():
         "rate_limit_count": state["rate_limit_count"],
         "chat_min_interval": CHAT_MIN_INTERVAL,
         "keepalive_seconds": KEEPALIVE_SECONDS,
+        "storage_path_configured": bool(NOTEBOOKLM_STORAGE_PATH),
+        "auth_recovery_attempts": state.get("auth_recovery_attempts", 0),
+        "auth_recovery_next_at": state.get("auth_recovery_next_at", 0),
     }
 
 
@@ -1205,7 +1298,7 @@ async def get_metrics():
 async def diagnostics():
     return {
         "service": "THỦY LỢI AI",
-        "version": "12.0",
+        "version": "13.0",
         "engine": "NotebookLM",
         "notebooklm_package_loaded": NotebookLMClient is not None,
         "notebooklm_import_error": NOTEBOOKLM_IMPORT_ERROR,
@@ -1233,6 +1326,9 @@ async def diagnostics():
             "auth_refresh_before_reconnect": AUTH_REFRESH_BEFORE_RECONNECT,
             "auth_refresh_cooldown": AUTH_REFRESH_COOLDOWN,
             "keepalive_seconds": KEEPALIVE_SECONDS,
+        "storage_path_configured": bool(NOTEBOOKLM_STORAGE_PATH),
+        "auth_recovery_attempts": state.get("auth_recovery_attempts", 0),
+        "auth_recovery_next_at": state.get("auth_recovery_next_at", 0),
             "recovery_max_attempts": RECOVERY_MAX_ATTEMPTS,
             "recovery_backoff_base": RECOVERY_BACKOFF_BASE,
             "recovery_total_timeout": RECOVERY_TOTAL_TIMEOUT,
@@ -1251,6 +1347,10 @@ async def diagnostics():
             "rate_limit_burst": RATE_LIMIT_BURST,
             "fallback_enabled": ENABLE_FALLBACK,
             "fallback_timeout": FALLBACK_TIMEOUT,
+            "notebooklm_storage_path": NOTEBOOKLM_STORAGE_PATH,
+            "auth_recovery_max_attempts": AUTH_RECOVERY_MAX_ATTEMPTS,
+            "auth_recovery_cooldown": AUTH_RECOVERY_COOLDOWN,
+            "auth_headless_once": AUTH_HEADLESS_ONCE,
         },
     }
 
@@ -1260,7 +1360,7 @@ async def api_info():
     return {
         "name": "THỦY LỢI AI",
         "engine": "NotebookLM",
-        "version": "12.0",
+        "version": "13.0",
         "notebook_configured": bool(NOTEBOOK_ID),
         "endpoints": {
             "home": "/",
@@ -1395,12 +1495,16 @@ async def ask(data: Question, request: Request):
         except Exception as exc:
             log.error("[%s] ASK thất bại: %s", request_id, exc)
 
-        # --- Tầng cuối 1: thử nguồn dự phòng (Claude / Gemini) ---
-        fallback_result = await ask_fallback_chain(question, request_id)
-        if fallback_result:
-            fallback_result["request_id"] = request_id
-            metrics["requests_ok"] += 1
-            return fallback_result
+        # --- Tầng cuối 1: fallback chỉ dành cho lỗi tạm thời.
+        # Không dùng fallback cho AUTH/RATE_LIMIT để tránh câu trả lời
+        # không được đối chiếu với kho NotebookLM.
+        error_kind = state.get("last_error_kind")
+        if error_kind not in ("AUTH", "RATE_LIMIT") and ENABLE_FALLBACK:
+            fallback_result = await ask_fallback_chain(question, request_id)
+            if fallback_result:
+                fallback_result["request_id"] = request_id
+                metrics["requests_ok"] += 1
+                return fallback_result
 
         # --- Tầng cuối 2: trả lại kết quả cũ trong cache nếu có ---
         cached = cache_get(question)
@@ -1413,14 +1517,31 @@ async def ask(data: Question, request: Request):
             return result
 
         metrics["requests_error"] += 1
+        level = recovery_level()
+        if level == 5 or state.get("last_error_kind") == "AUTH":
+            answer = (
+                "THỦY LỢI AI chưa thể kết nối NotebookLM vì phiên xác thực Google "
+                "đã hết hạn. Hệ thống đã dừng reconnect lặp để tránh làm lỗi nặng hơn. "
+                "Vui lòng thực hiện bước AUTH_REQUIRED trên điện thoại."
+            )
+        elif state.get("last_error_kind") == "RATE_LIMIT":
+            answer = (
+                "NotebookLM đang giới hạn tốc độ. Hệ thống đã tự áp dụng cooldown "
+                "và sẽ không reconnect liên tục."
+            )
+        else:
+            answer = (
+                "THỦY LỢI AI chưa lấy được câu trả lời từ NotebookLM. "
+                "Hệ thống đã thử các tầng tự phục hồi an toàn."
+            )
+
         return {
             "status": "error",
-            "answer": (
-                "THỦY LỢI AI chưa lấy được câu trả lời từ NotebookLM. "
-                "Hệ thống đã tự động thử lại và đang tiếp tục khắc phục kết nối."
-            ),
+            "answer": answer,
             "engine": "NotebookLM",
             "recovery": True,
+            "recovery_level": level,
+            "incident_id": state.get("last_incident_id"),
             "request_id": request_id,
         }
 
@@ -1489,7 +1610,7 @@ async def recovery_status():
     }
     return {
         "service": "THỦY LỢI AI",
-        "version": "12.0",
+        "version": "13.0",
         "notebooklm_connected": bool(state["connected"]),
         "status": state["status"],
         "recovery_level": level,
