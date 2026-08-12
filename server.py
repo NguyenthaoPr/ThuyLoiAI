@@ -1,150 +1,169 @@
 import os
 import asyncio
-import logging
-from pathlib import Path
-from typing import Any, Optional
+import time
+from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-try:
-    from google import genai
-    from google.genai import types
-except Exception:
-    genai = None
-    types = None
+from notebooklm import NotebookLMClient
 
 
 # ============================================================
-# THỦY LỢI AI
-# Gemini API + Gemini File Search
+# THỦY LỢI AI - NOTEBOOKLM BACKEND
 # ============================================================
 
-BASE_DIR = Path(__file__).resolve().parent
-INDEX_FILE = BASE_DIR / "index.html"
+APP_NAME = "THỦY LỢI AI"
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+INDEX_FILE = os.path.join(BASE_DIR, "index.html")
 
-GEMINI_FILE_SEARCH_STORE = os.getenv(
-    "GEMINI_FILE_SEARCH_STORE", ""
-).strip()
+NOTEBOOK_ID = os.getenv("NOTEBOOKLM_NOTEBOOK", "").strip()
+AUTH_JSON = os.getenv("NOTEBOOKLM_AUTH_JSON", "").strip()
 
-GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.6-flash"
-).strip()
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "180"))
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 
-MAX_CONCURRENT = max(
-    1,
-    int(os.getenv("MAX_CONCURRENT", "3"))
-)
+request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
-REQUEST_TIMEOUT = max(
-    10,
-    int(os.getenv("REQUEST_TIMEOUT", "60"))
-)
-
-MAX_RETRIES = max(
-    1,
-    int(os.getenv("MAX_RETRIES", "3"))
-)
-
-RETRY_BASE_DELAY = max(
-    0.5,
-    float(os.getenv("RETRY_BASE_DELAY", "1.5"))
-)
+notebook_client: Optional[NotebookLMClient] = None
+notebook_connected = False
 
 
 # ============================================================
 # LOG
 # ============================================================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
-
-logger = logging.getLogger("thuyloiai")
+def log(message: str):
+    print(f"[THỦY LỢI AI] {message}", flush=True)
 
 
 # ============================================================
-# FASTAPI
+# KẾT NỐI NOTEBOOKLM
+# ============================================================
+
+async def connect_notebooklm():
+    global notebook_client
+    global notebook_connected
+
+    try:
+        log("=" * 60)
+        log("KHỞI ĐỘNG THỦY LỢI AI")
+        log("=" * 60)
+
+        if not NOTEBOOK_ID:
+            log("❌ Chưa có NOTEBOOKLM_NOTEBOOK")
+            notebook_connected = False
+            return False
+
+        if not AUTH_JSON:
+            log("❌ Chưa có NOTEBOOKLM_AUTH_JSON")
+            notebook_connected = False
+            return False
+
+        log(f"NOTEBOOK: {NOTEBOOK_ID}")
+
+        # notebooklm-py tự đọc NOTEBOOKLM_AUTH_JSON
+        notebook_client = NotebookLMClient.from_storage(
+            timeout=REQUEST_TIMEOUT,
+            chat_timeout=REQUEST_TIMEOUT,
+            rate_limit_max_retries=2,
+            server_error_max_retries=2,
+            max_concurrent_rpcs=MAX_CONCURRENT,
+        )
+
+        notebook_client = await notebook_client.__aenter__()
+
+        # Kiểm tra Notebook có tồn tại
+        notebooks = await notebook_client.notebooks.list()
+
+        found = False
+
+        for notebook in notebooks:
+            if str(notebook.id) == NOTEBOOK_ID:
+                found = True
+                log(f"✅ Đã tìm thấy Notebook: {notebook.title}")
+                break
+
+        if not found:
+            log("❌ Không tìm thấy NotebookLM_NOTEBOOK")
+            notebook_connected = False
+            return False
+
+        notebook_connected = True
+
+        log("✅ NOTEBOOKLM ĐÃ KẾT NỐI")
+        log(f"MAX CONCURRENT: {MAX_CONCURRENT}")
+        log(f"REQUEST TIMEOUT: {REQUEST_TIMEOUT}")
+        log("=" * 60)
+
+        return True
+
+    except Exception as e:
+        notebook_connected = False
+        log(f"❌ LỖI KẾT NỐI NOTEBOOKLM: {e}")
+        return False
+
+
+# ============================================================
+# ĐÓNG KẾT NỐI
+# ============================================================
+
+async def disconnect_notebooklm():
+    global notebook_client
+    global notebook_connected
+
+    try:
+        if notebook_client is not None:
+            await notebook_client.__aexit__(None, None, None)
+
+    except Exception as e:
+        log(f"Lỗi đóng NotebookLM: {e}")
+
+    notebook_client = None
+    notebook_connected = False
+
+
+# ============================================================
+# FASTAPI LIFESPAN
+# ============================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    await connect_notebooklm()
+
+    yield
+
+    await disconnect_notebooklm()
+
+
+# ============================================================
+# APP
 # ============================================================
 
 app = FastAPI(
-    title="THỦY LỢI AI",
-    version="2.0.0",
+    title=APP_NAME,
+    description="Trợ lý AI chuyên ngành Thủy lợi sử dụng NotebookLM",
+    version="2.0",
+    lifespan=lifespan,
 )
+
+
+# ============================================================
+# CORS
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-
-# ============================================================
-# GEMINI CLIENT
-# ============================================================
-
-request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-
-gemini_client = None
-
-if genai is not None and GEMINI_API_KEY:
-
-    try:
-
-        gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
-
-        logger.info(
-            "GEMINI API: ĐÃ KẾT NỐI"
-        )
-
-    except Exception:
-
-        logger.exception(
-            "GEMINI API: KẾT NỐI THẤT BẠI"
-        )
-
-        gemini_client = None
-
-else:
-
-    logger.warning(
-        "GEMINI API: CHƯA CẤU HÌNH GEMINI_API_KEY"
-    )
-
-
-logger.info(
-    "FILE SEARCH STORE: %s",
-    GEMINI_FILE_SEARCH_STORE or "(chưa cấu hình)"
-)
-
-logger.info(
-    "MODEL: %s",
-    GEMINI_MODEL
-)
-
-logger.info(
-    "MAX CONCURRENT: %s",
-    MAX_CONCURRENT
-)
-
-logger.info(
-    "REQUEST TIMEOUT: %ss",
-    REQUEST_TIMEOUT
-)
-
-logger.info(
-    "MAX RETRIES: %s",
-    MAX_RETRIES
 )
 
 
@@ -153,876 +172,293 @@ logger.info(
 # ============================================================
 
 class Question(BaseModel):
-
     question: str
 
 
 # ============================================================
-# UTILS
-# ============================================================
-
-def clean_text(value: Any) -> str:
-
-    if value is None:
-        return ""
-
-    return str(value).strip()
-
-
-# ============================================================
-# FILE CITATION
-# ============================================================
-
-def annotation_to_source(
-    annotation: Any
-) -> Optional[dict]:
-
-    if annotation is None:
-        return None
-
-    annotation_type = clean_text(
-        getattr(annotation, "type", "")
-    )
-
-    if (
-        annotation_type
-        and annotation_type != "file_citation"
-    ):
-        return None
-
-    item = {}
-
-    file_name = getattr(
-        annotation,
-        "file_name",
-        None
-    )
-
-    source = getattr(
-        annotation,
-        "source",
-        None
-    )
-
-    if file_name:
-
-        item["file_name"] = clean_text(
-            file_name
-        )
-
-    if source:
-
-        item["source"] = clean_text(
-            source
-        )
-
-    custom_metadata = getattr(
-        annotation,
-        "custom_metadata",
-        None
-    )
-
-    if custom_metadata:
-
-        metadata = {}
-
-        for md in custom_metadata:
-
-            key = getattr(
-                md,
-                "key",
-                None
-            )
-
-            if not key:
-                continue
-
-            if getattr(
-                md,
-                "string_value",
-                None
-            ) is not None:
-
-                metadata[
-                    clean_text(key)
-                ] = clean_text(
-                    md.string_value
-                )
-
-            elif getattr(
-                md,
-                "numeric_value",
-                None
-            ) is not None:
-
-                metadata[
-                    clean_text(key)
-                ] = md.numeric_value
-
-            elif getattr(
-                md,
-                "bool_value",
-                None
-            ) is not None:
-
-                metadata[
-                    clean_text(key)
-                ] = md.bool_value
-
-        if metadata:
-
-            item["metadata"] = metadata
-
-    return item or None
-
-
-# ============================================================
-# PARSE INTERACTIONS API
-# ============================================================
-
-def extract_interaction_output(
-    interaction: Any
-):
-
-    answer_parts = []
-
-    sources = []
-
-    output_text = getattr(
-        interaction,
-        "output_text",
-        None
-    )
-
-    if output_text:
-
-        answer_parts.append(
-            clean_text(output_text)
-        )
-
-    for step in (
-        getattr(interaction, "steps", None)
-        or []
-    ):
-
-        step_type = clean_text(
-            getattr(step, "type", "")
-        )
-
-        if step_type != "model_output":
-            continue
-
-        for content_block in (
-            getattr(step, "content", None)
-            or []
-        ):
-
-            block_type = clean_text(
-                getattr(
-                    content_block,
-                    "type",
-                    ""
-                )
-            )
-
-            if block_type != "text":
-                continue
-
-            text = getattr(
-                content_block,
-                "text",
-                None
-            )
-
-            if text:
-
-                text = clean_text(text)
-
-                if (
-                    text
-                    and text not in answer_parts
-                ):
-
-                    answer_parts.append(text)
-
-            for annotation in (
-                getattr(
-                    content_block,
-                    "annotations",
-                    None
-                )
-                or []
-            ):
-
-                source = annotation_to_source(
-                    annotation
-                )
-
-                if (
-                    source
-                    and source not in sources
-                ):
-
-                    sources.append(source)
-
-    answer = "\n\n".join(
-        p for p in answer_parts
-        if p
-    ).strip()
-
-    if not answer:
-
-        raise RuntimeError(
-            "Gemini không trả về nội dung."
-        )
-
-    return answer, sources
-
-
-# ============================================================
-# FALLBACK: GENERATE CONTENT
-# ============================================================
-
-def extract_generate_content_output(
-    response: Any
-):
-
-    answer = clean_text(
-        getattr(
-            response,
-            "text",
-            None
-        )
-    )
-
-    sources = []
-
-    for candidate in (
-        getattr(
-            response,
-            "candidates",
-            None
-        )
-        or []
-    ):
-
-        metadata = getattr(
-            candidate,
-            "grounding_metadata",
-            None
-        )
-
-        if metadata is None:
-
-            metadata = getattr(
-                candidate,
-                "groundingMetadata",
-                None
-            )
-
-        if metadata is None:
-            continue
-
-        chunks = getattr(
-            metadata,
-            "grounding_chunks",
-            None
-        )
-
-        if chunks is None:
-
-            chunks = getattr(
-                metadata,
-                "groundingChunks",
-                None
-            )
-
-        for chunk in chunks or []:
-
-            retrieved = getattr(
-                chunk,
-                "retrieved_context",
-                None
-            )
-
-            if retrieved is None:
-
-                retrieved = getattr(
-                    chunk,
-                    "retrievedContext",
-                    None
-                )
-
-            if retrieved is None:
-                continue
-
-            item = {}
-
-            title = getattr(
-                retrieved,
-                "title",
-                None
-            )
-
-            uri = getattr(
-                retrieved,
-                "uri",
-                None
-            )
-
-            if title:
-
-                item["file_name"] = clean_text(
-                    title
-                )
-
-            if uri:
-
-                item["source"] = clean_text(
-                    uri
-                )
-
-            if (
-                item
-                and item not in sources
-            ):
-
-                sources.append(item)
-
-    if not answer:
-
-        raise RuntimeError(
-            "Gemini không trả về nội dung."
-        )
-
-    return answer, sources
-
-
-# ============================================================
-# GEMINI - INTERACTIONS API
-# ============================================================
-
-def call_interactions(
-    question: str
-):
-
-    if gemini_client is None:
-
-        raise RuntimeError(
-            "Gemini client chưa được khởi tạo."
-        )
-
-    interaction = (
-        gemini_client.interactions.create(
-
-            model=GEMINI_MODEL,
-
-            input=question,
-
-            system_instruction=(
-                "Bạn là THỦY LỢI AI, trợ lý "
-                "chuyên môn về thủy lợi của "
-                "Chi nhánh Thủy lợi Vu Gia - Thu Bồn.\n\n"
-
-                "Ưu tiên tuyệt đối thông tin "
-                "tìm được trong kho hồ sơ được "
-                "cung cấp.\n\n"
-
-                "Trả lời bằng tiếng Việt, "
-                "rõ ràng, chính xác, có cấu trúc.\n\n"
-
-                "Nếu câu hỏi có thông tin cụ thể "
-                "trong hồ sơ, hãy nêu đúng số liệu, "
-                "tên văn bản, thời gian hoặc địa điểm "
-                "nếu có.\n\n"
-
-                "Không tự bịa thông tin.\n\n"
-
-                "Nếu kho hồ sơ không có đủ căn cứ, "
-                "hãy nói rõ là chưa tìm thấy căn cứ "
-                "trong kho dữ liệu."
-            ),
-
-            tools=[
-                {
-                    "type": "file_search",
-
-                    "file_search_store_names": [
-                        GEMINI_FILE_SEARCH_STORE
-                    ],
-                }
-            ],
-        )
-    )
-
-    return extract_interaction_output(
-        interaction
-    )
-
-
-# ============================================================
-# FALLBACK - GENERATE CONTENT
-# ============================================================
-
-def call_generate_content(
-    question: str
-):
-
-    if gemini_client is None:
-
-        raise RuntimeError(
-            "Gemini client chưa được khởi tạo."
-        )
-
-    if types is None:
-
-        raise RuntimeError(
-            "google.genai.types chưa khả dụng."
-        )
-
-    response = (
-        gemini_client.models.generate_content(
-
-            model=GEMINI_MODEL,
-
-            contents=question,
-
-            config=types.GenerateContentConfig(
-
-                system_instruction=(
-                    "Bạn là THỦY LỢI AI, trợ lý "
-                    "chuyên môn về thủy lợi của "
-                    "Chi nhánh Thủy lợi Vu Gia - Thu Bồn. "
-                    "Ưu tiên thông tin trong kho hồ sơ. "
-                    "Trả lời bằng tiếng Việt, chính xác, "
-                    "không tự bịa. "
-                    "Nếu không có căn cứ trong kho, "
-                    "nói rõ điều đó."
-                ),
-
-                tools=[
-                    types.Tool(
-                        file_search=types.FileSearch(
-                            file_search_store_names=[
-                                GEMINI_FILE_SEARCH_STORE
-                            ]
-                        )
-                    )
-                ],
-            ),
-        )
-    )
-
-    return extract_generate_content_output(
-        response
-    )
-
-
-# ============================================================
-# GEMINI MASTER
-# ============================================================
-
-def call_gemini(
-    question: str
-):
-
-    if not GEMINI_API_KEY:
-
-        raise RuntimeError(
-            "THỦY LỢI AI chưa được cấu hình GEMINI_API_KEY."
-        )
-
-    if gemini_client is None:
-
-        raise RuntimeError(
-            "THỦY LỢI AI chưa kết nối được Gemini API."
-        )
-
-    if not GEMINI_FILE_SEARCH_STORE:
-
-        raise RuntimeError(
-            "THỦY LỢI AI chưa có GEMINI_FILE_SEARCH_STORE."
-        )
-
-    # --------------------------------------------------------
-    # ƯU TIÊN INTERACTIONS API
-    # --------------------------------------------------------
-
-    try:
-
-        logger.info(
-            "GEMINI: DÙNG INTERACTIONS API"
-        )
-
-        return call_interactions(
-            question
-        )
-
-    except Exception as interaction_error:
-
-        logger.warning(
-            "Interactions API lỗi."
-        )
-
-        logger.warning(
-            "Chi tiết: %s",
-            repr(interaction_error)
-        )
-
-    # --------------------------------------------------------
-    # FALLBACK
-    # --------------------------------------------------------
-
-    logger.info(
-        "GEMINI: CHUYỂN SANG GENERATE CONTENT"
-    )
-
-    return call_generate_content(
-        question
-    )
-
-
-# ============================================================
-# RETRY
-# ============================================================
-
-async def ask_gemini_with_retry(
-    question: str
-):
-
-    last_error = None
-
-    for attempt in range(
-        1,
-        MAX_RETRIES + 1
-    ):
-
-        try:
-
-            async with request_semaphore:
-
-                logger.info(
-                    "GỬI CÂU HỎI GEMINI "
-                    "| attempt=%s/%s "
-                    "| %s",
-                    attempt,
-                    MAX_RETRIES,
-                    question
-                )
-
-                result = await asyncio.wait_for(
-
-                    asyncio.to_thread(
-                        call_gemini,
-                        question
-                    ),
-
-                    timeout=REQUEST_TIMEOUT
-                )
-
-                logger.info(
-                    "ĐÃ NHẬN CÂU TRẢ LỜI GEMINI"
-                )
-
-                return result
-
-        except Exception as exc:
-
-            last_error = exc
-
-            logger.exception(
-                "GEMINI LỖI "
-                "| attempt=%s/%s",
-                attempt,
-                MAX_RETRIES
-            )
-
-            if attempt < MAX_RETRIES:
-
-                delay = (
-                    RETRY_BASE_DELAY
-                    * (2 ** (attempt - 1))
-                )
-
-                logger.info(
-                    "CHỜ %.1f GIÂY RỒI THỬ LẠI",
-                    delay
-                )
-
-                await asyncio.sleep(
-                    delay
-                )
-
-    raise (
-        last_error
-        or RuntimeError(
-            "Gemini không thể xử lý câu hỏi."
-        )
-    )
-
-
-# ============================================================
-# HOME
+# TRANG CHỦ
 # ============================================================
 
 @app.get("/")
 async def home():
 
-    if INDEX_FILE.exists():
-
+    if os.path.exists(INDEX_FILE):
         return FileResponse(
-            str(INDEX_FILE),
+            INDEX_FILE,
             media_type="text/html"
         )
 
     return {
         "status": "ok",
-
-        "service": "THỦY LỢI AI",
-
-        "message": (
-            "Backend Gemini đang hoạt động "
-            "nhưng chưa tìm thấy index.html."
-        ),
-
+        "service": APP_NAME,
+        "message": "THỦY LỢI AI đang hoạt động",
         "health": "/health",
-
         "ask": "/ask"
     }
 
 
 # ============================================================
-# HEAD
-# ============================================================
-
-@app.head("/")
-async def home_head():
-
-    return {}
-
-
-# ============================================================
-# HEALTH
+# HEALTH CHECK
 # ============================================================
 
 @app.get("/health")
 async def health():
 
     return {
-
         "status": "ok",
-
-        "service": "THỦY LỢI AI",
-
-        "engine": "Gemini File Search",
-
-        "gemini_configured": bool(
-            GEMINI_API_KEY
-        ),
-
-        "gemini_connected": (
-            gemini_client is not None
-        ),
-
-        "file_search_configured": bool(
-            GEMINI_FILE_SEARCH_STORE
-        ),
-
-        "model": GEMINI_MODEL,
-
+        "service": APP_NAME,
+        "engine": "NotebookLM",
+        "notebook_configured": bool(NOTEBOOK_ID),
+        "auth_configured": bool(AUTH_JSON),
+        "notebook_connected": notebook_connected,
+        "notebook_id": NOTEBOOK_ID if NOTEBOOK_ID else None,
         "max_concurrent": MAX_CONCURRENT,
-
         "request_timeout": REQUEST_TIMEOUT,
-
-        "max_retries": MAX_RETRIES
+        "max_retries": MAX_RETRIES,
     }
 
 
 # ============================================================
-# ASK
+# KẾT NỐI LẠI NOTEBOOKLM
+# ============================================================
+
+@app.get("/reconnect")
+async def reconnect():
+
+    global notebook_client
+
+    try:
+
+        await disconnect_notebooklm()
+
+        success = await connect_notebooklm()
+
+        if success:
+            return {
+                "status": "ok",
+                "message": "Đã kết nối lại NotebookLM"
+            }
+
+        return {
+            "status": "error",
+            "message": "Không thể kết nối lại NotebookLM"
+        }
+
+    except Exception as e:
+
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+# ============================================================
+# HỎI NOTEBOOKLM
+# ============================================================
+
+async def ask_notebooklm(question: str):
+
+    if not notebook_connected or notebook_client is None:
+
+        raise RuntimeError(
+            "THỦY LỢI AI chưa kết nối NotebookLM."
+        )
+
+    last_error = None
+
+    for attempt in range(MAX_RETRIES):
+
+        try:
+
+            log(f"CÂU HỎI: {question}")
+            log(f"THỬ LẦN {attempt + 1}/{MAX_RETRIES}")
+
+            async with request_semaphore:
+
+                result = await asyncio.wait_for(
+                    notebook_client.chat.ask(
+                        NOTEBOOK_ID,
+                        question
+                    ),
+                    timeout=REQUEST_TIMEOUT
+                )
+
+            # AskResult thường có .answer
+            answer = getattr(result, "answer", None)
+
+            if answer is None:
+                answer = getattr(result, "text", None)
+
+            if answer is None:
+                answer = str(result)
+
+            answer = str(answer).strip()
+
+            if not answer:
+                raise RuntimeError(
+                    "NotebookLM không trả về nội dung."
+                )
+
+            log("✅ ĐÃ NHẬN CÂU TRẢ LỜI")
+
+            return answer
+
+        except Exception as e:
+
+            last_error = e
+
+            log(
+                f"⚠️ LỖI NOTEBOOKLM "
+                f"(lần {attempt + 1}): {e}"
+            )
+
+            if attempt < MAX_RETRIES - 1:
+
+                wait_time = 2 ** attempt
+
+                log(
+                    f"Chờ {wait_time} giây rồi thử lại..."
+                )
+
+                await asyncio.sleep(wait_time)
+
+    raise RuntimeError(
+        f"NotebookLM không trả lời sau "
+        f"{MAX_RETRIES} lần: {last_error}"
+    )
+
+
+# ============================================================
+# API HỎI ĐÁP
 # ============================================================
 
 @app.post("/ask")
 async def ask(data: Question):
 
-    question = clean_text(
-        data.question
-    )
+    question = data.question.strip()
 
-    logger.info(
-        "=" * 60
-    )
-
-    logger.info(
-        "CÂU HỎI: %s",
-        question
-    )
-
-    logger.info(
-        "=" * 60
-    )
-
-    # --------------------------------------------------------
-    # KIỂM TRA CÂU HỎI
-    # --------------------------------------------------------
+    log("=" * 60)
+    log(f"NHẬN CÂU HỎI: {question}")
+    log("=" * 60)
 
     if not question:
 
         return {
-
             "status": "error",
-
-            "answer":
-                "Vui lòng nhập câu hỏi."
+            "answer": "Vui lòng nhập câu hỏi."
         }
 
-    # --------------------------------------------------------
-    # KIỂM TRA API KEY
-    # --------------------------------------------------------
-
-    if not GEMINI_API_KEY:
+    if not notebook_connected:
 
         return {
-
             "status": "error",
-
-            "answer":
-                "THỦY LỢI AI chưa được cấu hình Gemini API."
-        }
-
-    # --------------------------------------------------------
-    # KIỂM TRA CLIENT
-    # --------------------------------------------------------
-
-    if gemini_client is None:
-
-        return {
-
-            "status": "error",
-
             "answer": (
-                "THỦY LỢI AI chưa kết nối được "
-                "Gemini API. Vui lòng thử lại sau."
-            )
+                "THỦY LỢI AI chưa kết nối được NotebookLM. "
+                "Hệ thống đang chờ khôi phục kết nối."
+            ),
+            "engine": "NotebookLM"
         }
 
-    # --------------------------------------------------------
-    # KIỂM TRA FILE SEARCH STORE
-    # --------------------------------------------------------
-
-    if not GEMINI_FILE_SEARCH_STORE:
-
-        return {
-
-            "status": "error",
-
-            "answer": (
-                "THỦY LỢI AI chưa có kho dữ liệu "
-                "Gemini File Search."
-            )
-        }
-
-    # --------------------------------------------------------
-    # GỌI GEMINI
-    # --------------------------------------------------------
+    start_time = time.time()
 
     try:
 
-        answer, sources = (
-            await ask_gemini_with_retry(
-                question
-            )
+        answer = await ask_notebooklm(question)
+
+        elapsed = round(
+            time.time() - start_time,
+            2
         )
 
-        response = {
-
+        return {
             "status": "ok",
-
             "answer": answer,
-
-            "engine": "Gemini File Search"
+            "engine": "NotebookLM",
+            "elapsed": elapsed
         }
 
-        if sources:
+    except Exception as e:
 
-            response["sources"] = sources
-
-        return response
-
-    # --------------------------------------------------------
-    # TIMEOUT
-    # --------------------------------------------------------
-
-    except asyncio.TimeoutError:
+        log(f"❌ LỖI: {e}")
 
         return {
-
             "status": "error",
-
             "answer": (
-                "THỦY LỢI AI xử lý quá lâu. "
-                "Hệ thống đã tự thử lại nhưng "
-                "chưa nhận được kết quả. "
-                "Vui lòng thử lại sau ít giây."
+                "THỦY LỢI AI tạm thời chưa lấy được "
+                "câu trả lời từ NotebookLM. "
+                "Hệ thống đã tự thử kết nối lại."
             ),
-
-            "engine": "Gemini File Search"
-        }
-
-    # --------------------------------------------------------
-    # LỖI KHÁC
-    # --------------------------------------------------------
-
-    except Exception as exc:
-
-        logger.exception(
-            "GEMINI KHÔNG TRẢ LỜI"
-        )
-
-        return {
-
-            "status": "error",
-
-            "answer": (
-                "THỦY LỢI AI tạm thời chưa lấy "
-                "được câu trả lời từ kho dữ liệu Gemini. "
-                "Hệ thống đã tự thử lại. "
-                "Vui lòng thử lại sau ít giây."
-            ),
-
-            "engine": "Gemini File Search",
-
-            "detail": clean_text(exc)
+            "engine": "NotebookLM",
+            "error": str(e)
         }
 
 
 # ============================================================
-# CONFIG - KIỂM TRA
-# Không hiển thị API KEY
+# API KIỂM TRA NOTEBOOK
 # ============================================================
 
-@app.get("/config")
-async def config():
+@app.get("/notebook")
+async def notebook_info():
+
+    if not notebook_connected or notebook_client is None:
+
+        return {
+            "status": "error",
+            "message": "NotebookLM chưa kết nối."
+        }
+
+    try:
+
+        notebooks = await notebook_client.notebooks.list()
+
+        result = []
+
+        for notebook in notebooks:
+
+            result.append({
+                "id": str(notebook.id),
+                "title": getattr(
+                    notebook,
+                    "title",
+                    ""
+                )
+            })
+
+        return {
+            "status": "ok",
+            "active_notebook": NOTEBOOK_ID,
+            "notebooks": result
+        }
+
+    except Exception as e:
+
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+# ============================================================
+# API ROOT STATUS
+# ============================================================
+
+@app.get("/status")
+async def status():
 
     return {
-
-        "service": "THỦY LỢI AI",
-
-        "model": GEMINI_MODEL,
-
-        "file_search_store":
-            GEMINI_FILE_SEARCH_STORE,
-
-        "gemini_configured":
-            bool(GEMINI_API_KEY),
-
-        "gemini_connected":
-            gemini_client is not None
+        "service": APP_NAME,
+        "engine": "NotebookLM",
+        "connected": notebook_connected,
+        "notebook": NOTEBOOK_ID,
+        "ready": (
+            notebook_connected
+            and notebook_client is not None
+        )
     }
 
 
 # ============================================================
-# RUN
+# CHẠY SERVER
 # ============================================================
 
 if __name__ == "__main__":
@@ -1030,14 +466,12 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(
-        os.getenv(
-            "PORT",
-            "10000"
-        )
+        os.getenv("PORT", "10000")
     )
 
     uvicorn.run(
         "server:app",
         host="0.0.0.0",
-        port=port
+        port=port,
+        workers=1
     )
