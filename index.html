@@ -7,7 +7,7 @@
 <title>THỦY LỢI AI</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#f3f6f8;color:#172536;font-family:Arial,Helvetica,sans-serif}
+html,body{margin:0;padding:0;background:#f3f6f8;color:#172536;font-family:Arial,Helvetica,sans-serif;width:100%;max-width:100%;overflow-x:hidden}
 .header{height:64px;background:#08243d;color:#fff}
 .head{max-width:760px;height:64px;margin:auto;padding:7px 12px;display:flex;align-items:center;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:9px}
@@ -18,8 +18,8 @@ html,body{margin:0;padding:0;background:#f3f6f8;color:#172536;font-family:Arial,
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#9aa7b2;margin-right:4px}
 .online .dot{background:#20c77a}
 .offline .dot{background:#e24b4b}
-.page{max-width:760px;margin:auto;padding:10px}
-.card{background:#fff;border:1px solid #dfe7ed;border-radius:13px;margin-bottom:9px}
+.page{width:100%;max-width:760px;margin:0 auto;padding:10px;overflow-x:hidden}
+.card{width:100%;background:#fff;border:1px solid #dfe7ed;border-radius:13px;margin-bottom:9px;overflow:hidden}
 .intro{padding:13px 14px}
 .intro h1{font-size:20px;margin:0 0 5px}
 .intro p{font-size:12.5px;line-height:1.5;color:#667584;margin:0}
@@ -36,10 +36,10 @@ html,body{margin:0;padding:0;background:#f3f6f8;color:#172536;font-family:Arial,
 .chat{overflow:hidden}.chat::before{content:"";display:block;height:3px;background:#147bea}
 .chathead{height:42px;padding:0 11px;border-bottom:1px solid #e1e8ed;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700}
 .clear{border:0;background:none;color:#87939e;font-size:11px}
-.messages{height:48vh;min-height:270px;max-height:420px;overflow-y:auto;padding:9px;background:#f8fafb}
+.messages{width:100%;height:48vh;min-height:270px;max-height:420px;overflow-y:auto;overflow-x:hidden;padding:9px;background:#f8fafb}
 .msg{display:flex;margin-bottom:9px}
 .msg.user{justify-content:flex-end}
-.bubble{max-width:88%;padding:9px 11px;border-radius:12px;border:1px solid #dce5eb;background:#fff;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.bubble{max-width:88%;padding:9px 11px;border-radius:12px;border:1px solid #dce5eb;background:#fff;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
 .user .bubble{background:#147bea;color:#fff;border-color:#147bea;border-bottom-right-radius:4px}
 .bot .bubble{border-bottom-left-radius:4px}
 .error{background:#fff6f6!important;border-color:#efcaca!important;color:#a03d3d}
@@ -58,7 +58,7 @@ html,body{margin:0;padding:0;background:#f3f6f8;color:#172536;font-family:Arial,
  .title{font-size:17px}
  .sub{font-size:9px}
  .status{font-size:9px}
- .page{padding:7px}
+ .page{width:100%;padding:7px}
  .intro{padding:11px 12px}
  .intro h1{font-size:19px}
  .intro p{font-size:12px}
