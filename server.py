@@ -2,7 +2,6 @@ import os
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +12,7 @@ from notebooklm import NotebookLMClient
 
 
 # ============================================================
-# THỦY LỢI AI - NOTEBOOKLM BACKEND
+# CẤU HÌNH
 # ============================================================
 
 APP_NAME = "THỦY LỢI AI"
@@ -24,133 +23,167 @@ INDEX_FILE = os.path.join(BASE_DIR, "index.html")
 NOTEBOOK_ID = os.getenv("NOTEBOOKLM_NOTEBOOK", "").strip()
 AUTH_JSON = os.getenv("NOTEBOOKLM_AUTH_JSON", "").strip()
 
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "180"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
-notebook_client: Optional[NotebookLMClient] = None
-notebook_connected = False
+notebook_client = None
 
 
 # ============================================================
 # LOG
 # ============================================================
 
-def log(message: str):
-    print(f"[THỦY LỢI AI] {message}", flush=True)
+def log(text):
+    print(f"[THUY LOI AI] {text}", flush=True)
 
 
 # ============================================================
 # KẾT NỐI NOTEBOOKLM
 # ============================================================
 
-async def connect_notebooklm():
+async def create_notebook_client():
+
     global notebook_client
-    global notebook_connected
 
-    try:
-        log("=" * 60)
-        log("KHỞI ĐỘNG THỦY LỢI AI")
-        log("=" * 60)
-
-        if not NOTEBOOK_ID:
-            log("❌ Chưa có NOTEBOOKLM_NOTEBOOK")
-            notebook_connected = False
-            return False
-
-        if not AUTH_JSON:
-            log("❌ Chưa có NOTEBOOKLM_AUTH_JSON")
-            notebook_connected = False
-            return False
-
-        log(f"NOTEBOOK: {NOTEBOOK_ID}")
-
-        # notebooklm-py tự đọc NOTEBOOKLM_AUTH_JSON
-        notebook_client = NotebookLMClient.from_storage(
-            timeout=REQUEST_TIMEOUT,
-            chat_timeout=REQUEST_TIMEOUT,
-            rate_limit_max_retries=2,
-            server_error_max_retries=2,
-            max_concurrent_rpcs=MAX_CONCURRENT,
+    if not AUTH_JSON:
+        raise RuntimeError(
+            "Thiếu biến NOTEBOOKLM_AUTH_JSON"
         )
 
-        notebook_client = await notebook_client.__aenter__()
+    if not NOTEBOOK_ID:
+        raise RuntimeError(
+            "Thiếu biến NOTEBOOKLM_NOTEBOOK"
+        )
 
-        # Kiểm tra Notebook có tồn tại
-        notebooks = await notebook_client.notebooks.list()
+    log("Đang kết nối NotebookLM...")
 
-        found = False
+    client = NotebookLMClient.from_storage(
+        timeout=30,
+        chat_timeout=REQUEST_TIMEOUT,
+    )
 
-        for notebook in notebooks:
-            if str(notebook.id) == NOTEBOOK_ID:
-                found = True
-                log(f"✅ Đã tìm thấy Notebook: {notebook.title}")
-                break
+    notebook_client = await client.__aenter__()
 
-        if not found:
-            log("❌ Không tìm thấy NotebookLM_NOTEBOOK")
-            notebook_connected = False
-            return False
+    log("NotebookLM client đã khởi tạo.")
 
-        notebook_connected = True
+    # Kiểm tra Notebook
+    notebooks = await notebook_client.notebooks.list()
 
-        log("✅ NOTEBOOKLM ĐÃ KẾT NỐI")
-        log(f"MAX CONCURRENT: {MAX_CONCURRENT}")
-        log(f"REQUEST TIMEOUT: {REQUEST_TIMEOUT}")
-        log("=" * 60)
+    found = False
+    notebook_title = ""
 
-        return True
+    for notebook in notebooks:
 
-    except Exception as e:
-        notebook_connected = False
-        log(f"❌ LỖI KẾT NỐI NOTEBOOKLM: {e}")
-        return False
+        if str(notebook.id) == NOTEBOOK_ID:
+
+            found = True
+            notebook_title = getattr(
+                notebook,
+                "title",
+                ""
+            )
+
+            break
+
+    if not found:
+
+        await notebook_client.__aexit__(
+            None,
+            None,
+            None
+        )
+
+        notebook_client = None
+
+        raise RuntimeError(
+            "Không tìm thấy NOTEBOOKLM_NOTEBOOK."
+        )
+
+    log(
+        f"NotebookLM OK: {notebook_title}"
+    )
+
+    return True
 
 
 # ============================================================
-# ĐÓNG KẾT NỐI
+# ĐÓNG NOTEBOOKLM
 # ============================================================
 
-async def disconnect_notebooklm():
+async def close_notebook_client():
+
     global notebook_client
-    global notebook_connected
 
-    try:
-        if notebook_client is not None:
-            await notebook_client.__aexit__(None, None, None)
+    if notebook_client is not None:
 
-    except Exception as e:
-        log(f"Lỗi đóng NotebookLM: {e}")
+        try:
+
+            await notebook_client.__aexit__(
+                None,
+                None,
+                None
+            )
+
+        except Exception as e:
+
+            log(
+                f"Lỗi đóng NotebookLM: {e}"
+            )
 
     notebook_client = None
-    notebook_connected = False
 
 
 # ============================================================
-# FASTAPI LIFESPAN
+# KHỞI ĐỘNG
 # ============================================================
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app):
 
-    await connect_notebooklm()
+    log("=" * 60)
+    log("KHỞI ĐỘNG THỦY LỢI AI")
+    log("=" * 60)
+
+    log(
+        f"NOTEBOOK ID: "
+        f"{NOTEBOOK_ID if NOTEBOOK_ID else 'CHƯA CÓ'}"
+    )
+
+    log(
+        "AUTH JSON: "
+        f"{'CÓ' if AUTH_JSON else 'KHÔNG CÓ'}"
+    )
+
+    try:
+
+        await create_notebook_client()
+
+        log("✅ NOTEBOOKLM ĐÃ SẴN SÀNG")
+
+    except Exception as e:
+
+        log(
+            f"❌ KHÔNG KẾT NỐI ĐƯỢC NOTEBOOKLM: {e}"
+        )
+
+        notebook_client = None
 
     yield
 
-    await disconnect_notebooklm()
+    await close_notebook_client()
 
 
 # ============================================================
-# APP
+# FASTAPI
 # ============================================================
 
 app = FastAPI(
     title=APP_NAME,
-    description="Trợ lý AI chuyên ngành Thủy lợi sử dụng NotebookLM",
-    version="2.0",
-    lifespan=lifespan,
+    version="3.0",
+    lifespan=lifespan
 )
 
 
@@ -183,6 +216,7 @@ class Question(BaseModel):
 async def home():
 
     if os.path.exists(INDEX_FILE):
+
         return FileResponse(
             INDEX_FILE,
             media_type="text/html"
@@ -191,35 +225,52 @@ async def home():
     return {
         "status": "ok",
         "service": APP_NAME,
-        "message": "THỦY LỢI AI đang hoạt động",
+        "engine": "NotebookLM",
         "health": "/health",
         "ask": "/ask"
     }
 
 
 # ============================================================
-# HEALTH CHECK
+# HEALTH
 # ============================================================
 
 @app.get("/health")
 async def health():
 
     return {
+
         "status": "ok",
+
         "service": APP_NAME,
+
         "engine": "NotebookLM",
-        "notebook_configured": bool(NOTEBOOK_ID),
-        "auth_configured": bool(AUTH_JSON),
-        "notebook_connected": notebook_connected,
-        "notebook_id": NOTEBOOK_ID if NOTEBOOK_ID else None,
-        "max_concurrent": MAX_CONCURRENT,
-        "request_timeout": REQUEST_TIMEOUT,
-        "max_retries": MAX_RETRIES,
+
+        "notebook_configured":
+            bool(NOTEBOOK_ID),
+
+        "auth_configured":
+            bool(AUTH_JSON),
+
+        "notebook_connected":
+            notebook_client is not None,
+
+        "notebook_id":
+            NOTEBOOK_ID if NOTEBOOK_ID else None,
+
+        "max_concurrent":
+            MAX_CONCURRENT,
+
+        "request_timeout":
+            REQUEST_TIMEOUT,
+
+        "max_retries":
+            MAX_RETRIES
     }
 
 
 # ============================================================
-# KẾT NỐI LẠI NOTEBOOKLM
+# RECONNECT
 # ============================================================
 
 @app.get("/reconnect")
@@ -229,22 +280,19 @@ async def reconnect():
 
     try:
 
-        await disconnect_notebooklm()
+        await close_notebook_client()
 
-        success = await connect_notebooklm()
-
-        if success:
-            return {
-                "status": "ok",
-                "message": "Đã kết nối lại NotebookLM"
-            }
+        await create_notebook_client()
 
         return {
-            "status": "error",
-            "message": "Không thể kết nối lại NotebookLM"
+            "status": "ok",
+            "message":
+                "Đã kết nối lại NotebookLM."
         }
 
     except Exception as e:
+
+        notebook_client = None
 
         return {
             "status": "error",
@@ -256,80 +304,88 @@ async def reconnect():
 # HỎI NOTEBOOKLM
 # ============================================================
 
-async def ask_notebooklm(question: str):
+async def ask_notebooklm(question):
 
-    if not notebook_connected or notebook_client is None:
-
-        raise RuntimeError(
-            "THỦY LỢI AI chưa kết nối NotebookLM."
-        )
+    global notebook_client
 
     last_error = None
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(1, MAX_RETRIES + 1):
 
         try:
 
-            log(f"CÂU HỎI: {question}")
-            log(f"THỬ LẦN {attempt + 1}/{MAX_RETRIES}")
+            # Nếu mất kết nối → tự kết nối lại
+            if notebook_client is None:
+
+                await create_notebook_client()
+
+            log(
+                f"Gửi câu hỏi lần "
+                f"{attempt}/{MAX_RETRIES}"
+            )
 
             async with request_semaphore:
 
                 result = await asyncio.wait_for(
+
                     notebook_client.chat.ask(
                         NOTEBOOK_ID,
                         question
                     ),
+
                     timeout=REQUEST_TIMEOUT
                 )
 
-            # AskResult thường có .answer
-            answer = getattr(result, "answer", None)
-
-            if answer is None:
-                answer = getattr(result, "text", None)
-
-            if answer is None:
-                answer = str(result)
-
-            answer = str(answer).strip()
+            answer = getattr(
+                result,
+                "answer",
+                None
+            )
 
             if not answer:
+
                 raise RuntimeError(
-                    "NotebookLM không trả về nội dung."
+                    "NotebookLM không trả về câu trả lời."
                 )
 
-            log("✅ ĐÃ NHẬN CÂU TRẢ LỜI")
-
-            return answer
+            return answer.strip()
 
         except Exception as e:
 
             last_error = e
 
             log(
-                f"⚠️ LỖI NOTEBOOKLM "
-                f"(lần {attempt + 1}): {e}"
+                f"⚠️ Lỗi lần {attempt}: {e}"
             )
 
-            if attempt < MAX_RETRIES - 1:
+            # Hủy client lỗi
+            try:
 
-                wait_time = 2 ** attempt
+                await close_notebook_client()
+
+            except Exception:
+                pass
+
+            if attempt < MAX_RETRIES:
+
+                wait_time = attempt * 2
 
                 log(
-                    f"Chờ {wait_time} giây rồi thử lại..."
+                    f"Chờ {wait_time} giây..."
                 )
 
-                await asyncio.sleep(wait_time)
+                await asyncio.sleep(
+                    wait_time
+                )
 
     raise RuntimeError(
-        f"NotebookLM không trả lời sau "
+        f"NotebookLM thất bại sau "
         f"{MAX_RETRIES} lần: {last_error}"
     )
 
 
 # ============================================================
-# API HỎI ĐÁP
+# API ASK
 # ============================================================
 
 @app.post("/ask")
@@ -337,128 +393,150 @@ async def ask(data: Question):
 
     question = data.question.strip()
 
-    log("=" * 60)
-    log(f"NHẬN CÂU HỎI: {question}")
-    log("=" * 60)
-
     if not question:
 
         return {
             "status": "error",
-            "answer": "Vui lòng nhập câu hỏi."
+            "answer":
+                "Vui lòng nhập câu hỏi."
         }
 
-    if not notebook_connected:
+    log("=" * 60)
+    log(f"CÂU HỎI: {question}")
+    log("=" * 60)
 
-        return {
-            "status": "error",
-            "answer": (
-                "THỦY LỢI AI chưa kết nối được NotebookLM. "
-                "Hệ thống đang chờ khôi phục kết nối."
-            ),
-            "engine": "NotebookLM"
-        }
-
-    start_time = time.time()
+    start = time.time()
 
     try:
 
-        answer = await ask_notebooklm(question)
+        answer = await ask_notebooklm(
+            question
+        )
 
         elapsed = round(
-            time.time() - start_time,
+            time.time() - start,
             2
         )
 
+        log(
+            f"✅ HOÀN THÀNH: {elapsed}s"
+        )
+
         return {
+
             "status": "ok",
+
             "answer": answer,
+
             "engine": "NotebookLM",
+
             "elapsed": elapsed
         }
 
     except Exception as e:
 
-        log(f"❌ LỖI: {e}")
+        log(
+            f"❌ KHÔNG LẤY ĐƯỢC TRẢ LỜI: {e}"
+        )
 
         return {
+
             "status": "error",
-            "answer": (
-                "THỦY LỢI AI tạm thời chưa lấy được "
-                "câu trả lời từ NotebookLM. "
-                "Hệ thống đã tự thử kết nối lại."
-            ),
-            "engine": "NotebookLM",
-            "error": str(e)
+
+            "answer":
+                "THỦY LỢI AI tạm thời "
+                "chưa kết nối được NotebookLM. "
+                "Hệ thống đã tự thử khôi phục.",
+
+            "engine": "NotebookLM"
         }
 
 
 # ============================================================
-# API KIỂM TRA NOTEBOOK
-# ============================================================
-
-@app.get("/notebook")
-async def notebook_info():
-
-    if not notebook_connected or notebook_client is None:
-
-        return {
-            "status": "error",
-            "message": "NotebookLM chưa kết nối."
-        }
-
-    try:
-
-        notebooks = await notebook_client.notebooks.list()
-
-        result = []
-
-        for notebook in notebooks:
-
-            result.append({
-                "id": str(notebook.id),
-                "title": getattr(
-                    notebook,
-                    "title",
-                    ""
-                )
-            })
-
-        return {
-            "status": "ok",
-            "active_notebook": NOTEBOOK_ID,
-            "notebooks": result
-        }
-
-    except Exception as e:
-
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-
-# ============================================================
-# API ROOT STATUS
+# STATUS
 # ============================================================
 
 @app.get("/status")
 async def status():
 
     return {
+
         "service": APP_NAME,
+
         "engine": "NotebookLM",
-        "connected": notebook_connected,
-        "notebook": NOTEBOOK_ID,
-        "ready": (
-            notebook_connected
-            and notebook_client is not None
-        )
+
+        "connected":
+            notebook_client is not None,
+
+        "notebook":
+            NOTEBOOK_ID,
+
+        "ready":
+            notebook_client is not None
+            and bool(NOTEBOOK_ID)
     }
 
 
 # ============================================================
-# CHẠY SERVER
+# NOTEBOOK
+# ============================================================
+
+@app.get("/notebook")
+async def notebook():
+
+    if notebook_client is None:
+
+        return {
+            "status": "error",
+            "message":
+                "NotebookLM chưa kết nối."
+        }
+
+    try:
+
+        notebooks = (
+            await notebook_client.notebooks.list()
+        )
+
+        data = []
+
+        for nb in notebooks:
+
+            data.append({
+
+                "id": str(nb.id),
+
+                "title":
+                    getattr(
+                        nb,
+                        "title",
+                        ""
+                    )
+            })
+
+        return {
+
+            "status": "ok",
+
+            "active_notebook":
+                NOTEBOOK_ID,
+
+            "notebooks":
+                data
+        }
+
+    except Exception as e:
+
+        return {
+
+            "status": "error",
+
+            "message": str(e)
+        }
+
+
+# ============================================================
+# SERVER
 # ============================================================
 
 if __name__ == "__main__":
@@ -466,7 +544,10 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(
-        os.getenv("PORT", "10000")
+        os.getenv(
+            "PORT",
+            "10000"
+        )
     )
 
     uvicorn.run(
