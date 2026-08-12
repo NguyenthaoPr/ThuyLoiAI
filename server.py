@@ -93,8 +93,18 @@ class Question(BaseModel):
 @app.get("/")
 async def home():
     if INDEX_FILE.exists():
-        return FileResponse(INDEX_FILE, media_type="text/html")
-    return {"status": "ok", "service": "THỦY LỢI AI", "engine": "Gemini File Search"}
+        return FileResponse(
+            str(INDEX_FILE),
+            media_type="text/html"
+        )
+
+    return {
+        "status": "ok",
+        "service": "THỦY LỢI AI",
+        "message": "Backend Gemini đang hoạt động nhưng chưa tìm thấy index.html.",
+        "health": "/health",
+        "ask": "/ask"
+    }
 
 @app.get("/health")
 async def health():
