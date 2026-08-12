@@ -31,7 +31,7 @@ else:
 
 
 # ============================================================
-# THỦY LỢI AI - SERVER NOTEBOOKLM V11
+# THỦY LỢI AI - SERVER NOTEBOOKLM V12
 # Kiến trúc: NotebookLM (nguồn chính) + nhiều tầng tự phục hồi
 #            + nguồn dự phòng (fallback) + hàng đợi/giới hạn tải
 # ============================================================
@@ -74,6 +74,13 @@ CHAT_MIN_INTERVAL = max(0.5, float(os.getenv("NOTEBOOKLM_CHAT_MIN_INTERVAL", "4"
 RATE_LIMIT_COOLDOWN = max(10, int(os.getenv("NOTEBOOKLM_RATE_LIMIT_COOLDOWN", "30")))
 RATE_LIMIT_MAX_COOLDOWN = max(RATE_LIMIT_COOLDOWN, int(os.getenv("NOTEBOOKLM_RATE_LIMIT_MAX_COOLDOWN", "180")))
 HEALTH_SKIP_WHEN_BUSY = os.getenv("HEALTH_SKIP_WHEN_BUSY", "1").strip() == "1"
+
+# --- V12: Recovery Engine ---
+# Khi NotebookLM trả 429, request hiện tại sẽ chờ cooldown rồi tự thử lại
+# thay vì bắt người dùng phải gửi lại câu hỏi.
+AUTO_RETRY_RATE_LIMIT = os.getenv("AUTO_RETRY_RATE_LIMIT", "1").strip() == "1"
+RATE_LIMIT_WAIT_CAP = max(10, int(os.getenv("RATE_LIMIT_WAIT_CAP", "120")))
+RECOVERY_STATUS_TTL = max(5, int(os.getenv("RECOVERY_STATUS_TTL", "15")))
 
 
 # --- Auth recovery ---
@@ -184,6 +191,10 @@ state = {
     "rate_limited_until": 0.0,
     "rate_limit_count": 0,
     "retry_after_seconds": 0,
+    "last_incident_id": None,
+    "last_incident_message": None,
+    "last_incident_action": None,
+    "auto_retry_count": 0,
 }
 
 
@@ -431,6 +442,26 @@ async def wait_chat_turn():
         next_chat_at = time.time() + CHAT_MIN_INTERVAL
 
 
+async def wait_rate_limit_cooldown(request_id: str, max_wait: int | None = None):
+    """V12: chờ cooldown một cách có kiểm soát trước khi tự retry."""
+    remaining = rate_limit_remaining()
+    if remaining <= 0:
+        return True
+    if not AUTO_RETRY_RATE_LIMIT:
+        return False
+
+    max_wait = max_wait or RATE_LIMIT_WAIT_CAP
+    wait_seconds = min(remaining, max_wait)
+    log.warning(
+        "[%s] RECOVERY: NotebookLM rate-limit; tự chờ %ss rồi thử lại.",
+        request_id, wait_seconds,
+    )
+    state["auto_retry_count"] = int(state.get("auto_retry_count", 0)) + 1
+    state["last_incident_action"] = "WAIT_COOLDOWN"
+    await asyncio.sleep(wait_seconds)
+    return rate_limit_remaining() <= 0
+
+
 def mark_rate_limited(error: Exception, cooldown: int | None = None):
     cooldown = cooldown or min(
         RATE_LIMIT_MAX_COOLDOWN,
@@ -445,6 +476,11 @@ def mark_rate_limited(error: Exception, cooldown: int | None = None):
     state["last_error"] = str(error)[:500]
     state["last_error_time"] = now_text()
     state["recovery_needed"] = False
+    state["last_incident_id"] = uuid.uuid4().hex[:10]
+    state["last_incident_message"] = (
+        f"NotebookLM đang giới hạn tốc độ. Hệ thống tự chờ khoảng {cooldown} giây."
+    )
+    state["last_incident_action"] = "AUTO_RETRY_AFTER_COOLDOWN"
 
 
 def is_retryable(error: Exception) -> bool:
@@ -661,6 +697,14 @@ async def reconnect(reason="unknown", allow_headless=False):
                 except Exception as exc:
                     last_error = exc
                     log.error("RECOVERY: reconnect attempt %s/%s thất bại: %s", attempt, RECOVERY_MAX_ATTEMPTS, exc)
+                    if is_rate_limit_error(exc):
+                        # 429 không phải lỗi session. Tuyệt đối không tiếp tục
+                        # reconnect nhiều lần vì sẽ làm rate-limit nặng hơn.
+                        mark_rate_limited(exc)
+                        log.warning(
+                            "RECOVERY: phát hiện RATE_LIMIT trong reconnect; dừng reconnect và chuyển sang cooldown."
+                        )
+                        return False
                     mark_failure(exc)
 
                     # TẦNG 3: refresh_auth trên client mới nếu có.
@@ -719,6 +763,9 @@ async def ask_notebooklm(question: str, request_id: str):
             remaining = rate_limit_remaining()
             if remaining > 0:
                 state["retry_after_seconds"] = remaining
+                if attempt < MAX_RETRIES and AUTO_RETRY_RATE_LIMIT and remaining <= RATE_LIMIT_WAIT_CAP:
+                    await wait_rate_limit_cooldown(request_id, RATE_LIMIT_WAIT_CAP)
+                    continue
                 raise RuntimeError(
                     f"NotebookLM đang giới hạn tốc độ. Vui lòng thử lại sau khoảng {remaining} giây."
                 )
@@ -784,11 +831,16 @@ async def ask_notebooklm(question: str, request_id: str):
                     # Tuyệt đối không reconnect ở đây.
                     mark_rate_limited(exc)
                     log.warning(
-                        "[%s] RATE LIMIT: nghỉ %ss; không reconnect client.",
+                        "[%s] RATE LIMIT: cooldown=%ss; không reconnect client.",
                         request_id, state["retry_after_seconds"]
                     )
+                    if attempt < MAX_RETRIES - 1 and AUTO_RETRY_RATE_LIMIT:
+                        remaining = rate_limit_remaining()
+                        if remaining <= RATE_LIMIT_WAIT_CAP:
+                            await wait_rate_limit_cooldown(request_id, RATE_LIMIT_WAIT_CAP)
+                            continue
                     raise RuntimeError(
-                        f"NotebookLM đang giới hạn tốc độ. Hệ thống sẽ tự chờ khoảng {state['retry_after_seconds']} giây rồi phục vụ lại."
+                        f"NotebookLM đang giới hạn tốc độ. Hệ thống đã tự chờ; vui lòng thử lại sau khoảng {state['retry_after_seconds']} giây."
                     )
 
                 mark_failure(exc)
@@ -982,7 +1034,7 @@ async def watchdog():
 
 async def lifespan(app: FastAPI):
     log.info("==========================================")
-    log.info("       KHỞI ĐỘNG THỦY LỢI AI V11")
+    log.info("       KHỞI ĐỘNG THỦY LỢI AI V12")
     log.info("       ENGINE CHÍNH: NOTEBOOKLM")
     log.info("       FALLBACK: %s", "BẬT" if ENABLE_FALLBACK else "TẮT")
     log.info("       AUTO AUTH REFRESH: %s", "BẬT" if AUTH_REFRESH_BEFORE_RECONNECT else "TẮT")
@@ -1042,7 +1094,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM + nhiều tầng tự phục hồi + fallback",
-    version="11.0",
+    version="12.0",
     lifespan=lifespan,
 )
 
@@ -1073,14 +1125,14 @@ async def home():
 @app.get("/live")
 async def live():
     # Liveness: process còn sống, không phụ thuộc NotebookLM.
-    return {"status": "ok", "service": "THỦY LỢI AI", "version": "11.0"}
+    return {"status": "ok", "service": "THỦY LỢI AI", "version": "12.0"}
 
 
 @app.get("/ready")
 async def ready():
     # Readiness: không báo READY khi NotebookLM đang rate-limit.
     if state.get("connected") and rate_limit_remaining() == 0:
-        return {"status": "ready", "engine": "NotebookLM", "version": "11.0"}
+        return {"status": "ready", "engine": "NotebookLM", "version": "12.0"}
     return JSONResponse(status_code=429 if rate_limit_remaining() > 0 else 503, content={
         "status": "not_ready",
         "engine": "NotebookLM",
@@ -1153,7 +1205,7 @@ async def get_metrics():
 async def diagnostics():
     return {
         "service": "THỦY LỢI AI",
-        "version": "11.0",
+        "version": "12.0",
         "engine": "NotebookLM",
         "notebooklm_package_loaded": NotebookLMClient is not None,
         "notebooklm_import_error": NOTEBOOKLM_IMPORT_ERROR,
@@ -1188,6 +1240,8 @@ async def diagnostics():
             "chat_min_interval": CHAT_MIN_INTERVAL,
             "rate_limit_cooldown": RATE_LIMIT_COOLDOWN,
             "rate_limit_max_cooldown": RATE_LIMIT_MAX_COOLDOWN,
+            "auto_retry_rate_limit": AUTO_RETRY_RATE_LIMIT,
+            "rate_limit_wait_cap": RATE_LIMIT_WAIT_CAP,
             "health_skip_when_busy": HEALTH_SKIP_WHEN_BUSY,
             "queue_max_wait": QUEUE_MAX_WAIT,
             "queue_max_pending": QUEUE_MAX_PENDING,
@@ -1206,7 +1260,7 @@ async def api_info():
     return {
         "name": "THỦY LỢI AI",
         "engine": "NotebookLM",
-        "version": "11.0",
+        "version": "12.0",
         "notebook_configured": bool(NOTEBOOK_ID),
         "endpoints": {
             "home": "/",
@@ -1435,7 +1489,7 @@ async def recovery_status():
     }
     return {
         "service": "THỦY LỢI AI",
-        "version": "11.0",
+        "version": "12.0",
         "notebooklm_connected": bool(state["connected"]),
         "status": state["status"],
         "recovery_level": level,
@@ -1455,6 +1509,11 @@ async def recovery_status():
         "rate_limited": rate_limit_remaining() > 0,
         "retry_after_seconds": rate_limit_remaining(),
         "rate_limit_count": state["rate_limit_count"],
+        "last_incident_id": state.get("last_incident_id"),
+        "last_incident_message": state.get("last_incident_message"),
+        "last_incident_action": state.get("last_incident_action"),
+        "auto_retry_enabled": AUTO_RETRY_RATE_LIMIT,
+        "auto_retry_count": state.get("auto_retry_count", 0),
         "admin_recovery_available": bool(ADMIN_TOKEN),
         "note": (
             "Nếu AUTH đã hết hạn hoàn toàn và NOTEBOOKLM_AUTH_JSON là secret tĩnh, "
@@ -1481,11 +1540,16 @@ async def incident():
             "THỦY LỢI AI hoạt động bình thường."
             if info["recovery_level"] == 0 and not info.get("rate_limited")
             else (
-                f"NotebookLM đang giới hạn tốc độ. Hệ thống tự chờ khoảng {info.get('retry_after_seconds', 0)} giây."
+                f"NotebookLM đang giới hạn tốc độ. Hệ thống tự chờ khoảng {info.get('retry_after_seconds', 0)} giây và sẽ tự thử lại."
                 if info.get("rate_limited")
                 else "THỦY LỢI AI đang tự khắc phục sự cố NotebookLM."
             )
         ),
+        "action": (
+            "WAIT_AND_AUTO_RETRY" if info.get("rate_limited") and info.get("auto_retry_enabled")
+            else info.get("action")
+        ),
+        "phone_action_required": info.get("recovery_level") == 5,
         "recovery": info,
     }
 
