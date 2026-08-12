@@ -32,7 +32,7 @@ else:
 
 
 # ============================================================
-# THỦY LỢI AI - SERVER NOTEBOOKLM V13
+# THỦY LỢI AI - SERVER NOTEBOOKLM V14
 # Kiến trúc: NotebookLM (nguồn chính) + nhiều tầng tự phục hồi
 #            + nguồn dự phòng (fallback) + hàng đợi/giới hạn tải
 # ============================================================
@@ -51,6 +51,13 @@ ADMIN_TOKEN = os.getenv("THUYLOIA_ADMIN_TOKEN", "").strip()
 NOTEBOOKLM_STORAGE_PATH = os.getenv(
     "NOTEBOOKLM_STORAGE_PATH",
     "/tmp/thuyloiai/notebooklm/storage_state.json",
+).strip()
+# V14: tùy chọn master-token bền vững để tự tái cấp cookie sau khi session hết hạn.
+# Không log giá trị token. Chỉ ghi secret vào runtime với quyền 0600.
+MASTER_TOKEN_JSON = os.getenv("NOTEBOOKLM_MASTER_TOKEN_JSON", "").strip()
+MASTER_TOKEN_PATH = os.getenv(
+    "NOTEBOOKLM_MASTER_TOKEN_PATH",
+    str(Path(NOTEBOOKLM_STORAGE_PATH).expanduser().with_name("master_token.json")),
 ).strip()
 
 # V13: auth recovery có giới hạn, tránh reconnect lặp vô hạn khi session đã chết.
@@ -211,6 +218,7 @@ state = {
     "last_auth_recovery": None,
     "auth_recovery_next_at": 0.0,
     "storage_path": NOTEBOOKLM_STORAGE_PATH,
+    "master_token_configured": bool(MASTER_TOKEN_JSON),
 }
 
 
@@ -598,10 +606,58 @@ async def wait_for_rpcs_to_drain(timeout_seconds: int | None = None):
 
 
 def prepare_auth_storage():
-    """Nạp NOTEBOOKLM_AUTH_JSON vào storage file để notebooklm-py có thể
-    persist cookie mới sau refresh trong suốt vòng đời process."""
+    """Chuẩn bị storage mà KHÔNG ghi đè session đã được refresh.
+
+    V13 có một lỗi quan trọng: mỗi lần reconnect/create_client lại ghi
+    NOTEBOOKLM_AUTH_JSON cũ lên storage. Vì vậy cookie mới vừa refresh xong
+    có thể bị ghi đè ngay lập tức bằng cookie cũ và vòng lặp AUTH_EXPIRED tiếp tục.
+
+    V14 chỉ seed AUTH_JSON khi storage chưa tồn tại (hoặc khi FORCE_AUTH_SEED=1).
+    Nếu có master-token, ghi master_token.json cạnh storage để notebooklm-py
+    có thể tự mint lại cookie khi session hết hạn.
+    """
     path = Path(NOTEBOOKLM_STORAGE_PATH).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    force_seed = os.getenv("FORCE_AUTH_SEED", "0").strip() == "1"
+
+    if MASTER_TOKEN_JSON:
+        master_path = Path(MASTER_TOKEN_PATH).expanduser()
+        master_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            master_payload = json.loads(MASTER_TOKEN_JSON)
+        except Exception as exc:
+            raise RuntimeError(
+                f"NOTEBOOKLM_MASTER_TOKEN_JSON không phải JSON hợp lệ: {exc}"
+            ) from exc
+        if not isinstance(master_payload, dict) or not master_payload.get("master_token"):
+            raise RuntimeError(
+                "NOTEBOOKLM_MASTER_TOKEN_JSON không hợp lệ: thiếu master_token."
+            )
+        # Chỉ ghi khi nội dung thay đổi; không log secret.
+        normalized_master = json.dumps(master_payload, ensure_ascii=False)
+        current_master = None
+        if master_path.exists():
+            try:
+                current_master = master_path.read_text(encoding="utf-8")
+            except Exception:
+                current_master = None
+        if current_master != normalized_master:
+            master_path.write_text(normalized_master, encoding="utf-8")
+        try:
+            os.chmod(master_path, 0o600)
+        except OSError:
+            pass
+        log.info("NotebookLM AUTH V14: master-token đã sẵn sàng trong runtime.")
+
+    if path.exists() and not force_seed:
+        # QUAN TRỌNG: giữ nguyên cookie đã được thư viện refresh.
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        log.info("NotebookLM AUTH V14: giữ nguyên runtime storage hiện tại.")
+        return str(path)
 
     if AUTH_JSON:
         try:
@@ -617,25 +673,15 @@ def prepare_auth_storage():
             )
 
         normalized = json.dumps(payload, ensure_ascii=False)
-        current = None
-        if path.exists():
-            try:
-                current = path.read_text(encoding="utf-8")
-            except Exception:
-                current = None
-
-        if current != normalized:
-            path.write_text(normalized, encoding="utf-8")
-
+        path.write_text(normalized, encoding="utf-8")
         try:
             os.chmod(path, 0o600)
         except OSError:
             pass
+        log.info("NotebookLM AUTH V14: seed storage từ NOTEBOOKLM_AUTH_JSON.")
+        return str(path)
 
-        log.info(
-            "NotebookLM AUTH: đã nạp NOTEBOOKLM_AUTH_JSON vào runtime storage."
-        )
-    elif not path.exists():
+    if not path.exists():
         raise RuntimeError(
             "Chưa có NOTEBOOKLM_AUTH_JSON và cũng không có runtime storage."
         )
@@ -814,9 +860,12 @@ async def reconnect(reason="unknown", allow_headless=False):
                     state["last_error_kind"] = "AUTH"
                     state["last_incident_id"] = uuid.uuid4().hex[:10]
                     state["last_incident_message"] = (
-                        "Phiên Google/NotebookLM đã hết hạn. "
-                        "Server không thể tự tạo đăng nhập Google mới nếu không có "
-                        "profile/master-token hoặc cơ chế refresh bên ngoài."
+                        (
+                            "Phiên Google/NotebookLM đã hết hạn và master-token chưa được cấu hình. "
+                            "Server không thể tự tạo đăng nhập Google mới chỉ từ cookie tĩnh."
+                            if not MASTER_TOKEN_JSON
+                            else "NotebookLM đã từ chối phiên hiện tại; master-token đã được bật nhưng chưa thể tái cấp cookie."
+                        )
                     )
                     state["last_incident_action"] = "AUTH_REQUIRED"
                     set_recovery_state(5, "auth_session_expired")
@@ -1124,10 +1173,12 @@ async def watchdog():
 
 async def lifespan(app: FastAPI):
     log.info("==========================================")
-    log.info("       KHỞI ĐỘNG THỦY LỢI AI V12")
+    log.info("       KHỞI ĐỘNG THỦY LỢI AI V14")
     log.info("       ENGINE CHÍNH: NOTEBOOKLM")
     log.info("       FALLBACK: %s", "BẬT" if ENABLE_FALLBACK else "TẮT")
     log.info("       AUTO AUTH REFRESH: %s", "BẬT" if AUTH_REFRESH_BEFORE_RECONNECT else "TẮT")
+    log.info("       MASTER TOKEN: %s", "BẬT" if MASTER_TOKEN_JSON else "TẮT")
+    log.info("       AUTH SEED MODE: chỉ seed khi storage chưa tồn tại")
     log.info("==========================================")
 
     if not NOTEBOOK_ID:
@@ -1184,7 +1235,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM + nhiều tầng tự phục hồi + fallback",
-    version="13.0",
+    version="14.0",
     lifespan=lifespan,
 )
 
@@ -1215,14 +1266,14 @@ async def home():
 @app.get("/live")
 async def live():
     # Liveness: process còn sống, không phụ thuộc NotebookLM.
-    return {"status": "ok", "service": "THỦY LỢI AI", "version": "13.0"}
+    return {"status": "ok", "service": "THỦY LỢI AI", "version": "14.0"}
 
 
 @app.get("/ready")
 async def ready():
     # Readiness: không báo READY khi NotebookLM đang rate-limit.
     if state.get("connected") and rate_limit_remaining() == 0:
-        return {"status": "ready", "engine": "NotebookLM", "version": "13.0"}
+        return {"status": "ready", "engine": "NotebookLM", "version": "14.0"}
     return JSONResponse(status_code=429 if rate_limit_remaining() > 0 else 503, content={
         "status": "not_ready",
         "engine": "NotebookLM",
@@ -1250,7 +1301,10 @@ async def health():
             else ("NOTEBOOKLM_NOTEBOOK_ID" if os.getenv("NOTEBOOKLM_NOTEBOOK_ID", "").strip() else None)
         ),
         "auth_configured": bool(AUTH_JSON),
-        "auth_mode": "NOTEBOOKLM_AUTH_JSON" if AUTH_JSON else "missing",
+        "auth_mode": (
+            "MASTER_TOKEN + STORAGE" if MASTER_TOKEN_JSON else
+            ("NOTEBOOKLM_AUTH_JSON" if AUTH_JSON else "missing")
+        ),
         "last_check": state["last_check"],
         "last_success": state["last_success"],
         "last_error": state["last_error"],
@@ -1298,7 +1352,7 @@ async def get_metrics():
 async def diagnostics():
     return {
         "service": "THỦY LỢI AI",
-        "version": "13.0",
+        "version": "14.0",
         "engine": "NotebookLM",
         "notebooklm_package_loaded": NotebookLMClient is not None,
         "notebooklm_import_error": NOTEBOOKLM_IMPORT_ERROR,
@@ -1310,7 +1364,10 @@ async def diagnostics():
             else ("NOTEBOOKLM_NOTEBOOK_ID" if os.getenv("NOTEBOOKLM_NOTEBOOK_ID", "").strip() else None)
         ),
         "auth_configured": bool(AUTH_JSON),
-        "auth_mode": "NOTEBOOKLM_AUTH_JSON" if AUTH_JSON else "missing",
+        "auth_mode": (
+            "MASTER_TOKEN + STORAGE" if MASTER_TOKEN_JSON else
+            ("NOTEBOOKLM_AUTH_JSON" if AUTH_JSON else "missing")
+        ),
         "runtime": dict(state),
         "metrics": dict(metrics),
         "configuration": {
@@ -1348,6 +1405,8 @@ async def diagnostics():
             "fallback_enabled": ENABLE_FALLBACK,
             "fallback_timeout": FALLBACK_TIMEOUT,
             "notebooklm_storage_path": NOTEBOOKLM_STORAGE_PATH,
+            "master_token_configured": bool(MASTER_TOKEN_JSON),
+            "master_token_path_configured": bool(MASTER_TOKEN_PATH),
             "auth_recovery_max_attempts": AUTH_RECOVERY_MAX_ATTEMPTS,
             "auth_recovery_cooldown": AUTH_RECOVERY_COOLDOWN,
             "auth_headless_once": AUTH_HEADLESS_ONCE,
@@ -1360,7 +1419,7 @@ async def api_info():
     return {
         "name": "THỦY LỢI AI",
         "engine": "NotebookLM",
-        "version": "13.0",
+        "version": "14.0",
         "notebook_configured": bool(NOTEBOOK_ID),
         "endpoints": {
             "home": "/",
@@ -1610,7 +1669,7 @@ async def recovery_status():
     }
     return {
         "service": "THỦY LỢI AI",
-        "version": "13.0",
+        "version": "14.0",
         "notebooklm_connected": bool(state["connected"]),
         "status": state["status"],
         "recovery_level": level,
@@ -1637,8 +1696,8 @@ async def recovery_status():
         "auto_retry_count": state.get("auto_retry_count", 0),
         "admin_recovery_available": bool(ADMIN_TOKEN),
         "note": (
-            "Nếu AUTH đã hết hạn hoàn toàn và NOTEBOOKLM_AUTH_JSON là secret tĩnh, "
-            "server không thể tự tạo đăng nhập Google mới; APP sẽ báo AUTH_REQUIRED."
+            "Nếu AUTH đã hết hạn hoàn toàn mà không có master-token, "
+            "server không thể tự tạo đăng nhập Google mới từ cookie tĩnh; APP sẽ báo AUTH_REQUIRED."
             if level == 5 else
             "Hệ thống đang tự phục hồi; chưa cần mở máy tính."
         ),
