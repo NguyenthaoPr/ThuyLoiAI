@@ -1,15 +1,16 @@
 import os
+import uuid
 import asyncio
 import random
 import time
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 try:
@@ -20,10 +21,19 @@ except Exception as exc:
 else:
     NOTEBOOKLM_IMPORT_ERROR = None
 
+try:
+    import httpx
+except Exception as exc:
+    httpx = None
+    HTTPX_IMPORT_ERROR = repr(exc)
+else:
+    HTTPX_IMPORT_ERROR = None
+
 
 # ============================================================
-# THỦY LỢI AI - SERVER NOTEBOOKLM V5
-# Kiến trúc: NotebookLM + nhiều tầng tự phục hồi
+# THỦY LỢI AI - SERVER NOTEBOOKLM V6
+# Kiến trúc: NotebookLM (nguồn chính) + nhiều tầng tự phục hồi
+#            + nguồn dự phòng (fallback) + hàng đợi/giới hạn tải
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -46,6 +56,31 @@ CIRCUIT_THRESHOLD = max(1, int(os.getenv("CIRCUIT_THRESHOLD", "3")))
 CIRCUIT_COOLDOWN = max(30, int(os.getenv("CIRCUIT_COOLDOWN", "120")))
 HEADLESS_REAUTH = os.getenv("NOTEBOOKLM_HEADLESS_REAUTH", "0").strip() == "1"
 
+# --- Hàng đợi / chống quá tải ---
+QUEUE_MAX_WAIT = max(5, int(os.getenv("QUEUE_MAX_WAIT", "25")))          # giây chờ tối đa để có "chỗ" xử lý
+QUEUE_MAX_PENDING = max(
+    MAX_CONCURRENT, int(os.getenv("QUEUE_MAX_PENDING", str(MAX_CONCURRENT * 6)))
+)  # số request được phép xếp hàng chờ cùng lúc
+HARD_DEADLINE = max(
+    REQUEST_TIMEOUT, int(os.getenv("HARD_DEADLINE", str(REQUEST_TIMEOUT * MAX_RETRIES + 30)))
+)  # giới hạn cứng tổng thời gian xử lý 1 câu hỏi (bao gồm retry)
+
+# --- Giới hạn tần suất theo IP (token bucket) ---
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "1").strip() == "1"
+RATE_LIMIT_PER_MINUTE = max(1, int(os.getenv("RATE_LIMIT_PER_MINUTE", "20")))
+RATE_LIMIT_BURST = max(1, int(os.getenv("RATE_LIMIT_BURST", "5")))
+RATE_LIMIT_CLEANUP_SECONDS = max(60, int(os.getenv("RATE_LIMIT_CLEANUP_SECONDS", "600")))
+
+# --- Nguồn dự phòng (fallback) khi NotebookLM không phản hồi được ---
+ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "1").strip() == "1"
+FALLBACK_TIMEOUT = max(10, int(os.getenv("FALLBACK_TIMEOUT", "60")))
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_FALLBACK_MODEL = os.getenv("ANTHROPIC_FALLBACK_MODEL", "").strip()
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "").strip()
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash").strip()
+
 SYSTEM_PROMPT = """
 Bạn là THỦY LỢI AI, trợ lý AI chuyên ngành Thủy lợi của Chi nhánh Thủy lợi
 Vu Gia - Thu Bồn.
@@ -63,6 +98,20 @@ NGUYÊN TẮC:
 9. Giữ nguyên số liệu và đơn vị theo tài liệu.
 """
 
+FALLBACK_SYSTEM_PROMPT = """
+Bạn là THỦY LỢI AI, trợ lý AI chuyên ngành Thủy lợi của Chi nhánh Thủy lợi
+Vu Gia - Thu Bồn. HIỆN TẠI bạn KHÔNG có quyền truy cập vào kho tài liệu
+NotebookLM (đang gặp sự cố kỹ thuật tạm thời).
+
+NGUYÊN TẮC BẮT BUỘC:
+1. KHÔNG bịa số liệu, tên/số văn bản, ngày tháng, thông số kỹ thuật cụ thể mà
+   bạn không chắc chắn — nếu không chắc, hãy nói rõ là chưa thể xác nhận.
+2. LUÔN mở đầu câu trả lời bằng một câu cảnh báo ngắn rằng đây là câu trả lời
+   tổng quát, CHƯA được đối chiếu với kho tài liệu nội bộ của đơn vị, và người
+   dùng cần kiểm tra lại với NotebookLM hoặc tài liệu gốc khi hệ thống phục hồi.
+3. Trả lời bằng tiếng Việt, ngắn gọn, rõ ràng, đúng trọng tâm câu hỏi.
+"""
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -76,6 +125,9 @@ log = logging.getLogger("thuyloiai")
 client = None
 client_lock = asyncio.Lock()
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+pending_count = 0
+pending_lock = asyncio.Lock()
 
 state = {
     "status": "starting",
@@ -91,6 +143,17 @@ state = {
     "last_recovery": None,
 }
 
+metrics = {
+    "requests_total": 0,
+    "requests_ok": 0,
+    "requests_error": 0,
+    "cache_hits": 0,
+    "fallback_used": 0,
+    "rejected_overload": 0,
+    "rejected_rate_limit": 0,
+    "started_at": None,
+}
+
 cache = OrderedDict()
 
 
@@ -102,6 +165,9 @@ def now_text():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
 
+# -------------------------
+# Cache
+# -------------------------
 def cache_key(question: str) -> str:
     return " ".join(question.lower().split())
 
@@ -138,6 +204,54 @@ def cache_put(question: str, value: dict):
         cache.popitem(last=False)
 
 
+# -------------------------
+# Rate limiter (token bucket theo IP)
+# -------------------------
+class RateLimiter:
+    def __init__(self, rate_per_minute: int, burst: int):
+        self.rate_per_second = rate_per_minute / 60.0
+        self.capacity = max(burst, 1)
+        self.buckets = defaultdict(lambda: {"tokens": float(self.capacity), "updated": time.time()})
+        self.lock = asyncio.Lock()
+
+    async def allow(self, key: str) -> bool:
+        async with self.lock:
+            bucket = self.buckets[key]
+            elapsed = time.time() - bucket["updated"]
+            bucket["tokens"] = min(
+                self.capacity, bucket["tokens"] + elapsed * self.rate_per_second
+            )
+            bucket["updated"] = time.time()
+
+            if bucket["tokens"] >= 1:
+                bucket["tokens"] -= 1
+                return True
+
+            return False
+
+    async def cleanup(self, max_age_seconds: int = 900):
+        async with self.lock:
+            cutoff = time.time() - max_age_seconds
+            stale = [k for k, v in self.buckets.items() if v["updated"] < cutoff]
+            for k in stale:
+                self.buckets.pop(k, None)
+            if stale:
+                log.info("RATE-LIMIT: dọn %s bucket không hoạt động.", len(stale))
+
+
+rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE, RATE_LIMIT_BURST)
+
+
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# -------------------------
+# Circuit breaker / lỗi
+# -------------------------
 def mark_success():
     state["status"] = "ok"
     state["connected"] = True
@@ -218,6 +332,25 @@ def is_retryable(error: Exception) -> bool:
     return any(word in text for word in words)
 
 
+@asynccontextmanager
+async def acquire_slot(timeout: int):
+    """Chiếm 1 'chỗ' xử lý trong giới hạn MAX_CONCURRENT, có timeout chờ.
+
+    Nếu không xin được chỗ trong thời gian `timeout`, ném TimeoutError để
+    endpoint trả về 503 thay vì để request treo vô thời hạn.
+    """
+    acquired = False
+    try:
+        acquired = await asyncio.wait_for(request_semaphore.acquire(), timeout=timeout)
+        yield
+    finally:
+        if acquired:
+            request_semaphore.release()
+
+
+# -------------------------
+# NotebookLM client lifecycle
+# -------------------------
 async def close_client():
     global client
 
@@ -228,7 +361,7 @@ async def close_client():
         return
 
     try:
-        await old.__aexit__(None, None, None)
+        await old[1].__aexit__(None, None, None)
     except Exception as exc:
         log.warning("Đóng NotebookLM client lỗi: %s", exc)
 
@@ -326,7 +459,7 @@ async def reconnect(reason="unknown", allow_headless=False):
             return False
 
 
-async def ask_notebooklm(question: str):
+async def ask_notebooklm(question: str, request_id: str):
     global client
 
     last_error = None
@@ -336,7 +469,7 @@ async def ask_notebooklm(question: str):
             raise RuntimeError("Circuit Breaker đang mở; hệ thống đang tự phục hồi.")
 
         try:
-            async with request_semaphore:
+            async with acquire_slot(QUEUE_MAX_WAIT):
                 if client is None:
                     ok = await reconnect("client_none")
                     if not ok:
@@ -373,16 +506,23 @@ async def ask_notebooklm(question: str):
                 "status": "ok",
                 "answer": answer,
                 "engine": "NotebookLM",
+                "grounded": True,
                 "sources": references,
             }
+
+        except asyncio.TimeoutError as exc:
+            # Không xin được "chỗ" xử lý trong QUEUE_MAX_WAIT giây -> hệ thống đang quá tải.
+            last_error = RuntimeError(f"Hệ thống đang quá tải, không xếp được hàng xử lý: {exc}")
+            log.warning("[%s] NotebookLM: hết thời gian chờ hàng đợi (lần %s/%s).",
+                        request_id, attempt + 1, MAX_RETRIES)
+            mark_failure(last_error)
+            break
 
         except Exception as exc:
             last_error = exc
             log.warning(
-                "NotebookLM lỗi lần %s/%s: %s",
-                attempt + 1,
-                MAX_RETRIES,
-                exc,
+                "[%s] NotebookLM lỗi lần %s/%s: %s",
+                request_id, attempt + 1, MAX_RETRIES, exc,
             )
             mark_failure(exc)
 
@@ -400,14 +540,15 @@ async def ask_notebooklm(question: str):
                 )
                 if ok:
                     try:
-                        nb_client = client[0]
-                        result = await asyncio.wait_for(
-                            nb_client.chat.ask(
-                                NOTEBOOK_ID,
-                                f"{SYSTEM_PROMPT}\n\nCÂU HỎI:\n{question}",
-                            ),
-                            timeout=REQUEST_TIMEOUT,
-                        )
+                        async with acquire_slot(QUEUE_MAX_WAIT):
+                            nb_client = client[0]
+                            result = await asyncio.wait_for(
+                                nb_client.chat.ask(
+                                    NOTEBOOK_ID,
+                                    f"{SYSTEM_PROMPT}\n\nCÂU HỎI:\n{question}",
+                                ),
+                                timeout=REQUEST_TIMEOUT,
+                            )
                         answer = (getattr(result, "answer", "") or "").strip()
                         if answer:
                             mark_success()
@@ -415,6 +556,7 @@ async def ask_notebooklm(question: str):
                                 "status": "ok",
                                 "answer": answer,
                                 "engine": "NotebookLM",
+                                "grounded": True,
                                 "sources": [],
                             }
                     except Exception as retry_exc:
@@ -426,10 +568,125 @@ async def ask_notebooklm(question: str):
     raise last_error or RuntimeError("NotebookLM không thể xử lý câu hỏi.")
 
 
+# -------------------------
+# Nguồn dự phòng (fallback) - dùng khi NotebookLM không phản hồi được
+# -------------------------
+async def ask_fallback_claude(question: str, request_id: str):
+    if httpx is None:
+        raise RuntimeError(f"Thiếu thư viện httpx: {HTTPX_IMPORT_ERROR}")
+    if not ANTHROPIC_API_KEY or not ANTHROPIC_FALLBACK_MODEL:
+        raise RuntimeError("Chưa cấu hình ANTHROPIC_API_KEY / ANTHROPIC_FALLBACK_MODEL.")
+
+    async with httpx.AsyncClient(timeout=FALLBACK_TIMEOUT) as http:
+        resp = await http.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": ANTHROPIC_FALLBACK_MODEL,
+                "max_tokens": 1024,
+                "system": FALLBACK_SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": question}],
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    text_parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
+    answer = "\n".join(p for p in text_parts if p).strip()
+
+    if not answer:
+        raise RuntimeError("Claude fallback không trả về nội dung.")
+
+    log.info("[%s] FALLBACK: dùng Claude API thành công.", request_id)
+    return {
+        "status": "ok",
+        "answer": answer,
+        "engine": "Claude (fallback)",
+        "grounded": False,
+        "sources": [],
+    }
+
+
+async def ask_fallback_gemini(question: str, request_id: str):
+    if httpx is None:
+        raise RuntimeError(f"Thiếu thư viện httpx: {HTTPX_IMPORT_ERROR}")
+    if not GOOGLE_API_KEY:
+        raise RuntimeError("Chưa cấu hình GOOGLE_API_KEY.")
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_FALLBACK_MODEL}:generateContent?key={GOOGLE_API_KEY}"
+    )
+
+    async with httpx.AsyncClient(timeout=FALLBACK_TIMEOUT) as http:
+        resp = await http.post(
+            url,
+            json={
+                "system_instruction": {"parts": [{"text": FALLBACK_SYSTEM_PROMPT}]},
+                "contents": [{"role": "user", "parts": [{"text": question}]}],
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    try:
+        answer = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except (KeyError, IndexError, TypeError):
+        answer = ""
+
+    if not answer:
+        raise RuntimeError("Gemini fallback không trả về nội dung.")
+
+    log.info("[%s] FALLBACK: dùng Gemini API thành công.", request_id)
+    return {
+        "status": "ok",
+        "answer": answer,
+        "engine": "Gemini (fallback)",
+        "grounded": False,
+        "sources": [],
+    }
+
+
+async def ask_fallback_chain(question: str, request_id: str):
+    """Thử lần lượt các nguồn dự phòng đã cấu hình. Trả về None nếu không có
+    nguồn nào khả dụng hoặc tất cả đều lỗi."""
+    if not ENABLE_FALLBACK:
+        return None
+
+    providers = [
+        ("claude", ask_fallback_claude),
+        ("gemini", ask_fallback_gemini),
+    ]
+
+    for name, provider in providers:
+        try:
+            result = await provider(question, request_id)
+            metrics["fallback_used"] += 1
+            result["warning"] = (
+                "Câu trả lời này CHƯA được đối chiếu với kho tài liệu NotebookLM "
+                "do hệ thống chính đang gặp sự cố tạm thời. Vui lòng kiểm tra lại "
+                "khi hệ thống phục hồi."
+            )
+            return result
+        except Exception as exc:
+            log.warning("[%s] FALLBACK (%s) thất bại: %s", request_id, name, exc)
+            continue
+
+    return None
+
+
+# -------------------------
+# Watchdog & dọn dẹp định kỳ
+# -------------------------
 async def watchdog():
     # Không hỏi chat để kiểm tra sức khỏe; chỉ kiểm tra notebook/auth.
     await asyncio.sleep(10)
 
+    tick = 0
     while True:
         try:
             state["last_check"] = now_text()
@@ -463,13 +720,22 @@ async def watchdog():
         except Exception as exc:
             log.error("WATCHDOG ngoại lệ: %s", exc)
 
+        # Dọn rate-limit buckets định kỳ (không cần mỗi vòng watchdog).
+        tick += 1
+        if RATE_LIMIT_ENABLED and tick % 3 == 0:
+            try:
+                await rate_limiter.cleanup(RATE_LIMIT_CLEANUP_SECONDS)
+            except Exception as exc:
+                log.warning("RATE-LIMIT cleanup lỗi: %s", exc)
+
         await asyncio.sleep(WATCHDOG_SECONDS)
 
 
 async def lifespan(app: FastAPI):
     log.info("==========================================")
-    log.info("       KHỞI ĐỘNG THỦY LỢI AI V5")
-    log.info("       ENGINE: NOTEBOOKLM")
+    log.info("       KHỞI ĐỘNG THỦY LỢI AI V6")
+    log.info("       ENGINE CHÍNH: NOTEBOOKLM")
+    log.info("       FALLBACK: %s", "BẬT" if ENABLE_FALLBACK else "TẮT")
     log.info("==========================================")
 
     if not NOTEBOOK_ID:
@@ -487,9 +753,18 @@ async def lifespan(app: FastAPI):
     else:
         log.info("NOTEBOOKLM PY: ĐÃ IMPORT")
 
-    state["status"] = "starting"
+    if ENABLE_FALLBACK:
+        if httpx is None:
+            log.error("FALLBACK: httpx chưa cài đặt (%s) -> fallback sẽ không hoạt động.", HTTPX_IMPORT_ERROR)
+        if not (ANTHROPIC_API_KEY and ANTHROPIC_FALLBACK_MODEL):
+            log.warning("FALLBACK: Claude chưa được cấu hình đầy đủ (bỏ qua nguồn này).")
+        if not GOOGLE_API_KEY:
+            log.warning("FALLBACK: Gemini chưa được cấu hình (bỏ qua nguồn này).")
 
-    # Khởi động server trước; lỗi NotebookLM không được làm Render chết.
+    state["status"] = "starting"
+    metrics["started_at"] = now_text()
+
+    # Khởi động server trước; lỗi NotebookLM không được làm server chết.
     try:
         await reconnect("startup")
     except Exception as exc:
@@ -511,7 +786,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="THỦY LỢI AI",
-    description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM",
+    description="Trợ lý AI chuyên ngành Thủy lợi - NotebookLM + Fallback",
     version="6.0",
     lifespan=lifespan,
 )
@@ -563,12 +838,24 @@ async def health():
         "recovery_count": state["recovery_count"],
         "circuit_open": state["circuit_open"],
         "watchdog_seconds": WATCHDOG_SECONDS,
+        "fallback_enabled": ENABLE_FALLBACK,
+        "fallback_claude_configured": bool(ANTHROPIC_API_KEY and ANTHROPIC_FALLBACK_MODEL),
+        "fallback_gemini_configured": bool(GOOGLE_API_KEY),
+        "queue_pending": pending_count,
+        "queue_max_pending": QUEUE_MAX_PENDING,
+        "concurrency_slots_in_use": MAX_CONCURRENT - request_semaphore._value,
+        "concurrency_slots_total": MAX_CONCURRENT,
     }
 
 
 @app.get("/status")
 async def status():
     return await health()
+
+
+@app.get("/metrics")
+async def get_metrics():
+    return dict(metrics)
 
 
 @app.get("/diagnostics")
@@ -579,6 +866,8 @@ async def diagnostics():
         "engine": "NotebookLM",
         "notebooklm_package_loaded": NotebookLMClient is not None,
         "notebooklm_import_error": NOTEBOOKLM_IMPORT_ERROR,
+        "httpx_loaded": httpx is not None,
+        "httpx_import_error": HTTPX_IMPORT_ERROR,
         "notebook_id_configured": bool(NOTEBOOK_ID),
         "notebook_env_source": (
             "NOTEBOOKLM_NOTEBOOK" if os.getenv("NOTEBOOKLM_NOTEBOOK", "").strip()
@@ -586,6 +875,7 @@ async def diagnostics():
         ),
         "auth_configured": bool(AUTH_JSON),
         "runtime": dict(state),
+        "metrics": dict(metrics),
         "configuration": {
             "max_concurrent": MAX_CONCURRENT,
             "request_timeout": REQUEST_TIMEOUT,
@@ -597,6 +887,14 @@ async def diagnostics():
             "circuit_cooldown": CIRCUIT_COOLDOWN,
             "headless_reauth": HEADLESS_REAUTH,
             "keepalive_seconds": max(60, int(os.getenv("NOTEBOOKLM_KEEPALIVE", "900"))),
+            "queue_max_wait": QUEUE_MAX_WAIT,
+            "queue_max_pending": QUEUE_MAX_PENDING,
+            "hard_deadline": HARD_DEADLINE,
+            "rate_limit_enabled": RATE_LIMIT_ENABLED,
+            "rate_limit_per_minute": RATE_LIMIT_PER_MINUTE,
+            "rate_limit_burst": RATE_LIMIT_BURST,
+            "fallback_enabled": ENABLE_FALLBACK,
+            "fallback_timeout": FALLBACK_TIMEOUT,
         },
     }
 
@@ -612,6 +910,7 @@ async def api_info():
             "home": "/",
             "health": "/health",
             "status": "/status",
+            "metrics": "/metrics",
             "diagnostics": "/diagnostics",
             "ask": "/ask",
             "recovery": "/recovery",
@@ -620,7 +919,12 @@ async def api_info():
 
 
 @app.post("/ask")
-async def ask(data: Question):
+async def ask(data: Question, request: Request):
+    global pending_count
+
+    request_id = uuid.uuid4().hex[:12]
+    metrics["requests_total"] += 1
+
     question = data.question.strip()
 
     if not question:
@@ -628,45 +932,128 @@ async def ask(data: Question):
             "status": "error",
             "answer": "Vui lòng nhập câu hỏi.",
             "engine": "NotebookLM",
+            "request_id": request_id,
         }
 
-    # Tầng 0: cache câu hỏi đã thành công.
+    if len(question) > 4000:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "status": "error",
+                "answer": "Câu hỏi quá dài, vui lòng rút gọn (tối đa 4000 ký tự).",
+                "request_id": request_id,
+            },
+        )
+
+    # --- Tầng chống lạm dụng: rate limit theo IP ---
+    if RATE_LIMIT_ENABLED:
+        ip = client_ip(request)
+        allowed = await rate_limiter.allow(ip)
+        if not allowed:
+            metrics["rejected_rate_limit"] += 1
+            log.warning("[%s] RATE-LIMIT: từ chối IP %s.", request_id, ip)
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": "10"},
+                content={
+                    "status": "error",
+                    "answer": "Bạn đang gửi câu hỏi quá nhanh. Vui lòng thử lại sau ít giây.",
+                    "request_id": request_id,
+                },
+            )
+
+    # --- Tầng cache: câu hỏi đã có kết quả gần đây ---
     cached = cache_get(question)
     if cached:
+        metrics["cache_hits"] += 1
         result = dict(cached)
         result["cached"] = True
+        result["request_id"] = request_id
         return result
 
-    # Nếu đang trong thời gian circuit breaker, thử recovery trước.
-    if not circuit_available():
-        ok = await reconnect("ask_circuit_breaker")
-        if not ok:
-            return {
-                "status": "error",
-                "answer": (
-                    "THỦY LỢI AI đang tự khắc phục kết nối NotebookLM. "
-                    "Vui lòng thử lại sau ít phút."
-                ),
-                "engine": "NotebookLM",
-                "recovery": True,
-            }
+    # --- Tầng chống quá tải: giới hạn số request đang chờ xử lý ---
+    async with pending_lock:
+        if pending_count >= QUEUE_MAX_PENDING:
+            metrics["rejected_overload"] += 1
+            log.warning("[%s] QUEUE: từ chối do hàng đợi đầy (%s/%s).",
+                        request_id, pending_count, QUEUE_MAX_PENDING)
+            return JSONResponse(
+                status_code=503,
+                headers={"Retry-After": "15"},
+                content={
+                    "status": "error",
+                    "answer": (
+                        "Hệ thống đang có rất nhiều người truy cập. "
+                        "Vui lòng thử lại sau ít phút."
+                    ),
+                    "request_id": request_id,
+                    "recovery": True,
+                },
+            )
+        pending_count += 1
 
     try:
-        result = await ask_notebooklm(question)
-        cache_put(question, result)
-        return result
+        # Nếu circuit breaker đang mở, thử phục hồi trước khi xử lý.
+        if not circuit_available():
+            ok = await reconnect("ask_circuit_breaker")
+            if not ok:
+                fallback_result = await ask_fallback_chain(question, request_id)
+                if fallback_result:
+                    fallback_result["request_id"] = request_id
+                    cache_put(question, fallback_result)
+                    metrics["requests_ok"] += 1
+                    return fallback_result
 
-    except Exception as exc:
-        log.error("ASK thất bại: %s", exc)
+                metrics["requests_error"] += 1
+                return {
+                    "status": "error",
+                    "answer": (
+                        "THỦY LỢI AI đang tự khắc phục kết nối NotebookLM. "
+                        "Vui lòng thử lại sau ít phút."
+                    ),
+                    "engine": "NotebookLM",
+                    "recovery": True,
+                    "request_id": request_id,
+                }
 
-        # Tầng cuối trước APP sự cố: trả lại kết quả cũ nếu có.
+        try:
+            result = await asyncio.wait_for(
+                ask_notebooklm(question, request_id), timeout=HARD_DEADLINE
+            )
+            result["request_id"] = request_id
+            cache_put(question, result)
+            metrics["requests_ok"] += 1
+            return result
+
+        except asyncio.TimeoutError:
+            last_exc = RuntimeError(
+                f"Vượt quá giới hạn thời gian xử lý tổng thể ({HARD_DEADLINE}s)."
+            )
+            log.error("[%s] ASK: hết hạn deadline cứng.", request_id)
+            mark_failure(last_exc)
+
+        except Exception as exc:
+            log.error("[%s] ASK thất bại: %s", request_id, exc)
+
+        # --- Tầng cuối 1: thử nguồn dự phòng (Claude / Gemini) ---
+        fallback_result = await ask_fallback_chain(question, request_id)
+        if fallback_result:
+            fallback_result["request_id"] = request_id
+            cache_put(question, fallback_result)
+            metrics["requests_ok"] += 1
+            return fallback_result
+
+        # --- Tầng cuối 2: trả lại kết quả cũ trong cache nếu có ---
         cached = cache_get(question)
         if cached:
+            metrics["cache_hits"] += 1
             result = dict(cached)
             result["cached"] = True
             result["warning"] = "NotebookLM đang gặp sự cố; hiển thị kết quả đã lưu."
+            result["request_id"] = request_id
             return result
 
+        metrics["requests_error"] += 1
         return {
             "status": "error",
             "answer": (
@@ -675,7 +1062,12 @@ async def ask(data: Question):
             ),
             "engine": "NotebookLM",
             "recovery": True,
+            "request_id": request_id,
         }
+
+    finally:
+        async with pending_lock:
+            pending_count -= 1
 
 
 @app.post("/recovery")
@@ -683,7 +1075,7 @@ async def recovery(authorization: str | None = Header(default=None)):
     if not ADMIN_TOKEN:
         raise HTTPException(
             status_code=503,
-            detail="APP sự cố chưa được cấu hình THUYLOIA_ADMIN_TOKEN.",
+            detail="Server chưa được cấu hình THUYLOIA_ADMIN_TOKEN.",
         )
 
     token = ""
