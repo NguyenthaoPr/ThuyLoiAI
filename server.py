@@ -1,7 +1,9 @@
 import os
 import time
 import tempfile
+import logging
 from pathlib import Path
+from threading import Lock
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,32 +14,35 @@ from google.genai import types
 
 
 # ============================================================
-# THỦY LỢI AI 3.0
-# Kiến trúc tối giản:
+# THUY LOI AI 3.1 - STABLE
 # Browser -> FastAPI -> Gemini File Search Store -> Gemini
 # ============================================================
 
-APP_VERSION = "3.0.0"
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-
+APP_VERSION = "3.1.0"
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 
 if not GEMINI_API_KEY:
-    raise RuntimeError("Thiếu biến môi trường GEMINI_API_KEY")
+    raise RuntimeError("Thieu bien moi truong GEMINI_API_KEY")
 
 if not FILE_SEARCH_STORE:
-    raise RuntimeError("Thiếu biến môi trường GEMINI_FILE_SEARCH_STORE")
+    raise RuntimeError("Thieu bien moi truong GEMINI_FILE_SEARCH_STORE")
 
-# Chuẩn hóa tên store nếu người dùng chỉ nhập ID.
 if not FILE_SEARCH_STORE.startswith("fileSearchStores/"):
     FILE_SEARCH_STORE = f"fileSearchStores/{FILE_SEARCH_STORE}"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+logger = logging.getLogger("thuyloiai")
+
 app = FastAPI(
-    title="THỦY LỢI AI",
-    description="Trợ lý AI chuyên ngành Thủy lợi",
+    title="THUY LOI AI",
+    description="Tro ly AI chuyen nganh Thuy loi",
     version=APP_VERSION,
 )
 
@@ -54,19 +59,62 @@ class AskRequest(BaseModel):
     question: str
 
 
+# ============================================================
+# DOCUMENT CACHE
+# Khong goi documents.list moi lan hoi.
+# ============================================================
+
+_doc_cache_count = None
+_doc_cache_time = 0.0
+_doc_lock = Lock()
+DOC_CACHE_SECONDS = 30
+
+
 def _document_list():
-    """Lấy danh sách tài liệu trong File Search Store."""
-    return list(client.file_search_stores.documents.list(parent=FILE_SEARCH_STORE))
+    return list(
+        client.file_search_stores.documents.list(
+            parent=FILE_SEARCH_STORE
+        )
+    )
+
+
+def _document_count(force=False):
+    global _doc_cache_count, _doc_cache_time
+
+    now = time.time()
+
+    with _doc_lock:
+        if (
+            not force
+            and _doc_cache_count is not None
+            and now - _doc_cache_time < DOC_CACHE_SECONDS
+        ):
+            return _doc_cache_count
+
+    docs = _document_list()
+    count = len(docs)
+
+    with _doc_lock:
+        _doc_cache_count = count
+        _doc_cache_time = time.time()
+
+    return count
+
+
+def _invalidate_document_cache():
+    global _doc_cache_count, _doc_cache_time
+
+    with _doc_lock:
+        _doc_cache_count = None
+        _doc_cache_time = 0.0
 
 
 def _serialize_document(doc):
-    """Chuyển object SDK thành JSON đơn giản."""
     result = {
         "name": getattr(doc, "name", None),
         "display_name": getattr(doc, "display_name", None),
     }
 
-    # Một số phiên bản SDK dùng displayName / state / createTime...
     for attr in ("state", "create_time", "update_time", "mime_type"):
         value = getattr(doc, attr, None)
         if value is not None:
@@ -75,16 +123,18 @@ def _serialize_document(doc):
     return result
 
 
-def _extract_citations(response):
-    """Lấy thông tin nguồn nếu Gemini trả về grounding metadata."""
-    citations = []
+def _extract_sources(response):
+    """Lay ten tai lieu tu grounding neu Gemini tra ve."""
+    sources = []
 
     try:
-        candidate = response.candidates[0]
-        metadata = getattr(candidate, "grounding_metadata", None)
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            return sources
 
+        metadata = getattr(candidates[0], "grounding_metadata", None)
         if not metadata:
-            return citations
+            return sources
 
         chunks = getattr(metadata, "grounding_chunks", None) or []
 
@@ -93,76 +143,85 @@ def _extract_citations(response):
             if not retrieved:
                 continue
 
-            item = {
-                "title": getattr(retrieved, "title", None),
-                "text": getattr(retrieved, "text", None),
-                "uri": getattr(retrieved, "uri", None),
-            }
+            title = getattr(retrieved, "title", None)
+            if title and title not in sources:
+                sources.append(title)
 
-            # Bỏ các trường rỗng
-            item = {k: v for k, v in item.items() if v}
-            if item:
-                citations.append(item)
+    except Exception as exc:
+        logger.warning("Khong doc duoc grounding source: %s", exc)
 
-    except Exception:
-        # Citation chỉ là phần bổ sung, không làm hỏng câu trả lời.
-        pass
+    return sources
 
-    return citations
 
+# ============================================================
+# HOME
+# ============================================================
 
 @app.get("/", include_in_schema=False)
 def home():
-    """Mở giao diện index.html nếu file tồn tại."""
     index_file = Path(__file__).with_name("index.html")
 
     if index_file.exists():
         return FileResponse(index_file)
 
     return {
-        "service": "THỦY LỢI AI",
+        "service": "THUY LOI AI",
         "version": APP_VERSION,
         "status": "online",
         "engine": "Gemini File Search",
+        "store": FILE_SEARCH_STORE,
     }
 
 
+# ============================================================
+# HEALTH
+# ============================================================
+
 @app.get("/health")
 def health():
-    """Kiểm tra nhanh cấu hình và kết nối File Search."""
     try:
-        documents = _document_list()
+        count = _document_count()
 
         return {
             "status": "ok",
-            "service": "THỦY LỢI AI",
+            "service": "THUY LOI AI",
             "version": APP_VERSION,
             "engine": "Gemini File Search",
             "gemini_configured": bool(GEMINI_API_KEY),
             "file_search_configured": bool(FILE_SEARCH_STORE),
-            "file_search_store": FILE_SEARCH_STORE,
             "file_search_ready": True,
-            "documents": len(documents),
+            "file_search_store": FILE_SEARCH_STORE,
+            "documents": count,
             "model": MODEL,
         }
 
-    except Exception as e:
+    except Exception as exc:
+        logger.exception("Health check loi")
+
         return JSONResponse(
             status_code=200,
             content={
                 "status": "error",
-                "service": "THỦY LỢI AI",
+                "service": "THUY LOI AI",
                 "version": APP_VERSION,
-                "error": str(e),
+                "engine": "Gemini File Search",
+                "gemini_configured": bool(GEMINI_API_KEY),
+                "file_search_configured": bool(FILE_SEARCH_STORE),
+                "file_search_ready": False,
                 "file_search_store": FILE_SEARCH_STORE,
+                "error": str(exc),
             },
         )
 
 
+# ============================================================
+# API INFO
+# ============================================================
+
 @app.get("/api")
 def api_info():
     return {
-        "service": "THỦY LỢI AI",
+        "service": "THUY LOI AI",
         "version": APP_VERSION,
         "model": MODEL,
         "store": FILE_SEARCH_STORE,
@@ -176,9 +235,12 @@ def api_info():
     }
 
 
+# ============================================================
+# STORES
+# ============================================================
+
 @app.get("/stores")
 def stores():
-    """Liệt kê các File Search Store mà API key nhìn thấy."""
     try:
         result = []
 
@@ -198,18 +260,27 @@ def stores():
             "stores": result,
         }
 
-    except Exception as e:
+    except Exception as exc:
+        logger.exception("/stores loi")
         return JSONResponse(
             status_code=200,
-            content={"success": False, "error": str(e)},
+            content={"success": False, "error": str(exc)},
         )
 
 
+# ============================================================
+# DOCUMENTS
+# ============================================================
+
 @app.get("/documents")
 def documents():
-    """Danh sách tài liệu đã được lập chỉ mục trong kho."""
     try:
         docs = _document_list()
+
+        global _doc_cache_count, _doc_cache_time
+        with _doc_lock:
+            _doc_cache_count = len(docs)
+            _doc_cache_time = time.time()
 
         return {
             "success": True,
@@ -218,25 +289,25 @@ def documents():
             "documents": [_serialize_document(doc) for doc in docs],
         }
 
-    except Exception as e:
+    except Exception as exc:
+        logger.exception("/documents loi")
         return JSONResponse(
             status_code=200,
             content={
                 "success": False,
                 "store": FILE_SEARCH_STORE,
-                "error": str(e),
+                "error": str(exc),
             },
         )
 
 
+# ============================================================
+# UPLOAD
+# PDF ON DINH
+# ============================================================
+
 @app.post("/upload")
 def upload(file: UploadFile = File(...)):
-    """
-    Nhận PDF từ máy người dùng và đưa thẳng vào Gemini File Search Store.
-
-    Không lưu PDF lâu dài trên Render.
-    File tạm chỉ dùng trong lúc upload/index.
-    """
     filename = Path(file.filename or "document.pdf").name
 
     if not filename.lower().endswith(".pdf"):
@@ -244,14 +315,13 @@ def upload(file: UploadFile = File(...)):
             status_code=400,
             content={
                 "success": False,
-                "error": "Chỉ nhận file PDF."
+                "error": "Hien tai chuc nang upload chi nhan file PDF.",
             },
         )
 
     temp_path = None
 
     try:
-        # Lưu file upload thành file tạm để SDK Gemini đọc.
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=".pdf",
@@ -264,34 +334,36 @@ def upload(file: UploadFile = File(...)):
                     break
                 tmp.write(chunk)
 
+        logger.info("Upload/index: %s", filename)
+
         operation = client.file_search_stores.upload_to_file_search_store(
             file=temp_path,
             file_search_store_name=FILE_SEARCH_STORE,
-            config={
-                "display_name": filename,
-            },
+            config={"display_name": filename},
         )
 
-        # Chờ Gemini hoàn tất việc chunk -> embedding -> indexing.
         while not operation.done:
             time.sleep(3)
             operation = client.operations.get(operation)
 
+        _invalidate_document_cache()
+
         return {
             "success": True,
-            "message": "Đã đưa tài liệu vào kho THỦY LỢI AI.",
+            "message": "Da dua tai lieu vao kho THUY LOI AI.",
             "filename": filename,
             "store": FILE_SEARCH_STORE,
             "operation": getattr(operation, "name", None),
         }
 
-    except Exception as e:
+    except Exception as exc:
+        logger.exception("Upload loi: %s", filename)
         return JSONResponse(
             status_code=200,
             content={
                 "success": False,
                 "filename": filename,
-                "error": str(e),
+                "error": str(exc),
             },
         )
 
@@ -307,17 +379,13 @@ def upload(file: UploadFile = File(...)):
             except OSError:
                 pass
 
+
+# ============================================================
+# ASK
+# ============================================================
+
 @app.post("/ask")
 def ask(request: AskRequest):
-    """
-    Hỏi THỦY LỢI AI bằng Gemini File Search.
-
-    - Luôn dùng FILE_SEARCH_STORE cố định.
-    - Không tạo Store mới khi hỏi.
-    - Tự thử lại khi Gemini/API chậm hoặc lỗi tạm thời.
-    - Không trả lời bằng kiến thức ngoài kho tài liệu.
-    """
-
     question = (request.question or "").strip()
 
     if not question:
@@ -325,157 +393,95 @@ def ask(request: AskRequest):
             status_code=400,
             content={
                 "success": False,
-                "error": "Vui lòng nhập câu hỏi."
+                "error": "Vui long nhap cau hoi.",
             },
         )
 
-    # ---------------------------------------------------------
-    # KIỂM TRA KHO TÀI LIỆU
-    # ---------------------------------------------------------
+    # Kiem tra kho voi cache. Neu viec kiem tra bi loi tam thoi,
+    # van cho phep Gemini thu truy van File Search.
     try:
-        docs = _document_list()
-    except Exception as e:
-        return {
-            "success": False,
-            "status": "document_check_error",
-            "answer": (
-                "THỦY LỢI AI chưa kiểm tra được kho tài liệu. "
-                "Vui lòng thử lại sau ít giây."
-            ),
-            "error": str(e),
-            "store": FILE_SEARCH_STORE,
-        }
+        if _document_count() == 0:
+            return {
+                "success": False,
+                "status": "no_documents",
+                "answer": (
+                    "Kho THUY LOI AI hien chua co tai lieu. "
+                    "Hay tai tai lieu len bang chuc nang /upload truoc."
+                ),
+                "store": FILE_SEARCH_STORE,
+            }
+    except Exception as exc:
+        logger.warning(
+            "Khong kiem tra duoc document count; van thu Gemini: %s",
+            exc,
+        )
 
-    if not docs:
-        return {
-            "success": False,
-            "status": "no_documents",
-            "answer": (
-                "Kho THỦY LỢI AI hiện chưa có tài liệu. "
-                "Hãy tải tài liệu lên bằng chức năng /upload trước."
-            ),
-            "store": FILE_SEARCH_STORE,
-        }
-
-    # ---------------------------------------------------------
-    # PROMPT CHUYÊN NGÀNH
-    # ---------------------------------------------------------
     prompt = f"""
-Bạn là THỦY LỢI AI – trợ lý chuyên ngành thủy lợi.
+Ban la THUY LOI AI - tro ly chuyen nganh thuy loi.
 
-QUY TẮC BẮT BUỘC:
+NGUON DU LIEU BAT BUOC:
+Su dung File Search Store duoc cung cap cho cau hoi nay lam nguon
+ho so chinh.
 
-1. Chỉ sử dụng thông tin được tìm thấy trong File Search Store:
-   {FILE_SEARCH_STORE}
+QUY TAC:
+1. Uu tien tuyet doi thong tin trong ho so THUY LOI AI.
+2. Khong tu bia so lieu, ten cong trinh, thong so ky thuat,
+   quy trinh, quy dinh hoac ket luan.
+3. Neu ho so khong co thong tin can thiet, noi ro:
+   "Toi chua tim thay thong tin nay trong kho tai lieu THUY LOI AI."
+4. Neu cau hoi ve mot cong trinh cu the, uu tien tai lieu cua dung
+   cong trinh do.
+5. Tra loi bang tieng Viet, ro rang va de doc tren dien thoai.
+6. Giu nguyen so lieu va don vi trong ho so.
+7. Neu xac dinh duoc tai lieu, ghi o cuoi:
+   "Nguon ho so: [ten tai lieu]".
 
-2. Ưu tiên tuyệt đối các tài liệu đã được tải vào kho.
-
-3. Không tự bịa số liệu, tên công trình, thông số kỹ thuật,
-   quy trình, quy định hoặc kết luận.
-
-4. Nếu tài liệu không có thông tin để trả lời, phải nói rõ:
-   "Tôi chưa tìm thấy thông tin này trong kho tài liệu THỦY LỢI AI."
-
-5. Nếu câu hỏi liên quan đến một công trình cụ thể,
-   hãy ưu tiên tài liệu của đúng công trình đó.
-
-6. Trả lời bằng tiếng Việt, rõ ràng, ngắn gọn nhưng đầy đủ.
-
-7. Nếu có số liệu trong tài liệu, giữ nguyên đơn vị và giá trị.
-
-8. Nếu có thể xác định nguồn tài liệu, ghi:
-   "Nguồn hồ sơ: [tên tài liệu]"
-
-CÂU HỎI CỦA NGƯỜI DÙNG:
-
+CAU HOI NGUOI DUNG:
 {question}
 """
 
-    # ---------------------------------------------------------
-    # HÀM GỌI GEMINI
-    # ---------------------------------------------------------
     def call_gemini():
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
+        # QUAN TRONG: dung MODEL.
+        # Ban code cu dung GEMINI_MODEL nhung bien nay khong duoc khai bao,
+        # lam /ask that bai sau khi retry.
+        return client.models.generate_content(
+            model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[
                     types.Tool(
                         file_search=types.FileSearch(
-                            file_search_store_names=[
-                                FILE_SEARCH_STORE
-                            ]
+                            file_search_store_names=[FILE_SEARCH_STORE]
                         )
                     )
                 ]
             ),
         )
 
-        return response
-
-    # ---------------------------------------------------------
-    # THỬ LẠI 3 LẦN
-    # ---------------------------------------------------------
     last_error = None
 
-    for attempt in range(3):
-
+    # Retry 3 lan: 2s -> 4s.
+    for attempt in range(1, 4):
         try:
-            response = call_gemini()
+            logger.info(
+                "ASK %s/3 | %s",
+                attempt,
+                question[:120],
+            )
 
+            response = call_gemini()
             answer = getattr(response, "text", None)
 
             if answer:
                 answer = answer.strip()
 
-            # -------------------------------------------------
-            # KIỂM TRA CÂU TRẢ LỜI
-            # -------------------------------------------------
             if answer:
+                sources = _extract_sources(response)
 
-                # Lấy thông tin grounding nếu Gemini trả về
-                sources = []
-
-                try:
-                    candidate = response.candidates[0]
-
-                    grounding = getattr(
-                        candidate,
-                        "grounding_metadata",
-                        None
-                    )
-
-                    if grounding:
-                        chunks = getattr(
-                            grounding,
-                            "grounding_chunks",
-                            []
-                        )
-
-                        for chunk in chunks or []:
-
-                            retrieved = getattr(
-                                chunk,
-                                "retrieved_context",
-                                None
-                            )
-
-                            if retrieved:
-
-                                file_name = getattr(
-                                    retrieved,
-                                    "title",
-                                    None
-                                )
-
-                                if file_name:
-                                    sources.append(file_name)
-
-                except Exception:
-                    pass
-
-                # Xóa nguồn trùng
-                sources = list(dict.fromkeys(sources))
+                logger.info(
+                    "ASK thanh cong | sources=%s",
+                    sources,
+                )
 
                 return {
                     "success": True,
@@ -485,44 +491,44 @@ CÂU HỎI CỦA NGƯỜI DÙNG:
                     "sources": sources,
                 }
 
-            last_error = "Gemini không trả về nội dung."
+            last_error = "Gemini khong tra ve noi dung."
 
-        except Exception as e:
+        except Exception as exc:
+            last_error = str(exc)
+            logger.warning(
+                "ASK loi %s/3: %s",
+                attempt,
+                exc,
+            )
 
-            last_error = str(e)
+        if attempt < 3:
+            time.sleep(2 * attempt)
 
-            # Không dừng ngay.
-            # Cho Gemini một khoảng thời gian để hồi phục.
-            if attempt < 2:
-                time.sleep(2 * (attempt + 1))
+    logger.error("ASK that bai sau 3 lan: %s", last_error)
 
-    # ---------------------------------------------------------
-    # SAU 3 LẦN VẪN THẤT BẠI
-    # ---------------------------------------------------------
     return {
         "success": False,
-        "status": "gemini_error",
+        "status": "temporary_error",
         "answer": (
-            "⚠️ THỦY LỢI AI tạm thời chưa lấy được câu trả lời "
-            "từ kho dữ liệu Gemini. Hệ thống đã tự thử lại 3 lần. "
-            "Vui lòng thử lại sau ít giây."
+            "THUY LOI AI tam thoi chua lay duoc cau tra loi "
+            "tu kho du lieu Gemini. He thong da tu thu lai 3 lan. "
+            "Vui long thu lai sau it giay."
         ),
-        "error": last_error,
         "store": FILE_SEARCH_STORE,
     }
 
 
-    except Exception as e:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": False,
-                "status": "error",
-                "answer": "THỦY LỢI AI chưa thể trả lời câu hỏi.",
-                "error": str(e),
-                "engine": "Gemini File Search",
-            },
-        )
+# ============================================================
+# LOCAL / RENDER
+# ============================================================
 
+if __name__ == "__main__":
+    import uvicorn
 
-# Render chạy: uvicorn server:app --host 0.0.0.0 --port $PORT
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+    )
