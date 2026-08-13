@@ -7,306 +7,212 @@
 <title>THỦY LỢI AI</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;width:100%;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:#f4f7fa;color:#17212b}
+html,body{margin:0;padding:0;width:100%;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f4f7fa;color:#17212b}
 body{overflow-x:hidden}
 .header{background:#08233d;color:#fff;padding:12px 14px;position:sticky;top:0;z-index:10}
 .header-inner{max-width:760px;margin:auto;display:flex;align-items:center;gap:10px}
 .logo{width:42px;height:42px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;flex:none}
-.brand{min-width:0}
-.brand h1{font-size:18px;margin:0;font-weight:700}
-.brand p{font-size:11px;margin:3px 0 0;opacity:.75}
-.status{margin-left:auto;font-size:11px;white-space:nowrap}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f0ae32;margin-right:5px}
-.dot.ok{background:#22c76b}
-.dot.bad{background:#e45555}
-
+.brand{min-width:0}.brand h1{font-size:18px;margin:0;font-weight:750}.brand p{font-size:11px;margin:3px 0 0;opacity:.75}
+.status{margin-left:auto;font-size:11px;white-space:nowrap}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f0ae32;margin-right:5px}.dot.ok{background:#22c76b}.dot.bad{background:#e45555}
 main{width:100%;max-width:760px;margin:auto;padding:12px 10px 28px}
 .card{background:#fff;border:1px solid #dce5ed;border-radius:15px;margin-bottom:11px;box-shadow:0 5px 18px rgba(16,32,48,.06)}
-.hero{padding:15px}
-.hero h2{font-size:19px;margin:0 0 6px}
-.hero p{font-size:13px;line-height:1.55;color:#627284;margin:0}
-.info{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
-.info span{font-size:10px;color:#496075;background:#f3f7fb;border:1px solid #e0e8ef;border-radius:9px;padding:6px 8px}
-
+.hero{padding:15px}.hero h2{font-size:19px;margin:0 0 6px}.hero p{font-size:13px;line-height:1.55;color:#627284;margin:0}
+.info{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}.info span{font-size:10px;color:#496075;background:#f3f7fb;border:1px solid #e0e8ef;border-radius:9px;padding:6px 8px}
 .quick-title{font-size:12px;font-weight:bold;padding:12px 13px 7px;color:#33495c}
-.quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:0 10px 11px}
-.quick button{min-height:42px;border:1px solid #dbe5ee;background:#f9fbfd;border-radius:10px;padding:7px;font-size:11px;color:#344b5e}
-.quick button:active{background:#eaf3ff}
-
-.chat{overflow:hidden}
-.chat-title{height:47px;padding:0 13px;border-bottom:1px solid #e1e8ee;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:bold}
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:0 10px 11px}.quick button{min-height:42px;border:1px solid #dbe5ee;background:#f9fbfd;border-radius:10px;padding:7px;font-size:11px;color:#344b5e}.quick button:active{background:#eaf3ff}
+.chat{overflow:hidden}.chat-title{height:47px;padding:0 13px;border-bottom:1px solid #e1e8ee;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:bold}
 .clear{border:1px solid #dce5ed;background:#fff;border-radius:8px;padding:5px 8px;font-size:10px;color:#647588}
-.messages{height:52vh;min-height:330px;max-height:600px;overflow-y:auto;padding:12px;background:#fafcfe}
-.msg{display:flex;margin-bottom:10px}
-.msg.user{justify-content:flex-end}
-.bubble{max-width:91%;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.6;word-break:break-word}
-.user .bubble{background:#1677ff;color:#fff;border-top-right-radius:4px}
-.assistant .bubble{background:#fff;border:1px solid #dce5ed;border-top-left-radius:4px}
-.bubble p{margin:0 0 7px}.bubble p:last-child{margin-bottom:0}
-.bubble strong{font-weight:700}
-.bubble ul,.bubble ol{margin:5px 0 5px 18px;padding:0}
-.bubble li{margin:2px 0}
+.messages{height:52vh;min-height:330px;max-height:600px;overflow-y:auto;padding:12px;background:#fafcfe;-webkit-overflow-scrolling:touch}
+.msg{display:flex;margin-bottom:10px}.msg.user{justify-content:flex-end}
+.bubble{max-width:92%;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.6;word-break:break-word;overflow-wrap:anywhere}
+.user .bubble{background:#1677ff;color:#fff;border-top-right-radius:4px}.assistant .bubble{background:#fff;border:1px solid #dce5ed;border-top-left-radius:4px}
+.bubble p{margin:0 0 7px}.bubble p:last-child{margin-bottom:0}.bubble strong{font-weight:750}.bubble ul,.bubble ol{margin:5px 0 5px 18px;padding:0}.bubble li{margin:2px 0}
 .source{margin-top:9px;padding:8px;border-radius:8px;background:#f3f7fb;border:1px solid #dfe8ef;font-size:10px;color:#51677b}
-.typing{display:none;padding:8px 12px;border-top:1px solid #e1e8ee;color:#68798a;font-size:11px}
-.typing.show{display:block}
-
-.compose{background:#fff;border-top:1px solid #e1e8ee;padding:9px}
-.row{display:flex;gap:7px;align-items:stretch}
-textarea{flex:1;min-width:0;height:48px;max-height:130px;border:1px solid #cbd8e4;border-radius:11px;padding:10px;font-size:13px;line-height:1.4;resize:none;outline:none}
-textarea:focus{border-color:#1677ff}
-.send{width:62px;border:0;border-radius:11px;background:#1677ff;color:#fff;font-weight:bold;font-size:12px}
-.send:disabled{opacity:.55}
-.hint{font-size:9px;color:#7a8996;padding:5px 2px 0}
-.footer{text-align:center;font-size:9px;color:#81909d;padding:6px}
-
-.docs{display:none;padding:0 10px 10px}
-.docs.show{display:block}
-.doc{padding:8px;border:1px solid #e0e7ee;border-radius:8px;background:#fafcfe;margin-top:6px;font-size:10px}
-.doc b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.doc i{color:#21a765;font-style:normal}
-
-@media(max-width:380px){
-  .brand h1{font-size:17px}
-  .status{font-size:9px}
-  .hero h2{font-size:18px}
-  .bubble{font-size:12px}
-  .quick button{font-size:10px}
-  .messages{min-height:300px}
-}
+.typing{display:none;padding:8px 12px;border-top:1px solid #e1e8ee;color:#68798a;font-size:11px}.typing.show{display:block}
+.compose{background:#fff;border-top:1px solid #e1e8ee;padding:9px}.row{display:flex;gap:7px;align-items:stretch}
+textarea{flex:1;min-width:0;height:48px;max-height:130px;border:1px solid #cbd8e4;border-radius:11px;padding:10px;font-size:13px;line-height:1.4;resize:none;outline:none}textarea:focus{border-color:#1677ff}
+.send{width:62px;border:0;border-radius:11px;background:#1677ff;color:#fff;font-weight:bold;font-size:12px}.send:disabled{opacity:.55}
+.hint{font-size:9px;color:#7a8996;padding:5px 2px 0}.footer{text-align:center;font-size:9px;color:#81909d;padding:6px}
+.docs{display:none;padding:0 10px 10px}.docs.show{display:block}.doc{padding:8px;border:1px solid #e0e7ee;border-radius:8px;background:#fafcfe;margin-top:6px;font-size:10px}.doc b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.doc i{color:#21a765;font-style:normal}
+@media(max-width:380px){.brand h1{font-size:17px}.status{font-size:9px}.hero h2{font-size:18px}.bubble{font-size:12px}.quick button{font-size:10px}.messages{min-height:300px}}
 </style>
 </head>
-
 <body>
 <header class="header">
   <div class="header-inner">
     <div class="logo">💧</div>
-    <div class="brand">
-      <h1>THỦY LỢI AI</h1>
-      <p>Trợ lý AI chuyên ngành Thủy lợi</p>
-    </div>
-    <div class="status">
-      <span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span>
-    </div>
+    <div class="brand"><h1>THỦY LỢI AI</h1><p>Trợ lý AI chuyên ngành Thủy lợi</p></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span></div>
   </div>
 </header>
 
 <main>
-  <section class="card hero">
-    <h2>Xin chào 👋</h2>
-    <p>Tra cứu và phân tích hồ sơ chuyên ngành Thủy lợi bằng AI. Hệ thống ưu tiên căn cứ từ kho tài liệu đã được cung cấp.</p>
-    <div class="info">
-      <span>🤖 Gemini File Search</span>
-      <span>📚 <b id="count">—</b> tài liệu</span>
-    </div>
-  </section>
+<section class="card hero">
+  <h2>Xin chào 👋</h2>
+  <p>Tra cứu và phân tích hồ sơ chuyên ngành Thủy lợi bằng AI. Hệ thống ưu tiên căn cứ từ kho tài liệu đã được cung cấp.</p>
+  <div class="info"><span>🤖 Gemini File Search</span><span>📚 <b id="count">—</b> tài liệu</span></div>
+</section>
 
-  <section class="card">
-    <div class="quick-title">⚡ Câu hỏi nhanh</div>
-    <div class="quick">
-      <button data-q="Hãy tóm tắt nội dung chính của các tài liệu hiện có.">📚 Tóm tắt hồ sơ</button>
-      <button data-q="Hãy nêu các thông số kỹ thuật quan trọng của công trình trong hồ sơ.">🛠️ Thông số kỹ thuật</button>
-      <button data-q="Hãy tìm các quy định và căn cứ pháp lý trong các tài liệu hiện có.">📄 Quy định pháp lý</button>
-      <button data-q="Hãy tổng hợp các nội dung quan trọng phục vụ công tác quản lý vận hành.">💧 Vận hành</button>
-    </div>
-    <div class="quick-title" style="padding-top:3px">
-      <button class="clear" id="docsBtn">📂 Xem kho hồ sơ</button>
-    </div>
-    <div class="docs" id="docs"><div id="docList"></div></div>
-  </section>
+<section class="card">
+  <div class="quick-title">⚡ Câu hỏi nhanh</div>
+  <div class="quick">
+    <button data-q="Hãy tóm tắt nội dung chính của các tài liệu hiện có.">📚 Tóm tắt hồ sơ</button>
+    <button data-q="Hãy nêu các thông số kỹ thuật quan trọng của công trình trong hồ sơ.">🛠️ Thông số kỹ thuật</button>
+    <button data-q="Hãy tìm các quy định và căn cứ pháp lý trong các tài liệu hiện có.">📄 Quy định pháp lý</button>
+    <button data-q="Hãy tổng hợp các nội dung quan trọng phục vụ công tác quản lý vận hành.">💧 Vận hành</button>
+  </div>
+  <div class="quick-title" style="padding-top:3px"><button class="clear" id="docsBtn">📂 Xem kho hồ sơ</button></div>
+  <div class="docs" id="docs"><div id="docList"></div></div>
+</section>
 
-  <section class="card chat">
-    <div class="chat-title">
-      <span>💬 Trao đổi với THỦY LỢI AI</span>
-      <button class="clear" id="clear">Xóa</button>
-    </div>
-
-    <div class="messages" id="messages">
-      <div class="msg assistant">
-        <div class="bubble">
-          <strong>THỦY LỢI AI đã sẵn sàng. 🌿</strong>
-          <p>Hãy nhập câu hỏi bên dưới.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
-
-    <div class="compose">
-      <div class="row">
-        <textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea>
-        <button class="send" id="send">Gửi</button>
-      </div>
-      <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
-    </div>
-  </section>
-
-  <div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
+<section class="card chat">
+  <div class="chat-title"><span>💬 Trao đổi với THỦY LỢI AI</span><button class="clear" id="clear">Xóa</button></div>
+  <div class="messages" id="messages">
+    <div class="msg assistant"><div class="bubble"><strong>THỦY LỢI AI đã sẵn sàng. 🌿</strong><p>Hãy nhập câu hỏi bên dưới.</p></div></div>
+  </div>
+  <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
+  <div class="compose">
+    <div class="row"><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send">Gửi</button></div>
+    <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
+  </div>
+</section>
+<div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
 </main>
 
 <script>
-const q=document.getElementById("question");
-const send=document.getElementById("send");
-const messages=document.getElementById("messages");
-const typing=document.getElementById("typing");
-const dot=document.getElementById("dot");
-const statusEl=document.getElementById("status");
-const count=document.getElementById("count");
-const docs=document.getElementById("docs");
-const docList=document.getElementById("docList");
+const q=document.getElementById("question"),send=document.getElementById("send"),messages=document.getElementById("messages");
+const typing=document.getElementById("typing"),dot=document.getElementById("dot"),statusEl=document.getElementById("status");
+const count=document.getElementById("count"),docs=document.getElementById("docs"),docList=document.getElementById("docList");
 
-function esc(s){
-  return String(s??"").replace(/[&<>"']/g,c=>({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-  }[c]));
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+
+/* Làm sạch LaTeX/Markdown thường gặp trong câu trả lời Gemini */
+function cleanText(s){
+  s=String(s??"");
+  s=s.replace(/\\text\s*\{([^{}]*)\}/g,"$1");
+  s=s.replace(/\\mathrm\s*\{([^{}]*)\}/g,"$1");
+  s=s.replace(/\\operatorname\s*\{([^{}]*)\}/g,"$1");
+  s=s.replace(/\\varnothing/g,"Ø").replace(/\\emptyset/g,"Ø");
+  s=s.replace(/\\times/g,"×").replace(/\\cdot/g,"·");
+  s=s.replace(/\\pm/g,"±").replace(/\\leq/g,"≤").replace(/\\geq/g,"≥");
+  s=s.replace(/\\approx/g,"≈").replace(/\\Delta/g,"Δ");
+  s=s.replace(/\\%/g,"%");
+  s=s.replace(/m\s*\^\s*3/g,"m³").replace(/m3\b/gi,"m³");
+  s=s.replace(/m\s*\^\s*2/g,"m²");
+  s=s.replace(/\\left|\\right/g,"");
+  s=s.replace(/\$\$([\s\S]*?)\$\$/g,"$1").replace(/\$([^$\n]+)\$/g,"$1");
+  s=s.replace(/\\([A-Za-z]+)\s*\{([^{}]*)\}/g,"$2");
+  s=s.replace(/\\([A-Za-z]+)/g,"$1");
+  return s;
 }
 
 function md(s){
-  s=esc(s);
-  s=s.replace(/\\text\{([^}]*)\}/g,"$1");
-  s=s.replace(/\\times/g,"×");
-  s=s.replace(/m\^3/g,"m³");
-  s=s.replace(/m3/g,"m³");
+  s=esc(cleanText(s));
   s=s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
   s=s.replace(/__([^_]+)__/g,"<strong>$1</strong>");
+  s=s.replace(/^[-•]\s+(.+)$/gm,"• $1");
   s=s.replace(/\n/g,"<br>");
   return s;
 }
 
 function addUser(text){
-  const m=document.createElement("div");
-  m.className="msg user";
-  const b=document.createElement("div");
-  b.className="bubble";
-  b.textContent=text;
-  m.appendChild(b);
-  messages.appendChild(m);
-  messages.scrollTop=messages.scrollHeight;
+  const m=document.createElement("div");m.className="msg user";
+  const b=document.createElement("div");b.className="bubble";b.textContent=text;m.appendChild(b);
+  messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
+}
+function addAI(text,citations){
+  const m=document.createElement("div");m.className="msg assistant";
+  const b=document.createElement("div");b.className="bubble";
+  b.innerHTML=md(text||"Không có câu trả lời.");
+  if(Array.isArray(citations)&&citations.length){
+    const box=document.createElement("div");box.className="source";box.innerHTML="<b>📚 Nguồn hồ sơ</b>";
+    const seen=new Set();
+    citations.forEach(c=>{
+      const name=c?.title||c?.display_name||c?.name;
+      if(name&&!seen.has(name)){seen.add(name);const line=document.createElement("div");line.textContent="• "+name;box.appendChild(line);}
+    });
+    if(seen.size)b.appendChild(box);
+  }
+  m.appendChild(b);messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
 }
 
-function addAI(text,citations){
-  const m=document.createElement("div");
-  m.className="msg assistant";
-  const b=document.createElement("div");
-  b.className="bubble";
-  b.innerHTML=md(text||"Không có câu trả lời.");
-
-  if(Array.isArray(citations)&&citations.length){
-    const box=document.createElement("div");
-    box.className="source";
-    box.innerHTML="<b>📚 Nguồn hồ sơ</b>";
-    const seen={};
-    citations.forEach(c=>{
-      const name=c.title||c.display_name||c.name;
-      if(name&&!seen[name]){
-        seen[name]=1;
-        const line=document.createElement("div");
-        line.textContent="• "+name;
-        box.appendChild(line);
-      }
-    });
-    b.appendChild(box);
-  }
-
-  m.appendChild(b);
-  messages.appendChild(m);
-  messages.scrollTop=messages.scrollHeight;
+async function fetchJSON(url,options={},timeout=40000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const r=await fetch(url,{...options,signal:controller.signal,cache:"no-store"});
+    const text=await r.text();
+    let data={};
+    try{data=text?JSON.parse(text):{};}catch{throw new Error("Server trả về dữ liệu không hợp lệ.");}
+    if(!r.ok)throw new Error(data.detail||data.error||("HTTP "+r.status));
+    return data;
+  }finally{clearTimeout(timer);}
 }
 
 async function health(){
   try{
-    const r=await fetch("/health",{cache:"no-store"});
-    const d=await r.json();
+    const d=await fetchJSON("/health",{},12000);
     const ok=d.status==="ok" && d.gemini_configured && d.file_search_ready;
-    dot.className="dot "+(ok?"ok":"bad");
-    statusEl.textContent=ok?"Đã kết nối":"Chưa sẵn sàng";
-    if(Number.isFinite(d.documents))count.textContent=d.documents;
-  }catch(e){
-    dot.className="dot bad";
-    statusEl.textContent="Không kết nối";
-  }
+    dot.className="dot "+(ok?"ok":"bad");statusEl.textContent=ok?"Đã kết nối":"Chưa sẵn sàng";
+    if(Number.isFinite(Number(d.documents)))count.textContent=d.documents;
+  }catch(e){dot.className="dot bad";statusEl.textContent="Không kết nối";}
 }
 
 async function loadDocs(){
   try{
-    const r=await fetch("/documents",{cache:"no-store"});
-    const d=await r.json();
-    docList.innerHTML="";
-    if(!d.documents||!d.documents.length){
-      docList.innerHTML='<div class="doc">Kho hồ sơ hiện chưa có tài liệu.</div>';
-      return;
-    }
+    const d=await fetchJSON("/documents",{},15000);docList.innerHTML="";
+    if(!Array.isArray(d.documents)||!d.documents.length){docList.innerHTML='<div class="doc">Kho hồ sơ hiện chưa có tài liệu.</div>';return;}
     count.textContent=d.count;
     d.documents.forEach(x=>{
-      const el=document.createElement("div");
-      el.className="doc";
-      el.innerHTML="<b>"+esc(x.display_name||x.name||"Tài liệu")+
-        "</b><i>● "+esc(x.state||"ACTIVE")+"</i>";
+      const el=document.createElement("div");el.className="doc";
+      el.innerHTML="<b>"+esc(x.display_name||x.name||"Tài liệu")+"</b><i>● "+esc(x.state||"ACTIVE")+"</i>";
       docList.appendChild(el);
     });
-  }catch(e){
-    docList.innerHTML='<div class="doc">Không tải được danh sách hồ sơ.</div>';
+  }catch(e){docList.innerHTML='<div class="doc">Không tải được danh sách hồ sơ.</div>';}
+}
+
+/* Gọi /ask tối đa 3 lần. Rất quan trọng vì backend có thể trả HTTP 200 nhưng status=error khi Gemini File Search tạm thời chưa trả lời. */
+async function askWithRetry(question){
+  let lastError="Không thể lấy câu trả lời.";
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      const d=await fetchJSON("/ask",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
+        body:JSON.stringify({question})
+      },45000);
+
+      const failed=d.status==="error" || d.success===false || d.error;
+      if(!failed){
+        return d;
+      }
+      lastError=d.answer||d.error||"THỦY LỢI AI chưa thể trả lời câu hỏi.";
+    }catch(e){
+      lastError=e.name==="AbortError"?"Hệ thống phản hồi quá lâu.":(e.message||lastError);
+    }
+    if(attempt<3)await new Promise(r=>setTimeout(r,1200*attempt));
   }
+  throw new Error(lastError);
 }
 
 async function ask(){
-  const question=q.value.trim();
-  if(!question)return;
-
-  addUser(question);
-  q.value="";
-  send.disabled=true;
-  q.disabled=true;
-  typing.classList.add("show");
-
+  const question=q.value.trim();if(!question||send.disabled)return;
+  addUser(question);q.value="";send.disabled=true;q.disabled=true;typing.classList.add("show");
   try{
-    const r=await fetch("/ask",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({question:question})
-    });
-
-    const d=await r.json();
-
-    if(!r.ok || d.success===false || d.status==="error"){
-      throw new Error(d.answer||d.error||"Không thể xử lý câu hỏi.");
-    }
-
-    addAI(d.answer,d.citations||d.sources||[]);
+    const d=await askWithRetry(question);
+    addAI(d.answer||d.message||"Không có câu trả lời.",d.citations||d.sources||[]);
   }catch(e){
-    addAI("⚠️ Không thể lấy câu trả lời.\n\n"+e.message,[]);
+    addAI("⚠️ Chưa lấy được câu trả lời.\n\n"+e.message,[]);
   }finally{
-    send.disabled=false;
-    q.disabled=false;
-    typing.classList.remove("show");
-    q.focus();
+    send.disabled=false;q.disabled=false;typing.classList.remove("show");q.focus();
   }
 }
 
 send.onclick=ask;
-
-q.addEventListener("keydown",function(e){
-  if(e.key==="Enter"&&!e.shiftKey){
-    e.preventDefault();
-    ask();
-  }
-});
-
-document.getElementById("clear").onclick=function(){
-  messages.innerHTML=
-    '<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';
-};
-
-document.getElementById("docsBtn").onclick=function(){
-  docs.classList.toggle("show");
-  if(docs.classList.contains("show"))loadDocs();
-};
-
-document.querySelectorAll(".quick button").forEach(function(btn){
-  btn.onclick=function(){
-    q.value=btn.getAttribute("data-q")||"";
-    q.focus();
-  };
-});
+q.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}});
+document.getElementById("clear").onclick=()=>{messages.innerHTML='<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';};
+document.getElementById("docsBtn").onclick=()=>{docs.classList.toggle("show");if(docs.classList.contains("show"))loadDocs();};
+document.querySelectorAll(".quick button").forEach(btn=>btn.onclick=()=>{q.value=btn.getAttribute("data-q")||"";q.focus();});
 
 health();
 setInterval(health,30000);
