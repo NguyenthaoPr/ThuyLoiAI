@@ -307,10 +307,17 @@ def upload(file: UploadFile = File(...)):
             except OSError:
                 pass
 
-
 @app.post("/ask")
 def ask(request: AskRequest):
-    """Hỏi Gemini và bắt buộc dùng File Search Store làm nguồn dữ liệu."""
+    """
+    Hỏi THỦY LỢI AI bằng Gemini File Search.
+
+    - Luôn dùng FILE_SEARCH_STORE cố định.
+    - Không tạo Store mới khi hỏi.
+    - Tự thử lại khi Gemini/API chậm hoặc lỗi tạm thời.
+    - Không trả lời bằng kiến thức ngoài kho tài liệu.
+    """
+
     question = (request.question or "").strip()
 
     if not question:
@@ -322,67 +329,188 @@ def ask(request: AskRequest):
             },
         )
 
+    # ---------------------------------------------------------
+    # KIỂM TRA KHO TÀI LIỆU
+    # ---------------------------------------------------------
     try:
-        # Kiểm tra kho trước khi hỏi để tránh trả lời khi kho hoàn toàn rỗng.
         docs = _document_list()
+    except Exception as e:
+        return {
+            "success": False,
+            "status": "document_check_error",
+            "answer": (
+                "THỦY LỢI AI chưa kiểm tra được kho tài liệu. "
+                "Vui lòng thử lại sau ít giây."
+            ),
+            "error": str(e),
+            "store": FILE_SEARCH_STORE,
+        }
 
-        if len(docs) == 0:
-            return {
-                "success": False,
-                "status": "no_documents",
-                "answer": (
-                    "Kho THỦY LỢI AI hiện chưa có tài liệu. "
-                    "Hãy tải PDF lên bằng chức năng /upload trước."
-                ),
-                "store": FILE_SEARCH_STORE,
-            }
+    if not docs:
+        return {
+            "success": False,
+            "status": "no_documents",
+            "answer": (
+                "Kho THỦY LỢI AI hiện chưa có tài liệu. "
+                "Hãy tải tài liệu lên bằng chức năng /upload trước."
+            ),
+            "store": FILE_SEARCH_STORE,
+        }
 
-        prompt = f"""
-Bạn là TRỢ LÝ AI CHUYÊN NGÀNH THỦY LỢI.
+    # ---------------------------------------------------------
+    # PROMPT CHUYÊN NGÀNH
+    # ---------------------------------------------------------
+    prompt = f"""
+Bạn là THỦY LỢI AI – trợ lý chuyên ngành thủy lợi.
 
-Hãy trả lời câu hỏi dựa trước hết và chủ yếu vào các tài liệu
-được tìm thấy trong kho hồ sơ THỦY LỢI AI.
+QUY TẮC BẮT BUỘC:
 
-Nguyên tắc:
-1. Không tự bịa số liệu, điều khoản, tên văn bản hoặc nội dung hồ sơ.
-2. Nếu tài liệu không đủ thông tin, nói rõ: "Tài liệu hiện có chưa đủ thông tin để kết luận."
-3. Khi có thể, nêu rõ tên tài liệu làm căn cứ.
-4. Trả lời bằng tiếng Việt, rõ ràng, ngắn gọn nhưng có chiều sâu chuyên môn.
-5. Nếu câu hỏi yêu cầu trích dẫn văn bản, ưu tiên nội dung đúng theo tài liệu.
+1. Chỉ sử dụng thông tin được tìm thấy trong File Search Store:
+   {FILE_SEARCH_STORE}
 
-CÂU HỎI:
+2. Ưu tiên tuyệt đối các tài liệu đã được tải vào kho.
+
+3. Không tự bịa số liệu, tên công trình, thông số kỹ thuật,
+   quy trình, quy định hoặc kết luận.
+
+4. Nếu tài liệu không có thông tin để trả lời, phải nói rõ:
+   "Tôi chưa tìm thấy thông tin này trong kho tài liệu THỦY LỢI AI."
+
+5. Nếu câu hỏi liên quan đến một công trình cụ thể,
+   hãy ưu tiên tài liệu của đúng công trình đó.
+
+6. Trả lời bằng tiếng Việt, rõ ràng, ngắn gọn nhưng đầy đủ.
+
+7. Nếu có số liệu trong tài liệu, giữ nguyên đơn vị và giá trị.
+
+8. Nếu có thể xác định nguồn tài liệu, ghi:
+   "Nguồn hồ sơ: [tên tài liệu]"
+
+CÂU HỎI CỦA NGƯỜI DÙNG:
+
 {question}
-""".strip()
+"""
 
+    # ---------------------------------------------------------
+    # HÀM GỌI GEMINI
+    # ---------------------------------------------------------
+    def call_gemini():
         response = client.models.generate_content(
-            model=MODEL,
+            model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[
                     types.Tool(
                         file_search=types.FileSearch(
-                            file_search_store_names=[FILE_SEARCH_STORE]
+                            file_search_store_names=[
+                                FILE_SEARCH_STORE
+                            ]
                         )
                     )
                 ]
             ),
         )
 
-        answer = getattr(response, "text", None)
+        return response
 
-        if not answer:
-            answer = "Gemini chưa trả về nội dung trả lời."
+    # ---------------------------------------------------------
+    # THỬ LẠI 3 LẦN
+    # ---------------------------------------------------------
+    last_error = None
 
-        return {
-            "success": True,
-            "status": "ok",
-            "answer": answer,
-            "engine": "Gemini File Search",
-            "model": MODEL,
-            "store": FILE_SEARCH_STORE,
-            "documents_available": len(docs),
-            "citations": _extract_citations(response),
-        }
+    for attempt in range(3):
+
+        try:
+            response = call_gemini()
+
+            answer = getattr(response, "text", None)
+
+            if answer:
+                answer = answer.strip()
+
+            # -------------------------------------------------
+            # KIỂM TRA CÂU TRẢ LỜI
+            # -------------------------------------------------
+            if answer:
+
+                # Lấy thông tin grounding nếu Gemini trả về
+                sources = []
+
+                try:
+                    candidate = response.candidates[0]
+
+                    grounding = getattr(
+                        candidate,
+                        "grounding_metadata",
+                        None
+                    )
+
+                    if grounding:
+                        chunks = getattr(
+                            grounding,
+                            "grounding_chunks",
+                            []
+                        )
+
+                        for chunk in chunks or []:
+
+                            retrieved = getattr(
+                                chunk,
+                                "retrieved_context",
+                                None
+                            )
+
+                            if retrieved:
+
+                                file_name = getattr(
+                                    retrieved,
+                                    "title",
+                                    None
+                                )
+
+                                if file_name:
+                                    sources.append(file_name)
+
+                except Exception:
+                    pass
+
+                # Xóa nguồn trùng
+                sources = list(dict.fromkeys(sources))
+
+                return {
+                    "success": True,
+                    "status": "ok",
+                    "answer": answer,
+                    "store": FILE_SEARCH_STORE,
+                    "sources": sources,
+                }
+
+            last_error = "Gemini không trả về nội dung."
+
+        except Exception as e:
+
+            last_error = str(e)
+
+            # Không dừng ngay.
+            # Cho Gemini một khoảng thời gian để hồi phục.
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+
+    # ---------------------------------------------------------
+    # SAU 3 LẦN VẪN THẤT BẠI
+    # ---------------------------------------------------------
+    return {
+        "success": False,
+        "status": "gemini_error",
+        "answer": (
+            "⚠️ THỦY LỢI AI tạm thời chưa lấy được câu trả lời "
+            "từ kho dữ liệu Gemini. Hệ thống đã tự thử lại 3 lần. "
+            "Vui lòng thử lại sau ít giây."
+        ),
+        "error": last_error,
+        "store": FILE_SEARCH_STORE,
+    }
+
 
     except Exception as e:
         return JSONResponse(
