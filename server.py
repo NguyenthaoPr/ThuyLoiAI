@@ -1,6 +1,7 @@
 import os
 import asyncio
 import random
+import re
 import tempfile
 import time
 import hashlib
@@ -112,7 +113,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi",
-    version="4.0",
+    version="5.0",
     lifespan=lifespan,
 )
 
@@ -127,6 +128,13 @@ app.add_middleware(
 
 class Question(BaseModel):
     question: str
+
+    # Bộ lọc metadata tùy chọn, ví dụ:
+    # loai="quy_trinh"
+    # cong_trinh="tu_cau"
+    # nam=2026
+    # Chỉ áp dụng khi frontend/admin truyền rõ bộ lọc.
+    metadata_filter: str | None = None
 
 
 def require_gemini():
@@ -187,6 +195,7 @@ async def health():
         "cache_enabled": CACHE_ENABLED,
         "cache_ttl": CACHE_TTL,
         "cache_max_entries": CACHE_MAX_ENTRIES,
+        "metadata_filter_supported": True,
     }
 
     # 1. Kiểm tra API key
@@ -244,9 +253,37 @@ async def api_info():
             "delete_pdf": "/documents/pdf",
             "upload": "/upload",
             "cache": "/cache",
+            "metadata": "/metadata",
             "clear_cache": "/cache",
             "protection": "queue + retry + cache stampede",
+            "metadata_filter": "optional on /ask",
         },
+    }
+
+
+@app.get("/metadata")
+async def metadata_info():
+    """Thông tin về metadata/filter đang được hỗ trợ."""
+    return {
+        "success": True,
+        "supported_fields": [
+            "loai",
+            "cong_trinh",
+            "nam",
+            "don_vi",
+            "hieu_luc",
+            "ten_file",
+        ],
+        "examples": [
+            'loai="quy_trinh"',
+            'cong_trinh="tu_cau"',
+            'nam=2026',
+            'loai="quy_trinh" AND cong_trinh="tu_cau"',
+        ],
+        "note": (
+            "Metadata chỉ được gắn cho tài liệu khi tài liệu được upload/import "
+            "với custom_metadata. 33 tài liệu hiện có không tự được gắn lại."
+        ),
     }
 
 
@@ -295,14 +332,22 @@ def normalize_question(question: str) -> str:
     return " ".join(str(question or "").strip().lower().split())
 
 
-def make_cache_key(question: str) -> str:
+def make_cache_key(
+    question: str,
+    metadata_filter: str | None = None,
+) -> str:
     """
-    Key phụ thuộc model + File Search Store + phiên bản cache.
-    Đổi model/store/CACHE_VERSION sẽ tự tạo cache key mới.
+    Key phụ thuộc model + File Search Store + metadata filter + câu hỏi.
+    Hai câu hỏi giống nhau nhưng dùng bộ lọc khác nhau không dùng chung cache.
     """
+    normalized_filter = " ".join(
+        str(metadata_filter or "").strip().split()
+    )
+
     raw = (
         f"{CACHE_VERSION}|{GEMINI_MODEL}|"
-        f"{store_name()}|{normalize_question(question)}"
+        f"{store_name()}|{normalized_filter}|"
+        f"{normalize_question(question)}"
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -317,14 +362,14 @@ async def get_inflight_lock(key: str):
         return lock
 
 
-async def get_cached_answer(question: str):
+async def get_cached_answer(question: str, metadata_filter: str | None = None):
     """Lấy câu trả lời còn hạn từ cache."""
     global cache_hits, cache_misses
 
     if not CACHE_ENABLED:
         return None
 
-    key = make_cache_key(question)
+    key = make_cache_key(question, metadata_filter)
     now = time.monotonic()
 
     async with cache_lock:
@@ -348,12 +393,12 @@ async def get_cached_answer(question: str):
         }
 
 
-async def set_cached_answer(question: str, answer: str, sources):
+async def set_cached_answer(question: str, answer: str, sources, metadata_filter: str | None = None):
     """Lưu một câu trả lời thành công vào cache."""
     if not CACHE_ENABLED:
         return
 
-    key = make_cache_key(question)
+    key = make_cache_key(question, metadata_filter)
 
     async with cache_lock:
         answer_cache[key] = {
@@ -385,17 +430,22 @@ async def cache_info():
         }
 
 
-def call_gemini(question: str):
+def call_gemini(question: str, metadata_filter: str | None = None):
     require_gemini()
+
+    file_search_tool = {
+        "type": "file_search",
+        "file_search_store_names": [store_name()],
+    }
+
+    if metadata_filter:
+        file_search_tool["metadata_filter"] = metadata_filter
 
     return gemini_client.interactions.create(
         model=GEMINI_MODEL,
         system_instruction=SYSTEM_PROMPT,
         input=question,
-        tools=[{
-            "type": "file_search",
-            "file_search_store_names": [store_name()],
-        }],
+        tools=[file_search_tool],
     )
 
 
@@ -424,6 +474,15 @@ def extract_answer_and_sources(result):
                 if source:
                     item["source"] = str(source)
 
+                # Gemini có thể trả custom metadata trong citation.
+                custom_metadata = getattr(annotation, "custom_metadata", None)
+
+                if custom_metadata:
+                    try:
+                        item["metadata"] = custom_metadata
+                    except Exception:
+                        pass
+
                 if item and item not in sources:
                     sources.append(item)
 
@@ -435,7 +494,10 @@ def extract_answer_and_sources(result):
     return answer, sources
 
 
-async def ask_gemini_with_retry(question: str):
+async def ask_gemini_with_retry(
+    question: str,
+    metadata_filter: str | None = None,
+):
     """
     Gọi Gemini có kiểm soát tải.
     - Chờ slot tối đa QUEUE_TIMEOUT giây.
@@ -462,7 +524,11 @@ async def ask_gemini_with_retry(question: str):
 
             try:
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(call_gemini, question),
+                    asyncio.to_thread(
+                        call_gemini,
+                        question,
+                        metadata_filter,
+                    ),
                     timeout=REQUEST_TIMEOUT,
                 )
             finally:
@@ -506,6 +572,17 @@ async def ask_gemini_with_retry(question: str):
 @app.post("/ask")
 async def ask(data: Question):
     question = data.question.strip()
+    metadata_filter = (
+        data.metadata_filter.strip()
+        if data.metadata_filter
+        else None
+    )
+
+    if metadata_filter and not metadata_filter_is_safe(metadata_filter):
+        return {
+            "status": "error",
+            "answer": "Bộ lọc tài liệu không hợp lệ hoặc quá dài.",
+        }
 
     print("=" * 60)
     print("CÂU HỎI:", question)
@@ -551,7 +628,7 @@ async def ask(data: Question):
 
     try:
         # 1. Kiểm tra cache trước.
-        cached = await get_cached_answer(question)
+        cached = await get_cached_answer(question, metadata_filter)
 
         if cached is not None:
             print("CACHE HIT - TRẢ CÂU TRẢ LỜI TỪ CACHE")
@@ -562,6 +639,7 @@ async def ask(data: Question):
                 "engine": "Gemini File Search",
                 "model": GEMINI_MODEL,
                 "cached": True,
+                "metadata_filter": metadata_filter,
             }
 
             if cached["sources"]:
@@ -571,13 +649,13 @@ async def ask(data: Question):
 
         # 2. Chống cache stampede:
         # cùng một câu hỏi tại cùng thời điểm chỉ một request gọi Gemini.
-        key = make_cache_key(question)
+        key = make_cache_key(question, metadata_filter)
         question_lock = await get_inflight_lock(key)
 
         async with question_lock:
             # Request này có thể đã chờ một request khác xử lý xong.
             # Kiểm tra cache lại trước khi gọi Gemini.
-            cached = await get_cached_answer(question)
+            cached = await get_cached_answer(question, metadata_filter)
 
             if cached is not None:
                 print("CACHE HIT SAU KHI CHỜ LOCK")
@@ -597,11 +675,11 @@ async def ask(data: Question):
 
             print("CACHE MISS - ĐANG GỬI CÂU HỎI GEMINI...")
 
-            answer, sources = await ask_gemini_with_retry(question)
+            answer, sources = await ask_gemini_with_retry(question, metadata_filter)
 
             print("ĐÃ NHẬN CÂU TRẢ LỜI GEMINI")
 
-            await set_cached_answer(question, answer, sources)
+            await set_cached_answer(question, answer, sources, metadata_filter)
 
             response = {
                 "status": "ok",
@@ -609,6 +687,7 @@ async def ask(data: Question):
                 "engine": "Gemini File Search",
                 "model": GEMINI_MODEL,
                 "cached": False,
+                "metadata_filter": metadata_filter,
             }
 
             if sources:
@@ -883,8 +962,96 @@ async def delete_pdf_documents():
         }
 
 
+def clean_metadata_key(value: str) -> str:
+    """Chuẩn hóa key metadata theo dạng chữ/số/gạch dưới."""
+    value = (value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9_]", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value[:64]
+
+
+def clean_metadata_value(value: str) -> str:
+    """Chuẩn hóa giá trị metadata để tránh chuỗi quá dài."""
+    return " ".join((value or "").strip().split())[:256]
+
+
+def build_custom_metadata(
+    filename: str,
+    loai: str = "",
+    cong_trinh: str = "",
+    nam: str = "",
+    don_vi: str = "",
+    hieu_luc: str = "",
+):
+    """
+    Tạo custom_metadata cho Gemini File Search.
+
+    Các trường đều tùy chọn. Nếu frontend chưa gửi metadata,
+    hệ thống vẫn upload bình thường.
+    """
+    items = []
+
+    def add_string(key: str, value: str):
+        value = clean_metadata_value(value)
+        if value:
+            items.append({
+                "key": clean_metadata_key(key),
+                "string_value": value,
+            })
+
+    def add_numeric(key: str, value: str):
+        value = (value or "").strip()
+        if not value:
+            return
+        try:
+            number = int(value)
+        except ValueError:
+            return
+        items.append({
+            "key": clean_metadata_key(key),
+            "numeric_value": number,
+        })
+
+    # Metadata người quản trị truyền vào.
+    add_string("loai", loai)
+    add_string("cong_trinh", cong_trinh)
+    add_numeric("nam", nam)
+    add_string("don_vi", don_vi)
+    add_string("hieu_luc", hieu_luc)
+
+    # Luôn lưu tên file để hỗ trợ truy vết.
+    add_string("ten_file", filename)
+
+    return items
+
+
+def metadata_filter_is_safe(metadata_filter: str | None) -> bool:
+    """
+    Kiểm tra sơ bộ metadata_filter.
+    Đây không phải bộ phân tích cú pháp đầy đủ của AIP-160;
+    mục tiêu là chặn ký tự điều khiển và chuỗi quá dài.
+    """
+    if not metadata_filter:
+        return True
+
+    value = metadata_filter.strip()
+
+    if len(value) > 500:
+        return False
+
+    forbidden = [";", "\\n", "\\r", "\\x00"]
+    return not any(item in value for item in forbidden)
+
+
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    loai: str = Form(""),
+    cong_trinh: str = Form(""),
+    nam: str = Form(""),
+    don_vi: str = Form(""),
+    hieu_luc: str = Form(""),
+):
     """Upload một file vào File Search Store hiện tại."""
     if gemini_client is None:
         return {
@@ -917,12 +1084,28 @@ async def upload_file(file: UploadFile = File(...)):
             temp.write(content)
             temp_path = temp.name
 
+        custom_metadata = build_custom_metadata(
+            filename=file.filename,
+            loai=loai,
+            cong_trinh=cong_trinh,
+            nam=nam,
+            don_vi=don_vi,
+            hieu_luc=hieu_luc,
+        )
+
+        upload_config = {
+            "display_name": file.filename,
+        }
+
+        if custom_metadata:
+            upload_config["custom_metadata"] = custom_metadata
+
         def do_upload():
             operation = (
                 gemini_client.file_search_stores.upload_to_file_search_store(
                     file=temp_path,
                     file_search_store_name=store_name(),
-                    config={"display_name": file.filename},
+                    config=upload_config,
                 )
             )
 
@@ -942,6 +1125,7 @@ async def upload_file(file: UploadFile = File(...)):
             "store": store_name(),
             "message": "Đã đưa file vào Gemini File Search Store.",
             "operation": str(operation),
+            "custom_metadata": custom_metadata,
             "cache_cleared": True,
         }
 
