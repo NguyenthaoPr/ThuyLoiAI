@@ -54,9 +54,10 @@ GEMINI_FILE_SEARCH_STORE = os.getenv(
 # Có thể đổi trên Render Environment Variables.
 # Gemini 3.6 Flash là model được tài liệu Google hiện dùng cho
 # ví dụ File Search / Interactions API.
+# Gemini 3.1 Flash-Lite: tiết kiệm chi phí và hỗ trợ File Search.
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
-    "gemini-3.6-flash"
+    "gemini-3.1-flash-lite"
 ).strip()
 
 # File Search lấy một số chunk phù hợp nhất.
@@ -82,7 +83,7 @@ THINKING_LEVEL = os.getenv(
 if THINKING_LEVEL not in {"minimal", "low", "medium", "high"}:
     THINKING_LEVEL = "minimal"
 
-APP_VERSION = "22.0-stable-cost"
+APP_VERSION = "23.0-flash-lite-cost"
 
 # Chỉ cho một request Gemini chạy cùng lúc trên một instance.
 # Đây là chủ ý để hạn chế 429 khi nhiều người cùng truy cập.
