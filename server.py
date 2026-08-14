@@ -38,9 +38,12 @@ INDEX_FILE = BASE_DIR / "index.html"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+FILE_SEARCH_TOP_K = max(1, min(10, int(os.getenv("FILE_SEARCH_TOP_K", "3"))))
+MAX_OUTPUT_TOKENS = max(128, min(2048, int(os.getenv("MAX_OUTPUT_TOKENS", "600"))))
+THINKING_LEVEL = os.getenv("THINKING_LEVEL", "minimal").strip().lower()
 
-APP_VERSION = "20.4-stable"
+APP_VERSION = "21.0-cost-optimized"
 
 # Concurrency control & Limits
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "1")))
@@ -49,8 +52,8 @@ MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "1")))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))  # Giới hạn 50MB
 
 # RAM Cache settings
-CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "1800")))
-CACHE_SIZE = max(20, int(os.getenv("CACHE_SIZE", "200")))
+CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
+CACHE_SIZE = max(20, int(os.getenv("CACHE_SIZE", "500")))
 
 # ============================================================
 # SYSTEM PROMPT
@@ -406,9 +409,16 @@ async def call_gemini(question: str):
         model=GEMINI_MODEL,
         system_instruction=SYSTEM_PROMPT,
         input=question,
+        store=False,
+        generation_config={
+            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "thinking_level": THINKING_LEVEL,
+            "thinking_summaries": "none",
+        },
         tools=[{
             "type": "file_search",
             "file_search_store_names": [store],
+            "top_k": FILE_SEARCH_TOP_K,
         }],
     )
 
@@ -629,6 +639,42 @@ async def documents():
 
 
 # ============================================================
+# DOCUMENT MANAGEMENT
+# ============================================================
+
+@app.delete("/documents/{document_name:path}")
+async def delete_document(document_name: str):
+    """Xóa một tài liệu khỏi Gemini File Search Store."""
+    if gemini_client is None:
+        return error_response("Gemini client chưa sẵn sàng.", status_code=503)
+
+    store = clean_store_name(GEMINI_FILE_SEARCH_STORE)
+    if not store:
+        return error_response("Chưa cấu hình GEMINI_FILE_SEARCH_STORE.", status_code=503)
+
+    full_name = document_name if document_name.startswith("fileSearchStores/")         else f"{store}/documents/{document_name}"
+
+    try:
+        await gemini_client.aio.file_search_stores.documents.delete(
+            name=full_name,
+            config={"force": True},
+        )
+        return {
+            "success": True,
+            "status": "ok",
+            "message": "Đã xóa tài liệu khỏi kho THỦY LỢI AI.",
+            "document": full_name,
+        }
+    except Exception as exc:
+        logger.exception("DELETE DOCUMENT ERROR: %r", exc)
+        return error_response(
+            f"Không xóa được tài liệu: {exc}",
+            status_code=200,
+            status="delete_error",
+        )
+
+
+# ============================================================
 # UPLOAD HANDLER
 # ============================================================
 
@@ -792,6 +838,20 @@ async def process_question(data: Question):
             "model": GEMINI_MODEL,
             "cached": False,
         }
+
+        usage = getattr(result, "usage", None)
+        if usage is not None:
+            usage_data = {}
+            for key in (
+                "total_input_tokens", "total_output_tokens",
+                "total_thought_tokens", "total_tool_use_tokens",
+                "total_cached_tokens", "total_tokens"
+            ):
+                value = getattr(usage, key, None)
+                if value is not None:
+                    usage_data[key] = value
+            if usage_data:
+                payload["usage"] = usage_data
 
         if sources:
             payload["sources"] = sources
