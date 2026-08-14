@@ -3,7 +3,6 @@ import asyncio
 import random
 from pathlib import Path
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +11,9 @@ from pydantic import BaseModel
 from google import genai
 
 
-# ============================================================
-# CẤU HÌNH
-# ============================================================
+# =========================================================
+# 1. CẤU HÌNH
+# =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
@@ -25,8 +24,8 @@ GEMINI_FILE_SEARCH_STORE = os.getenv(
     "GEMINI_FILE_SEARCH_STORE", ""
 ).strip()
 
-# Model mặc định tiết kiệm chi phí.
-# Có thể ghi đè bằng Environment Variable trên Render.
+# QUAN TRỌNG:
+# Không dùng gemini-3.6-flash làm mặc định nữa.
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
     "gemini-3.1-flash-lite"
@@ -48,86 +47,77 @@ MAX_RETRIES = max(
 )
 
 
-# ============================================================
-# SYSTEM PROMPT
-# ============================================================
+# =========================================================
+# 2. SYSTEM PROMPT
+# =========================================================
 
 SYSTEM_PROMPT = """
 Bạn là THỦY LỢI AI, trợ lý AI chuyên ngành Thủy lợi
 của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
 
 MỤC TIÊU:
-Trả lời câu hỏi dựa trên kho hồ sơ, tài liệu, quy định,
+Trả lời dựa trên kho hồ sơ, tài liệu, quy định,
 quy trình và dữ liệu đã được đưa vào Gemini File Search.
 
 NGUYÊN TẮC BẮT BUỘC:
 
-1. Ưu tiên tuyệt đối thông tin tìm được trong kho hồ sơ
-   THỦY LỢI AI.
+1. Ưu tiên thông tin trong kho hồ sơ THỦY LỢI AI.
 
 2. Không tự bịa số liệu, điều khoản, tên văn bản,
-   số văn bản, ngày tháng, thông số kỹ thuật,
-   diện tích, công suất hoặc quy trình vận hành.
+số văn bản, ngày tháng, thông số kỹ thuật hoặc
+quy trình vận hành.
 
-3. Nếu kho tài liệu không có đủ căn cứ để trả lời,
-   nói rõ:
-   "Chưa tìm thấy đủ căn cứ trong kho hồ sơ THỦY LỢI AI."
+3. Nếu không tìm thấy đủ căn cứ trong kho, phải nói rõ:
 
-4. Khi tìm thấy tài liệu liên quan, phải tổng hợp
-   thông tin chính xác và dễ hiểu.
+"Chưa tìm thấy đủ căn cứ trong kho hồ sơ THỦY LỢI AI."
 
-5. Khi có thể xác định nguồn, nêu tên tài liệu nguồn.
+4. Khi tài liệu có nhiều thông tin liên quan,
+hãy tổng hợp và phân tích rõ ràng.
 
-6. Với câu hỏi pháp luật, quy định, quy trình:
-   ưu tiên văn bản có trong kho hồ sơ.
+5. Khi xác định được nguồn, nêu tên tài liệu.
 
-7. Nếu có nhiều tài liệu liên quan:
-   tổng hợp và chỉ ra điểm giống, khác hoặc thay đổi
-   nếu tài liệu cho phép xác định.
+6. Với câu hỏi pháp luật, ưu tiên văn bản có trong kho.
+
+7. Nếu có nhiều tài liệu liên quan,
+hãy so sánh và chỉ ra điểm khác nhau.
 
 8. Không biến suy đoán thành kết luận chính thức.
 
 9. Trả lời bằng tiếng Việt.
 
 10. Ưu tiên:
-    - chính xác
-    - ngắn gọn
-    - dễ hiểu
-    - có căn cứ
-    - phù hợp nghiệp vụ Thủy lợi.
+- chính xác
+- ngắn gọn
+- dễ hiểu
+- có căn cứ
+- phù hợp nghiệp vụ Thủy lợi.
 
-11. Với quy trình:
-    có thể trình bày thành từng bước.
+11. Với quy trình, có thể trình bày theo từng bước.
 
-12. Với số liệu:
-    giữ nguyên số liệu và đơn vị theo tài liệu.
+12. Với số liệu, giữ nguyên số liệu và đơn vị
+theo tài liệu.
 
-13. Nếu câu hỏi yêu cầu một thông tin cụ thể như:
-    tên người, chức vụ, trạm bơm, công trình,
-    diện tích, số lượng, ngày tháng, thông số...
-    hãy tìm trực tiếp trong kho trước khi trả lời.
+13. Không nói rằng bạn đã đọc một tài liệu
+nếu File Search không cung cấp căn cứ từ tài liệu đó.
 
-14. Nếu không tìm thấy thông tin trong kho,
-    không được suy đoán từ kiến thức chung.
-
-15. Không nói rằng bạn đã đọc toàn bộ kho tài liệu.
-    Chỉ trả lời dựa trên các nội dung File Search thực sự
-    truy xuất được cho câu hỏi hiện tại.
+14. Nếu câu hỏi hỏi về một người, công trình,
+trạm bơm, hồ chứa, văn bản hoặc số liệu cụ thể,
+hãy ưu tiên tìm đúng tài liệu liên quan trước khi trả lời.
 """
 
 
-# ============================================================
-# GEMINI CLIENT
-# ============================================================
+# =========================================================
+# 3. GEMINI CLIENT
+# =========================================================
 
 gemini_client = None
 
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 
-# ============================================================
-# LIFESPAN
-# ============================================================
+# =========================================================
+# 4. LIFESPAN
+# =========================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -136,7 +126,7 @@ async def lifespan(app: FastAPI):
 
     print("")
     print("==============================================")
-    print("          KHỞI ĐỘNG THỦY LỢI AI")
+    print("             KHỞI ĐỘNG THỦY LỢI AI")
     print("==============================================")
 
     print("KIỂM TRA GEMINI...")
@@ -160,15 +150,14 @@ async def lifespan(app: FastAPI):
             gemini_client = None
 
             print(
-                "GEMINI API: LỖI KHỞI TẠO",
+                "GEMINI API: LỖI KHỞI TẠO:",
                 repr(e)
             )
 
     print(
         "FILE SEARCH STORE:",
         GEMINI_FILE_SEARCH_STORE
-        if GEMINI_FILE_SEARCH_STORE
-        else "CHƯA CẤU HÌNH"
+        or "CHƯA CẤU HÌNH"
     )
 
     print("MODEL:", GEMINI_MODEL)
@@ -198,21 +187,17 @@ async def lifespan(app: FastAPI):
     print("THỦY LỢI AI ĐÃ DỪNG")
 
 
-# ============================================================
-# FASTAPI
-# ============================================================
+# =========================================================
+# 5. FASTAPI
+# =========================================================
 
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi",
-    version="4.0",
+    version="3.1",
     lifespan=lifespan,
 )
 
-
-# ============================================================
-# CORS
-# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -223,17 +208,18 @@ app.add_middleware(
 )
 
 
-# ============================================================
-# DATA MODEL
-# ============================================================
+# =========================================================
+# 6. MODEL REQUEST
+# =========================================================
 
 class Question(BaseModel):
+
     question: str
 
 
-# ============================================================
-# HOME
-# ============================================================
+# =========================================================
+# 7. TRANG CHỦ
+# =========================================================
 
 @app.get("/")
 async def home():
@@ -249,13 +235,13 @@ async def home():
         "status": "ok",
         "service": "THỦY LỢI AI",
         "engine": "Gemini File Search",
-        "model": GEMINI_MODEL,
+        "model": GEMINI_MODEL
     }
 
 
-# ============================================================
-# HEALTH
-# ============================================================
+# =========================================================
+# 8. HEALTH CHECK
+# =========================================================
 
 @app.get("/health")
 async def health():
@@ -268,31 +254,32 @@ async def health():
 
         "engine": "Gemini File Search",
 
-        "gemini_configured": bool(
-            GEMINI_API_KEY
-        ),
+        "gemini_configured":
+            bool(GEMINI_API_KEY),
 
-        "gemini_connected": (
-            gemini_client is not None
-        ),
+        "gemini_connected":
+            gemini_client is not None,
 
-        "file_search_configured": bool(
-            GEMINI_FILE_SEARCH_STORE
-        ),
+        "file_search_configured":
+            bool(GEMINI_FILE_SEARCH_STORE),
 
-        "model": GEMINI_MODEL,
+        "model":
+            GEMINI_MODEL,
 
-        "max_concurrent": MAX_CONCURRENT,
+        "max_concurrent":
+            MAX_CONCURRENT,
 
-        "request_timeout": REQUEST_TIMEOUT,
+        "request_timeout":
+            REQUEST_TIMEOUT,
 
-        "max_retries": MAX_RETRIES,
+        "max_retries":
+            MAX_RETRIES
     }
 
 
-# ============================================================
-# API INFO
-# ============================================================
+# =========================================================
+# 9. API INFO
+# =========================================================
 
 @app.get("/api")
 async def api_info():
@@ -313,19 +300,20 @@ async def api_info():
 
             "health": "/health",
 
-            "ask": "/ask",
+            "api": "/api",
 
-        },
+            "documents": "/documents",
+
+            "ask": "/ask"
+        }
     }
 
 
-# ============================================================
-# KIỂM TRA LỖI CÓ THỂ RETRY
-# ============================================================
+# =========================================================
+# 10. KIỂM TRA LỖI CÓ THỂ RETRY
+# =========================================================
 
-def is_retryable_error(
-    error: Exception
-) -> bool:
+def is_retryable_error(error: Exception) -> bool:
 
     text = str(error).lower()
 
@@ -347,21 +335,20 @@ def is_retryable_error(
 
         "invalid argument",
 
-        "not found",
-
+        "not found"
     ]
 
-    for item in permanent_errors:
+    if any(
+        x in text
+        for x in permanent_errors
+    ):
 
-        if item in text:
+        return False
 
-            return False
 
     retryable_errors = [
 
         "408",
-
-        "409",
 
         "429",
 
@@ -391,26 +378,20 @@ def is_retryable_error(
 
         "reset",
 
-        "server error",
-
+        "server error"
     ]
 
-    for item in retryable_errors:
-
-        if item in text:
-
-            return True
-
-    return False
+    return any(
+        x in text
+        for x in retryable_errors
+    )
 
 
-# ============================================================
-# GỌI GEMINI FILE SEARCH
-# ============================================================
+# =========================================================
+# 11. GỌI GEMINI FILE SEARCH
+# =========================================================
 
-def call_gemini(
-    question: str
-):
+def call_gemini(question: str):
 
     if gemini_client is None:
 
@@ -418,13 +399,15 @@ def call_gemini(
             "Gemini API chưa được kết nối."
         )
 
+
     if not GEMINI_FILE_SEARCH_STORE:
 
         raise RuntimeError(
             "Gemini File Search Store chưa được cấu hình."
         )
 
-    result = gemini_client.interactions.create(
+
+    return gemini_client.interactions.create(
 
         model=GEMINI_MODEL,
 
@@ -442,81 +425,58 @@ def call_gemini(
 
                     GEMINI_FILE_SEARCH_STORE
 
-                ],
-
+                ]
             }
 
-        ],
+        ]
     )
 
-    return result
 
+# =========================================================
+# 12. LẤY ANSWER + NGUỒN
+# =========================================================
 
-# ============================================================
-# TRÍCH XUẤT CÂU TRẢ LỜI + NGUỒN
-# ============================================================
+def extract_answer_and_sources(result):
 
-def extract_answer_and_sources(
-    result: Any
-):
+    answer = (
+        getattr(
+            result,
+            "output_text",
+            None
+        )
+        or ""
+    ).strip()
 
-    answer_parts = []
 
     sources = []
 
-    # --------------------------------------------------------
-    # output_text
-    # --------------------------------------------------------
-
-    output_text = getattr(
-        result,
-        "output_text",
-        None
-    )
-
-    if output_text:
-
-        answer_parts.append(
-            str(output_text).strip()
-        )
-
-    # --------------------------------------------------------
-    # steps
-    # --------------------------------------------------------
 
     steps = getattr(
         result,
         "steps",
-        None
-    )
+        []
+    ) or []
 
-    if steps is None:
-
-        steps = []
 
     for step in steps:
 
-        step_type = getattr(
+        if getattr(
             step,
             "type",
             None
-        )
-
-        if step_type != "model_output":
+        ) != "model_output":
 
             continue
 
-        content_list = getattr(
+
+        blocks = getattr(
             step,
             "content",
-            None
-        )
+            []
+        ) or []
 
-        if content_list is None:
 
-            continue
-
-        for block in content_list:
+        for block in blocks:
 
             block_type = getattr(
                 block,
@@ -524,59 +484,42 @@ def extract_answer_and_sources(
                 None
             )
 
-            # ------------------------------------------------
-            # TEXT
-            # ------------------------------------------------
 
-            if block_type == "text":
+            if (
+                not answer
+                and block_type == "text"
+            ):
 
-                text = getattr(
-                    block,
-                    "text",
-                    None
+                answer += (
+                    getattr(
+                        block,
+                        "text",
+                        ""
+                    )
+                    or ""
                 )
 
-                if text:
-
-                    text = str(
-                        text
-                    ).strip()
-
-                    if text:
-
-                        if text not in answer_parts:
-
-                            answer_parts.append(
-                                text
-                            )
-
-            # ------------------------------------------------
-            # ANNOTATIONS
-            # ------------------------------------------------
 
             annotations = getattr(
                 block,
                 "annotations",
-                None
-            )
+                []
+            ) or []
 
-            if annotations is None:
-
-                continue
 
             for annotation in annotations:
 
-                annotation_type = getattr(
+                if getattr(
                     annotation,
                     "type",
                     None
-                )
-
-                if annotation_type != "file_citation":
+                ) != "file_citation":
 
                     continue
 
-                source_item = {}
+
+                item = {}
+
 
                 file_name = getattr(
                     annotation,
@@ -584,67 +527,38 @@ def extract_answer_and_sources(
                     None
                 )
 
+
                 source = getattr(
                     annotation,
                     "source",
                     None
                 )
 
-                page_number = getattr(
-                    annotation,
-                    "page_number",
-                    None
-                )
-
-                document_uri = getattr(
-                    annotation,
-                    "document_uri",
-                    None
-                )
 
                 if file_name:
 
-                    source_item[
-                        "file_name"
-                    ] = str(file_name)
+                    item["file_name"] = str(
+                        file_name
+                    )
+
 
                 if source:
 
-                    source_item[
-                        "source"
-                    ] = str(source)
+                    item["source"] = str(
+                        source
+                    )
 
-                if page_number is not None:
 
-                    source_item[
-                        "page_number"
-                    ] = page_number
+                if (
+                    item
+                    and item not in sources
+                ):
 
-                if document_uri:
+                    sources.append(item)
 
-                    source_item[
-                        "document_uri"
-                    ] = str(document_uri)
 
-                if source_item:
+    answer = answer.strip()
 
-                    if source_item not in sources:
-
-                        sources.append(
-                            source_item
-                        )
-
-    # --------------------------------------------------------
-    # GỘP ANSWER
-    # --------------------------------------------------------
-
-    answer = "\n".join(
-
-        part
-        for part in answer_parts
-        if part
-
-    ).strip()
 
     if not answer:
 
@@ -652,22 +566,20 @@ def extract_answer_and_sources(
             "Gemini không trả về nội dung."
         )
 
+
     return answer, sources
 
 
-# ============================================================
-# GỌI GEMINI CÓ RETRY
-# ============================================================
+# =========================================================
+# 13. RETRY GEMINI
+# =========================================================
 
-async def ask_gemini_with_retry(
-    question: str
-):
+async def ask_gemini_with_retry(question: str):
 
     last_error = None
 
-    for attempt in range(
-        MAX_RETRIES
-    ):
+
+    for attempt in range(MAX_RETRIES):
 
         try:
 
@@ -676,24 +588,18 @@ async def ask_gemini_with_retry(
                 result = await asyncio.wait_for(
 
                     asyncio.to_thread(
-
                         call_gemini,
-
                         question
-
                     ),
 
-                    timeout=REQUEST_TIMEOUT,
-
+                    timeout=REQUEST_TIMEOUT
                 )
 
-            answer, sources = (
-                extract_answer_and_sources(
-                    result
-                )
+
+            return extract_answer_and_sources(
+                result
             )
 
-            return answer, sources
 
         except Exception as e:
 
@@ -704,14 +610,14 @@ async def ask_gemini_with_retry(
                 repr(e)
             )
 
-            retryable = (
-                is_retryable_error(e)
-            )
+
+            retryable = is_retryable_error(e)
 
             print(
                 "RETRYABLE:",
                 retryable
             )
+
 
             if (
                 not retryable
@@ -720,24 +626,29 @@ async def ask_gemini_with_retry(
 
                 break
 
-            delay = min(
-                8,
-                2 ** attempt
-            ) + random.uniform(
-                0,
-                0.5
+
+            delay = (
+                min(
+                    8,
+                    2 ** attempt
+                )
+                + random.uniform(
+                    0,
+                    0.5
+                )
             )
 
+
             print(
-                f"THỬ LẠI "
-                f"LẦN {attempt + 2}/"
+                f"THỬ LẠI LẦN "
+                f"{attempt + 2}/"
                 f"{MAX_RETRIES} "
                 f"SAU {delay:.1f} GIÂY..."
             )
 
-            await asyncio.sleep(
-                delay
-            )
+
+            await asyncio.sleep(delay)
+
 
     raise (
         last_error
@@ -747,30 +658,167 @@ async def ask_gemini_with_retry(
     )
 
 
-# ============================================================
-# ASK
-# ============================================================
+# =========================================================
+# 14. DANH SÁCH TÀI LIỆU TRONG FILE SEARCH
+# =========================================================
+
+@app.get("/documents")
+async def documents():
+
+    if gemini_client is None:
+
+        return {
+
+            "success": False,
+
+            "store":
+                GEMINI_FILE_SEARCH_STORE,
+
+            "count": 0,
+
+            "documents": [],
+
+            "error":
+                "Gemini API chưa được kết nối."
+        }
+
+
+    if not GEMINI_FILE_SEARCH_STORE:
+
+        return {
+
+            "success": False,
+
+            "store": "",
+
+            "count": 0,
+
+            "documents": [],
+
+            "error":
+                "Chưa cấu hình GEMINI_FILE_SEARCH_STORE."
+        }
+
+
+    try:
+
+        all_documents = []
+
+
+        # Google giới hạn tối đa 20 tài liệu mỗi trang.
+        # Chúng ta lấy từng trang cho đến khi hết.
+        page_size = 20
+
+
+        pager = (
+            gemini_client
+            .file_search_stores
+            .documents
+            .list(
+                parent=GEMINI_FILE_SEARCH_STORE,
+                config={
+                    "page_size": page_size
+                }
+            )
+        )
+
+
+        for document in pager:
+
+            all_documents.append({
+
+                "name":
+                    str(
+                        getattr(
+                            document,
+                            "name",
+                            ""
+                        )
+                    ),
+
+                "display_name":
+                    str(
+                        getattr(
+                            document,
+                            "display_name",
+                            ""
+                        )
+                    ),
+
+                "state":
+                    str(
+                        getattr(
+                            document,
+                            "state",
+                            ""
+                        )
+                    )
+            })
+
+
+        print(
+            "ĐÃ LẤY DANH SÁCH TÀI LIỆU:",
+            len(all_documents)
+        )
+
+
+        return {
+
+            "success": True,
+
+            "store":
+                GEMINI_FILE_SEARCH_STORE,
+
+            "count":
+                len(all_documents),
+
+            "documents":
+                all_documents
+        }
+
+
+    except Exception as e:
+
+        print(
+            "LỖI LIST DOCUMENTS:",
+            repr(e)
+        )
+
+
+        return {
+
+            "success": False,
+
+            "store":
+                GEMINI_FILE_SEARCH_STORE,
+
+            "count": 0,
+
+            "documents": [],
+
+            "error":
+                str(e)
+        }
+
+
+# =========================================================
+# 15. HỎI THỦY LỢI AI
+# =========================================================
 
 @app.post("/ask")
-async def ask(
-    data: Question
-):
+async def ask(data: Question):
 
     question = (
         data.question
         or ""
     ).strip()
 
+
     print("")
     print("==============================================")
     print("CÂU HỎI:", question)
-    print("MODEL:", GEMINI_MODEL)
     print("==============================================")
 
-
-    # --------------------------------------------------------
-    # KIỂM TRA CÂU HỎI
-    # --------------------------------------------------------
 
     if not question:
 
@@ -779,14 +827,9 @@ async def ask(
             "status": "error",
 
             "answer":
-                "Vui lòng nhập câu hỏi.",
-
+                "Vui lòng nhập câu hỏi."
         }
 
-
-    # --------------------------------------------------------
-    # KIỂM TRA API KEY
-    # --------------------------------------------------------
 
     if not GEMINI_API_KEY:
 
@@ -795,14 +838,9 @@ async def ask(
             "status": "error",
 
             "answer":
-                "THỦY LỢI AI chưa được cấu hình Gemini API.",
-
+                "THỦY LỢI AI chưa được cấu hình Gemini API."
         }
 
-
-    # --------------------------------------------------------
-    # KIỂM TRA CLIENT
-    # --------------------------------------------------------
 
     if gemini_client is None:
 
@@ -812,14 +850,9 @@ async def ask(
 
             "answer":
                 "THỦY LỢI AI chưa kết nối được Gemini API. "
-                "Vui lòng thử lại sau.",
-
+                "Vui lòng thử lại sau."
         }
 
-
-    # --------------------------------------------------------
-    # KIỂM TRA FILE SEARCH
-    # --------------------------------------------------------
 
     if not GEMINI_FILE_SEARCH_STORE:
 
@@ -828,15 +861,9 @@ async def ask(
             "status": "error",
 
             "answer":
-                "THỦY LỢI AI chưa có kho dữ liệu "
-                "Gemini File Search.",
-
+                "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."
         }
 
-
-    # --------------------------------------------------------
-    # GỌI GEMINI
-    # --------------------------------------------------------
 
     try:
 
@@ -844,15 +871,18 @@ async def ask(
             "ĐANG GỬI CÂU HỎI GEMINI..."
         )
 
+
         answer, sources = (
             await ask_gemini_with_retry(
                 question
             )
         )
 
+
         print(
             "ĐÃ NHẬN CÂU TRẢ LỜI GEMINI"
         )
+
 
         response = {
 
@@ -864,40 +894,16 @@ async def ask(
                 "Gemini File Search",
 
             "model":
-                GEMINI_MODEL,
-
+                GEMINI_MODEL
         }
+
 
         if sources:
 
-            response[
-                "sources"
-            ] = sources
+            response["sources"] = sources
+
 
         return response
-
-
-    except asyncio.TimeoutError:
-
-        print(
-            "GEMINI TIMEOUT"
-        )
-
-        return {
-
-            "status": "error",
-
-            "answer":
-                "THỦY LỢI AI xử lý quá lâu. "
-                "Vui lòng thử lại.",
-
-            "engine":
-                "Gemini File Search",
-
-            "model":
-                GEMINI_MODEL,
-
-        }
 
 
     except Exception as e:
@@ -906,6 +912,7 @@ async def ask(
             "GEMINI KHÔNG TRẢ LỜI:",
             repr(e)
         )
+
 
         return {
 
@@ -921,14 +928,13 @@ async def ask(
                 "Gemini File Search",
 
             "model":
-                GEMINI_MODEL,
-
+                GEMINI_MODEL
         }
 
 
-# ============================================================
-# RUN LOCAL
-# ============================================================
+# =========================================================
+# 16. CHẠY LOCAL
+# =========================================================
 
 if __name__ == "__main__":
 
@@ -942,11 +948,7 @@ if __name__ == "__main__":
     )
 
     uvicorn.run(
-
         "server:app",
-
         host="0.0.0.0",
-
-        port=port,
-
+        port=port
     )
