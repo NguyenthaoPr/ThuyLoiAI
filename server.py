@@ -1,6 +1,6 @@
 # server.py
 # THỦY LỢI AI - FastAPI + Gemini Interactions API + File Search
-# Version 20.1 (Production & Stability Optimized)
+# Version 20.2 (Production & Performance Optimized)
 
 import os
 import re
@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from collections import OrderedDict
 from typing import Any, Optional
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -40,12 +40,13 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 
-APP_VERSION = "20.1"
+APP_VERSION = "20.2"
 
-# Concurrency control
-MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "1")))
+# Concurrency control & Limits
+MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
 REQUEST_TIMEOUT = max(20, int(os.getenv("REQUEST_TIMEOUT", "60")))
 MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "2")))
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))  # Giới hạn 50MB
 
 # RAM Cache settings
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "1800")))
@@ -147,7 +148,6 @@ async def cache_put(question: str, value: dict[str, Any]):
 
     async with _cache_lock:
         now = time.time()
-        # Dọn dẹp bớt các item đã hết hạn
         expired_keys = [k for k, (t, _) in _cache.items() if now - t > CACHE_TTL]
         for k in expired_keys:
             _cache.pop(k, None)
@@ -480,6 +480,7 @@ async def diagnostics():
             "max_retries": MAX_RETRIES,
             "cache_ttl": CACHE_TTL,
             "cache_size": CACHE_SIZE,
+            "max_upload_size_mb": MAX_UPLOAD_SIZE_MB,
         },
         "metrics": current_metrics,
     }
@@ -598,9 +599,13 @@ async def documents():
 # UPLOAD HANDLER
 # ============================================================
 
-def _write_temp_file(file_obj, temp_path: str):
+def _write_temp_file(file_obj, temp_path: str, max_bytes: int):
+    total_written = 0
     with open(temp_path, "wb") as tmp:
         while chunk := file_obj.file.read(1024 * 1024):
+            total_written += len(chunk)
+            if total_written > max_bytes:
+                raise ValueError(f"Dung lượng file vượt quá giới hạn {max_bytes // (1024 * 1024)}MB.")
             tmp.write(chunk)
 
 
@@ -618,54 +623,55 @@ async def upload(file: UploadFile = File(...)):
     filename = Path(file.filename or "document").name
     mime_type = mime_type_for(filename) or file.content_type or "application/octet-stream"
     temp_path = None
+    max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
     try:
-        # Ghi file tạm bằng ThreadPool để tránh làm đơ Event Loop
         suffix = Path(filename).suffix
         temp_file_obj = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         temp_path = temp_file_obj.name
         temp_file_obj.close()
 
-        await asyncio.to_thread(_write_temp_file, file, temp_path)
+        # Kiểm tra kích thước trong khi ghi
+        await asyncio.to_thread(_write_temp_file, file, temp_path, max_bytes)
         file_size = os.path.getsize(temp_path)
 
         logger.info("UPLOAD | %s | %.2f MB | %s", filename, file_size / 1024 / 1024, mime_type)
 
-        uploaded = await asyncio.wait_for(
-            gemini_client.aio.files.upload(
-                file=temp_path,
-                config={
-                    "display_name": filename,
-                    "mime_type": mime_type,
-                },
-            ),
-            timeout=REQUEST_TIMEOUT,
-        )
-
-        logger.info("FILE UPLOAD OK | %s", getattr(uploaded, "name", None))
-
-        operation = await asyncio.wait_for(
-            gemini_client.aio.file_search_stores.import_file(
-                file_search_store_name=store,
-                file_name=uploaded.name,
-            ),
-            timeout=REQUEST_TIMEOUT,
-        )
-
-        # Polling kết quả import có giới hạn lượt (Chống vô tận)
-        polling_attempts = 0
-        max_polling_attempts = 40  # Tối đa 2 phút
-
-        while not getattr(operation, "done", False):
-            polling_attempts += 1
-            if polling_attempts > max_polling_attempts:
-                raise TimeoutError("Quá thời gian xử lý đưa tài liệu vào Store.")
-
-            await asyncio.sleep(3)
-            operation = await asyncio.wait_for(
-                gemini_client.aio.operations.get(operation),
+        async with request_semaphore:
+            uploaded = await asyncio.wait_for(
+                gemini_client.aio.files.upload(
+                    file=temp_path,
+                    config={
+                        "display_name": filename,
+                        "mime_type": mime_type,
+                    },
+                ),
                 timeout=REQUEST_TIMEOUT,
             )
+
+            logger.info("FILE UPLOAD OK | %s", getattr(uploaded, "name", None))
+
+            operation = await asyncio.wait_for(
+                gemini_client.aio.file_search_stores.import_file(
+                    file_search_store_name=store,
+                    file_name=uploaded.name,
+                ),
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            polling_attempts = 0
+            max_polling_attempts = 40  # Tối đa 2 phút
+
+            while not getattr(operation, "done", False):
+                polling_attempts += 1
+                if polling_attempts > max_polling_attempts:
+                    raise TimeoutError("Quá thời gian xử lý đưa tài liệu vào Store.")
+
+                await asyncio.sleep(3)
+                operation = await asyncio.wait_for(
+                    gemini_client.aio.operations.get(operation),
+                    timeout=REQUEST_TIMEOUT,
+                )
 
         await increment_metric("uploads_success")
 
@@ -680,6 +686,10 @@ async def upload(file: UploadFile = File(...)):
             "file": getattr(uploaded, "name", None),
             "operation": getattr(operation, "name", None),
         }
+
+    except ValueError as val_err:
+        logger.warning("UPLOAD REJECTED | %s | %s", filename, str(val_err))
+        return error_response(str(val_err), status_code=400)
 
     except Exception as exc:
         logger.exception("UPLOAD ERROR | %s | %r", filename, exc)
@@ -762,7 +772,6 @@ async def process_question(data: Question):
     except Exception as exc:
         logger.exception("ASK ERROR: %r", exc)
 
-        # Xử lý Lỗi 429 Quota
         if is_429(exc):
             retry_after = extract_retry_after(exc)
             await increment_metric("requests_429")
