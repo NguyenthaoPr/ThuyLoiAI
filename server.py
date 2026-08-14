@@ -40,7 +40,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 
-APP_VERSION = "20.3-stable"
+APP_VERSION = "20.4-stable"
 
 # Concurrency control & Limits
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "1")))
@@ -601,7 +601,8 @@ async def documents():
     try:
         docs = []
         pager = await gemini_client.aio.file_search_stores.documents.list(
-            config={"parent": store, "page_size": 20}
+            parent=store,
+            config={"page_size": 20},
         )
         async for doc in pager:
             docs.append({
