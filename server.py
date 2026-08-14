@@ -2,6 +2,9 @@ import os
 import asyncio
 import random
 import tempfile
+import time
+import hashlib
+from collections import OrderedDict
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -21,6 +24,15 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
 REQUEST_TIMEOUT = max(10, int(os.getenv("REQUEST_TIMEOUT", "60")))
 MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "2")))
+
+# CACHE CÂU HỎI
+# Cache nằm trong RAM của Render instance hiện tại.
+# Chỉ cache câu trả lời thành công.
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").strip().lower() not in {
+    "0", "false", "no", "off"
+}
+CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
+CACHE_MAX_ENTRIES = max(10, int(os.getenv("CACHE_MAX_ENTRIES", "200")))
 
 SYSTEM_PROMPT = """
 Bạn là THỦY LỢI AI, trợ lý AI chuyên ngành Thủy lợi của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
@@ -48,6 +60,13 @@ NGUYÊN TẮC BẮT BUỘC:
 
 gemini_client = None
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+# LRU cache đơn giản cho một Render instance.
+answer_cache = OrderedDict()
+cache_hits = 0
+cache_misses = 0
+cache_lock = asyncio.Lock()
+CACHE_VERSION = "v1"
 
 
 @asynccontextmanager
@@ -155,6 +174,9 @@ async def health():
         "max_concurrent": MAX_CONCURRENT,
         "request_timeout": REQUEST_TIMEOUT,
         "max_retries": MAX_RETRIES,
+        "cache_enabled": CACHE_ENABLED,
+        "cache_ttl": CACHE_TTL,
+        "cache_max_entries": CACHE_MAX_ENTRIES,
     }
 
     # 1. Kiểm tra API key
@@ -211,7 +233,29 @@ async def api_info():
             "pdf_documents": "/documents/pdf",
             "delete_pdf": "/documents/pdf",
             "upload": "/upload",
+            "cache": "/cache",
+            "clear_cache": "/cache",
         },
+    }
+
+
+@app.get("/cache")
+async def get_cache():
+    """Xem trạng thái cache câu hỏi."""
+    return {
+        "success": True,
+        **(await cache_info()),
+    }
+
+
+@app.delete("/cache")
+async def clear_cache():
+    """Xóa toàn bộ cache câu hỏi."""
+    await clear_answer_cache()
+    return {
+        "success": True,
+        "message": "Đã xóa toàn bộ cache câu hỏi.",
+        **(await cache_info()),
     }
 
 
@@ -233,6 +277,91 @@ def is_retryable_error(error: Exception) -> bool:
         "connection", "reset", "server error",
     ]
     return any(x in text for x in retryable)
+
+
+def normalize_question(question: str) -> str:
+    """Chuẩn hóa câu hỏi để khác biệt khoảng trắng không tạo cache mới."""
+    return " ".join(str(question or "").strip().lower().split())
+
+
+def make_cache_key(question: str) -> str:
+    """
+    Key phụ thuộc model + File Search Store + phiên bản cache.
+    Đổi model/store/CACHE_VERSION sẽ tự tạo cache key mới.
+    """
+    raw = (
+        f"{CACHE_VERSION}|{GEMINI_MODEL}|"
+        f"{store_name()}|{normalize_question(question)}"
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def get_cached_answer(question: str):
+    """Lấy câu trả lời còn hạn từ cache."""
+    global cache_hits, cache_misses
+
+    if not CACHE_ENABLED:
+        return None
+
+    key = make_cache_key(question)
+    now = time.monotonic()
+
+    async with cache_lock:
+        item = answer_cache.get(key)
+
+        if item is None:
+            cache_misses += 1
+            return None
+
+        if now - item.get("created_at", 0) > CACHE_TTL:
+            answer_cache.pop(key, None)
+            cache_misses += 1
+            return None
+
+        answer_cache.move_to_end(key)
+        cache_hits += 1
+
+        return {
+            "answer": item["answer"],
+            "sources": list(item.get("sources", [])),
+        }
+
+
+async def set_cached_answer(question: str, answer: str, sources):
+    """Lưu một câu trả lời thành công vào cache."""
+    if not CACHE_ENABLED:
+        return
+
+    key = make_cache_key(question)
+
+    async with cache_lock:
+        answer_cache[key] = {
+            "created_at": time.monotonic(),
+            "answer": answer,
+            "sources": list(sources or []),
+        }
+        answer_cache.move_to_end(key)
+
+        while len(answer_cache) > CACHE_MAX_ENTRIES:
+            answer_cache.popitem(last=False)
+
+
+async def clear_answer_cache():
+    """Xóa toàn bộ cache khi kho tài liệu thay đổi."""
+    async with cache_lock:
+        answer_cache.clear()
+
+
+async def cache_info():
+    async with cache_lock:
+        return {
+            "enabled": CACHE_ENABLED,
+            "entries": len(answer_cache),
+            "max_entries": CACHE_MAX_ENTRIES,
+            "ttl_seconds": CACHE_TTL,
+            "hits": cache_hits,
+            "misses": cache_misses,
+        }
 
 
 def call_gemini(question: str):
@@ -348,15 +477,42 @@ async def ask(data: Question):
         }
 
     try:
-        print("ĐANG GỬI CÂU HỎI GEMINI...")
+        # ---------------------------------------------------------
+        # CACHE: trả ngay nếu đã có câu trả lời còn hạn
+        # ---------------------------------------------------------
+        cached = await get_cached_answer(question)
+
+        if cached is not None:
+            print("CACHE HIT - TRẢ CÂU TRẢ LỜI TỪ CACHE")
+
+            response = {
+                "status": "ok",
+                "answer": cached["answer"],
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cached": True,
+            }
+
+            if cached["sources"]:
+                response["sources"] = cached["sources"]
+
+            return response
+
+        print("CACHE MISS - ĐANG GỬI CÂU HỎI GEMINI...")
+
         answer, sources = await ask_gemini_with_retry(question)
+
         print("ĐÃ NHẬN CÂU TRẢ LỜI GEMINI")
+
+        # Chỉ cache câu trả lời thành công.
+        await set_cached_answer(question, answer, sources)
 
         response = {
             "status": "ok",
             "answer": answer,
             "engine": "Gemini File Search",
             "model": GEMINI_MODEL,
+            "cached": False,
         }
 
         if sources:
@@ -603,6 +759,9 @@ async def delete_pdf_documents():
     try:
         deleted, failed = await asyncio.to_thread(delete_pdf_documents_sync)
 
+        if deleted:
+            await clear_answer_cache()
+
         return {
             "success": len(failed) == 0,
             "store": store_name(),
@@ -610,6 +769,7 @@ async def delete_pdf_documents():
             "failed_count": len(failed),
             "deleted": deleted,
             "failed": failed,
+            "cache_cleared": bool(deleted),
             "message": (
                 f"Đã xóa {len(deleted)} PDF. "
                 f"Còn lỗi: {len(failed)}."
@@ -676,12 +836,16 @@ async def upload_file(file: UploadFile = File(...)):
 
         operation = await asyncio.to_thread(do_upload)
 
+        # Tài liệu đã thay đổi -> cache cũ có thể không còn đúng.
+        await clear_answer_cache()
+
         return {
             "success": True,
             "filename": file.filename,
             "store": store_name(),
             "message": "Đã đưa file vào Gemini File Search Store.",
             "operation": str(operation),
+            "cache_cleared": True,
         }
 
     except Exception as e:
