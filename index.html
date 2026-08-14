@@ -36,7 +36,7 @@
             min-height: 100vh;
         }
 
-        /* Header Bar - Không dùng Logo hình ảnh */
+        /* Header Navigation */
         header {
             background-color: #0f172a;
             color: #ffffff;
@@ -53,7 +53,6 @@
             gap: 12px;
         }
 
-        /* Biểu tượng Icon giọt nước CSS thay thế cho Logo hình cũ */
         .brand-icon {
             width: 36px;
             height: 36px;
@@ -104,15 +103,17 @@
             margin: 24px auto;
             padding: 0 16px;
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        /* Card Xin Chào */
+        /* Welcome Banner */
         .welcome-card {
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-lg);
             padding: 20px 24px;
-            margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.02);
         }
 
@@ -131,42 +132,7 @@
             line-height: 1.6;
         }
 
-        /* Nút Gợi Ý Fast Queries */
-        .suggestions-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-
-        .btn-suggest {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            padding: 14px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-main);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: all 0.2s ease;
-            text-align: left;
-        }
-
-        .btn-suggest:hover {
-            border-color: var(--primary-color);
-            background-color: #f0f9ff;
-            color: var(--primary-hover);
-        }
-
-        .btn-suggest i {
-            color: var(--primary-color);
-            font-size: 16px;
-        }
-
-        /* Khung Chat Log */
+        /* Chat Section */
         .chat-section {
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -175,6 +141,7 @@
             flex-direction: column;
             overflow: hidden;
             box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            flex: 1;
         }
 
         .chat-header {
@@ -201,7 +168,7 @@
 
         .chat-box {
             padding: 20px;
-            max-height: 450px;
+            height: 480px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -241,17 +208,7 @@
             border-bottom-left-radius: 2px;
         }
 
-        /* Source Badge trong tin nhắn trả lời */
-        .source-tag {
-            margin-top: 6px;
-            font-size: 12px;
-            background-color: #e2e8f0;
-            padding: 6px 10px;
-            border-radius: 6px;
-            color: #475569;
-        }
-
-        /* Khung Nhập Liệu (Input) */
+        /* Input Area */
         .chat-input-area {
             padding: 16px;
             border-top: 1px solid var(--border-color);
@@ -286,17 +243,11 @@
         .btn-send:hover {
             background-color: var(--primary-hover);
         }
-
-        @media (max-width: 640px) {
-            .suggestions-grid {
-                grid-template-columns: 1fr;
-            }
-        }
     </style>
 </head>
 <body>
 
-    <!-- Header Navigation Bar -->
+    <!-- Header Navigation -->
     <header>
         <div class="header-brand">
             <div class="brand-icon">
@@ -314,29 +265,13 @@
 
     <!-- Main Content Container -->
     <main>
-        <!-- Card Xin chào chuẩn yêu cầu -->
+        <!-- Welcome Banner -->
         <div class="welcome-card">
             <h2>Xin chào 👋</h2>
             <p>Tra cứu và phân tích hồ sơ chuyên ngành Thủy lợi bằng AI. Hệ thống ưu tiên căn cứ từ kho tài liệu nội bộ Chi nhánh Vu Gia - Thu Bồn đã được cung cấp.</p>
         </div>
 
-        <!-- Các Nút Gợi Ý Nhanh -->
-        <div class="suggestions-grid">
-            <button class="btn-suggest" onclick="sendPrompt('Tóm tắt hồ sơ công trình')">
-                <i class="fa-regular fa-file-lines"></i> Tóm tắt hồ sơ
-            </button>
-            <button class="btn-suggest" onclick="sendPrompt('Tra cứu thông số kỹ thuật')">
-                <i class="fa-solid fa-gears"></i> Thông số kỹ thuật
-            </button>
-            <button class="btn-suggest" onclick="sendPrompt('Quy định pháp lý liên quan')">
-                <i class="fa-solid fa-scale-balanced"></i> Quy định pháp lý
-            </button>
-            <button class="btn-suggest" onclick="sendPrompt('Quy trình vận hành trạm bơm')">
-                <i class="fa-solid fa-water"></i> Vận hành
-            </button>
-        </div>
-
-        <!-- Khung Trao Đổi (Chat Output) -->
+        <!-- Trao đổi với Thủy Lợi AI -->
         <div class="chat-section">
             <div class="chat-header">
                 <span><i class="fa-regular fa-comments"></i> Trao đổi với THỦY LỢI AI</span>
@@ -344,7 +279,6 @@
             </div>
 
             <div class="chat-box" id="chatBox">
-                <!-- Message mẫu từ Bot -->
                 <div class="message bot">
                     <div class="message-content">
                         Xin chào! Tôi có thể hỗ trợ gì cho bạn về các hồ sơ, trạm bơm hoặc công trình thuộc Chi nhánh Vu Gia - Thu Bồn?
@@ -368,15 +302,9 @@
             addMessage(text, 'user');
             input.value = '';
 
-            // Giả lập phản hồi từ Bot
             setTimeout(() => {
-                addMessage(`Đang truy xuất thông tin cho: "${text}" từ kho tài liệu Chi nhánh Vu Gia - Thu Bồn...`, 'bot');
+                addMessage(`Đang truy xuất thông tin cho câu hỏi từ kho tài liệu Chi nhánh Vu Gia - Thu Bồn...`, 'bot');
             }, 600);
-        }
-
-        function sendPrompt(promptText) {
-            document.getElementById('userInput').value = promptText;
-            sendMessage();
         }
 
         function addMessage(text, sender) {
