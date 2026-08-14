@@ -40,12 +40,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 
-APP_VERSION = "20.2"
+APP_VERSION = "20.3-stable"
 
 # Concurrency control & Limits
-MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
+MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "1")))
 REQUEST_TIMEOUT = max(20, int(os.getenv("REQUEST_TIMEOUT", "60")))
-MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "2")))
+MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "1")))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))  # Giới hạn 50MB
 
 # RAM Cache settings
@@ -106,6 +106,23 @@ metrics_lock = asyncio.Lock()
 
 _cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 _cache_lock = asyncio.Lock()
+
+_quota_cooldown_until = 0.0
+_quota_lock = asyncio.Lock()
+
+async def get_quota_cooldown() -> float:
+    async with _quota_lock:
+        return max(0.0, _quota_cooldown_until - time.time())
+
+async def set_quota_cooldown(seconds: Optional[float]):
+    global _quota_cooldown_until
+    if not seconds:
+        return
+    async with _quota_lock:
+        _quota_cooldown_until = max(
+            _quota_cooldown_until,
+            time.time() + max(1.0, seconds),
+        )
 
 
 async def increment_metric(key: str, amount: int = 1):
@@ -377,16 +394,22 @@ async def call_gemini(question: str):
     if not store:
         raise RuntimeError("GEMINI_FILE_SEARCH_STORE chưa được cấu hình.")
 
+    cooldown = await get_quota_cooldown()
+    if cooldown > 0:
+        exc = RuntimeError(
+            f"Gemini đang bị giới hạn tạm thời. Vui lòng thử lại sau {cooldown:.0f} giây."
+        )
+        setattr(exc, "retry_after", cooldown)
+        raise exc
+
     return await gemini_client.aio.interactions.create(
         model=GEMINI_MODEL,
         system_instruction=SYSTEM_PROMPT,
         input=question,
-        tools=[
-            {
-                "type": "file_search",
-                "file_search_store_names": [store],
-            }
-        ],
+        tools=[{
+            "type": "file_search",
+            "file_search_store_names": [store],
+        }],
     )
 
 
@@ -406,8 +429,12 @@ async def ask_gemini(question: str) -> tuple[str, list[dict[str, Any]]]:
             last_error = exc
 
             if is_429(exc):
+                retry_after = extract_retry_after(exc)
+                await set_quota_cooldown(retry_after or 30.0)
                 await increment_metric("requests_429")
-                logger.error("GEMINI 429 QUOTA EXCEEDED - DỪNG RETRY: %s", exc)
+                logger.error(
+                    "GEMINI 429 - KHÔNG RETRY để tránh nhân quota: %s", exc
+                )
                 raise
 
             retryable = is_retryable_non429(exc)
@@ -419,8 +446,7 @@ async def ask_gemini(question: str) -> tuple[str, list[dict[str, Any]]]:
             if not retryable or attempt >= MAX_RETRIES:
                 break
 
-            delay = 2.0 * attempt
-            await asyncio.sleep(delay)
+            await asyncio.sleep(min(3.0 * attempt, 6.0))
 
     raise last_error or RuntimeError("Gemini không thể xử lý câu hỏi.")
 
@@ -526,7 +552,10 @@ async def stores():
 
     try:
         items = []
-        async for store in gemini_client.aio.file_search_stores.list():
+        pager = await gemini_client.aio.file_search_stores.list(
+            config={"page_size": 20}
+        )
+        async for store in pager:
             items.append({
                 "name": getattr(store, "name", None),
                 "display_name": getattr(store, "display_name", None),
@@ -571,7 +600,10 @@ async def documents():
 
     try:
         docs = []
-        async for doc in gemini_client.aio.file_search_stores.documents.list(parent=store):
+        pager = await gemini_client.aio.file_search_stores.documents.list(
+            config={"parent": store, "page_size": 20}
+        )
+        async for doc in pager:
             docs.append({
                 "name": str(getattr(doc, "name", "") or ""),
                 "display_name": str(getattr(doc, "display_name", "") or ""),
