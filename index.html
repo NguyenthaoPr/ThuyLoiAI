@@ -193,7 +193,8 @@
             padding: 12px 16px;
             border-radius: var(--radius-md);
             font-size: 14px;
-            line-height: 1.5;
+            line-height: 1.6;
+            white-space: pre-line;
         }
 
         .message.user .message-content {
@@ -243,11 +244,16 @@
         .btn-send:hover {
             background-color: var(--primary-hover);
         }
+
+        .btn-send:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Header Navigation -->
+    <!-- Header Navigation Bar -->
     <header>
         <div class="header-brand">
             <div class="brand-icon">
@@ -265,13 +271,13 @@
 
     <!-- Main Content Container -->
     <main>
-        <!-- Welcome Banner -->
+        <!-- Welcome Banner chuẩn nội dung -->
         <div class="welcome-card">
             <h2>Xin chào 👋</h2>
             <p>Tra cứu và phân tích hồ sơ chuyên ngành Thủy lợi bằng AI. Hệ thống ưu tiên căn cứ từ kho tài liệu nội bộ Chi nhánh Vu Gia - Thu Bồn đã được cung cấp.</p>
         </div>
 
-        <!-- Trao đổi với Thủy Lợi AI -->
+        <!-- Khung Trao Đổi Chat -->
         <div class="chat-section">
             <div class="chat-header">
                 <span><i class="fa-regular fa-comments"></i> Trao đổi với THỦY LỢI AI</span>
@@ -288,32 +294,94 @@
 
             <div class="chat-input-area">
                 <input type="text" id="userInput" class="chat-input" placeholder="Nhập câu hỏi tra cứu..." onkeypress="handleKeyPress(event)">
-                <button class="btn-send" onclick="sendMessage()">Gửi <i class="fa-solid fa-paper-plane"></i></button>
+                <button id="btnSend" class="btn-send" onclick="sendMessage()">Gửi <i class="fa-solid fa-paper-plane"></i></button>
             </div>
         </div>
     </main>
 
+    <!-- JavaScript Xử Lý Kết Nối AI Thực Tế -->
     <script>
-        function sendMessage() {
+        // Tự động xác định địa chỉ Backend (kể cả khi chạy trực tiếp trên Render)
+        const BACKEND_URL = window.location.origin.includes("onrender.com") 
+            ? "/chat" 
+            : "https://thuyloiai.onrender.com/chat";
+
+        async function sendMessage() {
             const input = document.getElementById('userInput');
+            const btnSend = document.getElementById('btnSend');
             const text = input.value.trim();
             if (text === '') return;
 
+            // 1. Đưa câu hỏi người dùng vào giao diện
             addMessage(text, 'user');
             input.value = '';
+            
+            // Khóa nút bấm khi đang chờ
+            input.disabled = true;
+            btnSend.disabled = true;
 
-            setTimeout(() => {
-                addMessage(`Đang truy xuất thông tin cho câu hỏi từ kho tài liệu Chi nhánh Vu Gia - Thu Bồn...`, 'bot');
-            }, 600);
+            // 2. Hiển thị thông báo đang truy xuất dữ liệu
+            const loadingId = addLoadingMessage();
+
+            try {
+                // 3. Gọi trực tiếp API Backend Gemini
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question: text, message: text, prompt: text })
+                });
+
+                const data = await response.json();
+                
+                // Xóa dòng thông báo chờ
+                removeMessage(loadingId);
+
+                // 4. Hiển thị câu trả lời thực tế từ AI
+                let answer = data.answer || data.reply || data.response || data.message;
+                if (answer) {
+                    addMessage(answer, 'bot');
+                } else {
+                    addMessage("Hệ thống đã nhận được yêu cầu nhưng chưa tìm thấy dữ liệu phù hợp trong kho hồ sơ Chi nhánh Vu Gia - Thu Bồn.", 'bot');
+                }
+
+            } catch (error) {
+                console.error("Lỗi kết nối:", error);
+                removeMessage(loadingId);
+                addMessage("Không thể kết nối tới máy chủ AI. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau giây lát.", 'bot');
+            } finally {
+                // Mở lại ô nhập liệu
+                input.disabled = false;
+                btnSend.disabled = false;
+                input.focus();
+            }
         }
 
         function addMessage(text, sender) {
             const chatBox = document.getElementById('chatBox');
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${sender}`;
-            msgDiv.innerHTML = `<div class="message-content">${text}</div>`;
+            msgDiv.innerHTML = `<div class="message-content">${escapeHtml(text)}</div>`;
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function addLoadingMessage() {
+            const chatBox = document.getElementById('chatBox');
+            const loadingId = 'loading-' + Date.now();
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message bot';
+            msgDiv.id = loadingId;
+            msgDiv.innerHTML = `<div class="message-content"><i class="fa-solid fa-spinner fa-spin"></i> Đang truy xuất dữ liệu từ kho tài liệu Chi nhánh Vu Gia - Thu Bồn...</div>`;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return loadingId;
+        }
+
+        function removeMessage(id) {
+            const elem = document.getElementById(id);
+            if (elem) elem.remove();
         }
 
         function handleKeyPress(e) {
@@ -324,9 +392,18 @@
             document.getElementById('chatBox').innerHTML = `
                 <div class="message bot">
                     <div class="message-content">
-                        Đã xóa lịch sử trao đổi. Bạn có thể bắt đầu câu hỏi mới!
+                        Xin chào! Tôi có thể hỗ trợ gì cho bạn về các hồ sơ, trạm bơm hoặc công trình thuộc Chi nhánh Vu Gia - Thu Bồn?
                     </div>
                 </div>`;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;")
+                      .replace(/</g, "&lt;")
+                      .replace(/>/g, "&gt;")
+                      .replace(/"/g, "&quot;")
+                      .replace(/'/g, "&#039;")
+                      .replace(/\n/g, "<br>");
         }
     </script>
 </body>
