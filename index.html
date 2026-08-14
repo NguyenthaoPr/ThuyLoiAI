@@ -1,236 +1,405 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#08233d">
-<title>THỦY LỢI AI</title>
-<style>
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;width:100%;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f4f7fa;color:#17212b}
-body{overflow-x:hidden}
-.header{background:#08233d;color:#fff;padding:12px 14px;position:sticky;top:0;z-index:10}
-.header-inner{max-width:760px;margin:auto;display:flex;align-items:center;gap:10px}
-.logo{width:42px;height:42px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;flex:none}
-.brand{min-width:0}.brand h1{font-size:18px;margin:0;font-weight:750}.brand p{font-size:11px;margin:3px 0 0;opacity:.75}
-.status{margin-left:auto;font-size:11px;white-space:nowrap}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f0ae32;margin-right:5px}.dot.ok{background:#22c76b}.dot.bad{background:#e45555}
-main{width:100%;max-width:760px;margin:auto;padding:12px 10px 28px}
-.card{background:#fff;border:1px solid #dce5ed;border-radius:15px;margin-bottom:11px;box-shadow:0 5px 18px rgba(16,32,48,.06)}
-.hero{padding:15px}.hero h2{font-size:19px;margin:0 0 6px}.hero p{font-size:13px;line-height:1.55;color:#627284;margin:0}
-.info{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}.info span{font-size:10px;color:#496075;background:#f3f7fb;border:1px solid #e0e8ef;border-radius:9px;padding:6px 8px}
-.quick-title{font-size:12px;font-weight:bold;padding:12px 13px 7px;color:#33495c}
-.quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:0 10px 11px}.quick button{min-height:42px;border:1px solid #dbe5ee;background:#f9fbfd;border-radius:10px;padding:7px;font-size:11px;color:#344b5e}.quick button:active{background:#eaf3ff}
-.chat{overflow:hidden}.chat-title{height:47px;padding:0 13px;border-bottom:1px solid #e1e8ee;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:bold}
-.clear{border:1px solid #dce5ed;background:#fff;border-radius:8px;padding:5px 8px;font-size:10px;color:#647588}
-.messages{height:52vh;min-height:330px;max-height:600px;overflow-y:auto;padding:12px;background:#fafcfe;-webkit-overflow-scrolling:touch}
-.msg{display:flex;margin-bottom:10px}.msg.user{justify-content:flex-end}
-.bubble{max-width:92%;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.6;word-break:break-word;overflow-wrap:anywhere}
-.user .bubble{background:#1677ff;color:#fff;border-top-right-radius:4px}.assistant .bubble{background:#fff;border:1px solid #dce5ed;border-top-left-radius:4px}
-.bubble p{margin:0 0 7px}.bubble p:last-child{margin-bottom:0}.bubble strong{font-weight:750}.bubble ul,.bubble ol{margin:5px 0 5px 18px;padding:0}.bubble li{margin:2px 0}
-.source{margin-top:9px;padding:8px;border-radius:8px;background:#f3f7fb;border:1px solid #dfe8ef;font-size:10px;color:#51677b}
-.typing{display:none;padding:8px 12px;border-top:1px solid #e1e8ee;color:#68798a;font-size:11px}.typing.show{display:block}
-.compose{background:#fff;border-top:1px solid #e1e8ee;padding:9px}.row{display:flex;gap:7px;align-items:stretch}
-textarea{flex:1;min-width:0;height:48px;max-height:130px;border:1px solid #cbd8e4;border-radius:11px;padding:10px;font-size:13px;line-height:1.4;resize:none;outline:none}textarea:focus{border-color:#1677ff}
-.send{width:62px;border:0;border-radius:11px;background:#1677ff;color:#fff;font-weight:bold;font-size:12px}.send:disabled{opacity:.55}
-.hint{font-size:9px;color:#7a8996;padding:5px 2px 0}.footer{text-align:center;font-size:9px;color:#81909d;padding:6px}
-.docs{display:none;padding:0 10px 10px}.docs.show{display:block}.doc{padding:8px;border:1px solid #e0e7ee;border-radius:8px;background:#fafcfe;margin-top:6px;font-size:10px}.doc b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.doc i{color:#21a765;font-style:normal}
-@media(max-width:380px){.brand h1{font-size:17px}.status{font-size:9px}.hero h2{font-size:18px}.bubble{font-size:12px}.quick button{font-size:10px}.messages{min-height:300px}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THỦY LỢI AI - Chi nhánh Vu Gia - Thu Bồn</title>
+    <!-- Google Fonts & FontAwesome Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #0284c7;
+            --primary-hover: #0369a1;
+            --bg-body: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --radius-lg: 12px;
+            --radius-md: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Header Bar - Không dùng Logo hình ảnh */
+        header {
+            background-color: #0f172a;
+            color: #ffffff;
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Biểu tượng Icon giọt nước CSS thay thế cho Logo hình cũ */
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #38bdf8, #0284c7);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+        }
+
+        .brand-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .brand-subtitle {
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+
+        .status-badge {
+            background-color: rgba(34, 197, 94, 0.15);
+            color: #4ade80;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background-color: #22c55e;
+            border-radius: 50%;
+        }
+
+        /* Main Container */
+        main {
+            max-width: 900px;
+            width: 100%;
+            margin: 24px auto;
+            padding: 0 16px;
+            flex: 1;
+        }
+
+        /* Card Xin Chào */
+        .welcome-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .welcome-card h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .welcome-card p {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Nút Gợi Ý Fast Queries */
+        .suggestions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .btn-suggest {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-main);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+            text-align: left;
+        }
+
+        .btn-suggest:hover {
+            border-color: var(--primary-color);
+            background-color: #f0f9ff;
+            color: var(--primary-hover);
+        }
+
+        .btn-suggest i {
+            color: var(--primary-color);
+            font-size: 16px;
+        }
+
+        /* Khung Chat Log */
+        .chat-section {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+
+        .chat-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .btn-clear {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .btn-clear:hover {
+            color: #ef4444;
+        }
+
+        .chat-box {
+            padding: 20px;
+            max-height: 450px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 85%;
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .message.user .message-content {
+            background-color: var(--primary-color);
+            color: #ffffff;
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.bot .message-content {
+            background-color: #f1f5f9;
+            color: var(--text-main);
+            border-bottom-left-radius: 2px;
+        }
+
+        /* Source Badge trong tin nhắn trả lời */
+        .source-tag {
+            margin-top: 6px;
+            font-size: 12px;
+            background-color: #e2e8f0;
+            padding: 6px 10px;
+            border-radius: 6px;
+            color: #475569;
+        }
+
+        /* Khung Nhập Liệu (Input) */
+        .chat-input-area {
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            outline: none;
+            font-size: 14px;
+        }
+
+        .chat-input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .btn-send {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0 20px;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-send:hover {
+            background-color: var(--primary-hover);
+        }
+
+        @media (max-width: 640px) {
+            .suggestions-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-<header class="header">
-  <div class="header-inner">
-    <div class="logo">💧</div>
-    <div class="brand"><h1>THỦY LỢI AI</h1><p>Trợ lý AI chuyên ngành Thủy lợi</p></div>
-    <div class="status"><span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span></div>
-  </div>
-</header>
 
-<main>
-<section class="card hero">
-  <h2>Xin chào 👋</h2>
-  <p>Tra cứu và phân tích hồ sơ chuyên ngành Thủy lợi bằng AI. Hệ thống ưu tiên căn cứ từ kho tài liệu đã được cung cấp.</p>
-  <div class="info"><span>🤖 Gemini File Search</span><span>📚 <b id="count">—</b> tài liệu</span></div>
-</section>
+    <!-- Header Navigation Bar -->
+    <header>
+        <div class="header-brand">
+            <div class="brand-icon">
+                <i class="fa-solid fa-droplet"></i>
+            </div>
+            <div>
+                <div class="brand-title">THỦY LỢI AI</div>
+                <div class="brand-subtitle">Trợ lý AI chuyên ngành Thủy lợi</div>
+            </div>
+        </div>
+        <div class="status-badge">
+            <span class="status-dot"></span> Đã kết nối
+        </div>
+    </header>
 
-<section class="card">
-  <div class="quick-title">⚡ Câu hỏi nhanh</div>
-  <div class="quick">
-    <button data-q="Hãy tóm tắt nội dung chính của các tài liệu hiện có.">📚 Tóm tắt hồ sơ</button>
-    <button data-q="Hãy nêu các thông số kỹ thuật quan trọng của công trình trong hồ sơ.">🛠️ Thông số kỹ thuật</button>
-    <button data-q="Hãy tìm các quy định và căn cứ pháp lý trong các tài liệu hiện có.">📄 Quy định pháp lý</button>
-    <button data-q="Hãy tổng hợp các nội dung quan trọng phục vụ công tác quản lý vận hành.">💧 Vận hành</button>
-  </div>
-  <div class="quick-title" style="padding-top:3px"><button class="clear" id="docsBtn">📂 Xem kho hồ sơ</button></div>
-  <div class="docs" id="docs"><div id="docList"></div></div>
-</section>
+    <!-- Main Content Container -->
+    <main>
+        <!-- Card Xin chào chuẩn yêu cầu -->
+        <div class="welcome-card">
+            <h2>Xin chào 👋</h2>
+            <p>Tra cứu và phân tích hồ sơ chuyên ngành Thủy lợi bằng AI. Hệ thống ưu tiên căn cứ từ kho tài liệu nội bộ Chi nhánh Vu Gia - Thu Bồn đã được cung cấp.</p>
+        </div>
 
-<section class="card chat">
-  <div class="chat-title"><span>💬 Trao đổi với THỦY LỢI AI</span><button class="clear" id="clear">Xóa</button></div>
-  <div class="messages" id="messages">
-    <div class="msg assistant"><div class="bubble"><strong>THỦY LỢI AI đã sẵn sàng. 🌿</strong><p>Hãy nhập câu hỏi bên dưới.</p></div></div>
-  </div>
-  <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
-  <div class="compose">
-    <div class="row"><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send">Gửi</button></div>
-    <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
-  </div>
-</section>
-<div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
-</main>
+        <!-- Các Nút Gợi Ý Nhanh -->
+        <div class="suggestions-grid">
+            <button class="btn-suggest" onclick="sendPrompt('Tóm tắt hồ sơ công trình')">
+                <i class="fa-regular fa-file-lines"></i> Tóm tắt hồ sơ
+            </button>
+            <button class="btn-suggest" onclick="sendPrompt('Tra cứu thông số kỹ thuật')">
+                <i class="fa-solid fa-gears"></i> Thông số kỹ thuật
+            </button>
+            <button class="btn-suggest" onclick="sendPrompt('Quy định pháp lý liên quan')">
+                <i class="fa-solid fa-scale-balanced"></i> Quy định pháp lý
+            </button>
+            <button class="btn-suggest" onclick="sendPrompt('Quy trình vận hành trạm bơm')">
+                <i class="fa-solid fa-water"></i> Vận hành
+            </button>
+        </div>
 
-<script>
-const q=document.getElementById("question"),send=document.getElementById("send"),messages=document.getElementById("messages");
-const typing=document.getElementById("typing"),dot=document.getElementById("dot"),statusEl=document.getElementById("status");
-const count=document.getElementById("count"),docs=document.getElementById("docs"),docList=document.getElementById("docList");
+        <!-- Khung Trao Đổi (Chat Output) -->
+        <div class="chat-section">
+            <div class="chat-header">
+                <span><i class="fa-regular fa-comments"></i> Trao đổi với THỦY LỢI AI</span>
+                <button class="btn-clear" onclick="clearChat()"><i class="fa-solid fa-trash-can"></i> Xóa</button>
+            </div>
 
-let isCooldown = false;
+            <div class="chat-box" id="chatBox">
+                <!-- Message mẫu từ Bot -->
+                <div class="message bot">
+                    <div class="message-content">
+                        Xin chào! Tôi có thể hỗ trợ gì cho bạn về các hồ sơ, trạm bơm hoặc công trình thuộc Chi nhánh Vu Gia - Thu Bồn?
+                    </div>
+                </div>
+            </div>
 
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+            <div class="chat-input-area">
+                <input type="text" id="userInput" class="chat-input" placeholder="Nhập câu hỏi tra cứu..." onkeypress="handleKeyPress(event)">
+                <button class="btn-send" onclick="sendMessage()">Gửi <i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </main>
 
-function cleanText(s){
-  s=String(s??"");
-  s=s.replace(/\\text\s*\{([^{}]*)\}/g,"$1");
-  s=s.replace(/\\mathrm\s*\{([^{}]*)\}/g,"$1");
-  s=s.replace(/\\operatorname\s*\{([^{}]*)\}/g,"$1");
-  s=s.replace(/\\varnothing/g,"Ø").replace(/\\emptyset/g,"Ø");
-  s=s.replace(/\\times/g,"×").replace(/\\cdot/g,"·");
-  s=s.replace(/\\pm/g,"±").replace(/\\leq/g,"≤").replace(/\\geq/g,"≥");
-  s=s.replace(/\\approx/g,"≈").replace(/\\Delta/g,"Δ");
-  s=s.replace(/\\%/g,"%");
-  s=s.replace(/m\s*\^\s*3/g,"m³").replace(/m3\b/gi,"m³");
-  s=s.replace(/m\s*\^\s*2/g,"m²");
-  s=s.replace(/\\left|\\right/g,"");
-  s=s.replace(/\$\$([\s\S]*?)\$\$/g,"$1").replace(/\$([^$\n]+)\$/g,"$1");
-  s=s.replace(/\\([A-Za-z]+)\s*\{([^{}]*)\}/g,"$2");
-  s=s.replace(/\\([A-Za-z]+)/g,"$1");
-  return s;
-}
+    <script>
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            if (text === '') return;
 
-function md(s){
-  s=esc(cleanText(s));
-  s=s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
-  s=s.replace(/__([^_]+)__/g,"<strong>$1</strong>");
-  s=s.replace(/^[-•]\s+(.+)$/gm,"• $1");
-  s=s.replace(/\n/g,"<br>");
-  return s;
-}
+            addMessage(text, 'user');
+            input.value = '';
 
-function addUser(text){
-  const m=document.createElement("div");m.className="msg user";
-  const b=document.createElement("div");b.className="bubble";b.textContent=text;m.appendChild(b);
-  messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
-}
+            // Giả lập phản hồi từ Bot
+            setTimeout(() => {
+                addMessage(`Đang truy xuất thông tin cho: "${text}" từ kho tài liệu Chi nhánh Vu Gia - Thu Bồn...`, 'bot');
+            }, 600);
+        }
 
-function addAI(text,citations){
-  const m=document.createElement("div");m.className="msg assistant";
-  const b=document.createElement("div");b.className="bubble";
-  b.innerHTML=md(text||"Không có câu trả lời.");
-  if(Array.isArray(citations)&&citations.length){
-    const box=document.createElement("div");box.className="source";box.innerHTML="<b>📚 Nguồn hồ sơ</b>";
-    const seen=new Set();
-    citations.forEach(c=>{
-      const name=c?.file_name||c?.title||c?.display_name||c?.name;
-      if(name&&!seen.has(name)){seen.add(name);const line=document.createElement("div");line.textContent="• "+name;box.appendChild(line);}
-    });
-    if(seen.size)b.appendChild(box);
-  }
-  m.appendChild(b);messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
-}
+        function sendPrompt(promptText) {
+            document.getElementById('userInput').value = promptText;
+            sendMessage();
+        }
 
-async function fetchJSON(url,options={},timeout=40000){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),timeout);
-  try{
-    const r=await fetch(url,{...options,signal:controller.signal,cache:"no-store"});
-    const text=await r.text();
-    let data={};
-    try{data=text?JSON.parse(text):{};}catch{throw new Error("Server trả về dữ liệu không hợp lệ.");}
-    if(!r.ok)throw new Error(data.detail||data.error||("HTTP "+r.status));
-    return data;
-  }finally{clearTimeout(timer);}
-}
+        function addMessage(text, sender) {
+            const chatBox = document.getElementById('chatBox');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${sender}`;
+            msgDiv.innerHTML = `<div class="message-content">${text}</div>`;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
 
-// KHẮC PHỤC LỖI TRẠNG THÁI CHƯA SẴN SÀNG TẠI ĐÂY
-async function health(){
-  try{
-    const d=await fetchJSON("/health",{},12000);
-    // Sửa d.file_search_ready -> d.gemini_client_ready && d.file_search_configured
-    const ok = d.status==="ok" && d.gemini_configured && d.gemini_client_ready && d.file_search_configured;
-    dot.className="dot "+(ok?"ok":"bad");statusEl.textContent=ok?"Đã kết nối":"Chưa sẵn sàng";
-  }catch(e){dot.className="dot bad";statusEl.textContent="Không kết nối";}
-}
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
 
-async function loadDocs(){
-  try{
-    const d=await fetchJSON("/documents",{},15000);docList.innerHTML="";
-    if(!Array.isArray(d.documents)||!d.documents.length){docList.innerHTML='<div class="doc">Kho hồ sơ hiện chưa có tài liệu.</div>';return;}
-    count.textContent=d.count;
-    d.documents.forEach(x=>{
-      const el=document.createElement("div");el.className="doc";
-      el.innerHTML="<b>"+esc(x.display_name||x.name||"Tài liệu")+"</b><i>● "+esc(x.state||"ACTIVE")+"</i>";
-      docList.appendChild(el);
-    });
-  }catch(e){docList.innerHTML='<div class="doc">Không tải được danh sách hồ sơ.</div>';}
-}
-
-// Xử lý đếm ngược khi dính Rate Limit 429
-function startCooldown(seconds) {
-  isCooldown = true;
-  send.disabled = true;
-  q.disabled = true;
-  let left = Math.ceil(seconds || 30);
-  
-  const timer = setInterval(() => {
-    send.textContent = `${left}s`;
-    left--;
-    if (left < 0) {
-      clearInterval(timer);
-      isCooldown = false;
-      send.disabled = false;
-      q.disabled = false;
-      send.textContent = "Gửi";
-      q.focus();
-    }
-  }, 1000);
-}
-
-async function ask(){
-  const question=q.value.trim();if(!question||send.disabled||isCooldown)return;
-  addUser(question);q.value="";send.disabled=true;q.disabled=true;typing.classList.add("show");
-  
-  try{
-    const d = await fetchJSON("/ask",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Accept":"application/json"},
-      body:JSON.stringify({question})
-    },55000);
-
-    addAI(d.answer||d.message||"Không có câu trả lời.", d.sources||d.citations||[]);
-
-    // Nếu Backend báo 429 Rate Limit, kích hoạt đếm ngược khóa nút Gửi
-    if (d.status === "rate_limited" && d.retry_after) {
-      startCooldown(d.retry_after);
-    }
-  }catch(e){
-    addAI("⚠️ "+(e.message||"Không thể lấy câu trả lời."),[]);
-  }finally{
-    if (!isCooldown) {
-      send.disabled=false;q.disabled=false;send.textContent="Gửi";q.focus();
-    }
-    typing.classList.remove("show");
-  }
-}
-
-send.onclick=ask;
-q.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}});
-document.getElementById("clear").onclick=()=>{messages.innerHTML='<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';};
-document.getElementById("docsBtn").onclick=()=>{docs.classList.toggle("show");if(docs.classList.contains("show"))loadDocs();};
-document.querySelectorAll(".quick button").forEach(btn=>btn.onclick=()=>{q.value=btn.getAttribute("data-q")||"";q.focus();});
-
-health();
-loadDocs();
-setInterval(health,30000);
-</script>
+        function clearChat() {
+            document.getElementById('chatBox').innerHTML = `
+                <div class="message bot">
+                    <div class="message-content">
+                        Đã xóa lịch sử trao đổi. Bạn có thể bắt đầu câu hỏi mới!
+                    </div>
+                </div>`;
+        }
+    </script>
 </body>
 </html>
