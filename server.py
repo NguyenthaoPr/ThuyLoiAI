@@ -25,6 +25,10 @@ MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
 REQUEST_TIMEOUT = max(10, int(os.getenv("REQUEST_TIMEOUT", "60")))
 MAX_RETRIES = max(1, int(os.getenv("MAX_RETRIES", "2")))
 
+# BẢO VỆ HÀNG ĐỢI
+QUEUE_TIMEOUT = max(5, int(os.getenv("QUEUE_TIMEOUT", "30")))
+MAX_QUESTION_LENGTH = max(100, int(os.getenv("MAX_QUESTION_LENGTH", "4000")))
+
 # CACHE CÂU HỎI
 # Cache nằm trong RAM của Render instance hiện tại.
 # Chỉ cache câu trả lời thành công.
@@ -67,6 +71,10 @@ cache_hits = 0
 cache_misses = 0
 cache_lock = asyncio.Lock()
 CACHE_VERSION = "v1"
+
+# Chống nhiều người cùng gọi Gemini cho cùng một câu hỏi tại cùng thời điểm.
+inflight_locks = {}
+inflight_locks_guard = asyncio.Lock()
 
 
 @asynccontextmanager
@@ -174,6 +182,8 @@ async def health():
         "max_concurrent": MAX_CONCURRENT,
         "request_timeout": REQUEST_TIMEOUT,
         "max_retries": MAX_RETRIES,
+        "queue_timeout": QUEUE_TIMEOUT,
+        "max_question_length": MAX_QUESTION_LENGTH,
         "cache_enabled": CACHE_ENABLED,
         "cache_ttl": CACHE_TTL,
         "cache_max_entries": CACHE_MAX_ENTRIES,
@@ -235,6 +245,7 @@ async def api_info():
             "upload": "/upload",
             "cache": "/cache",
             "clear_cache": "/cache",
+            "protection": "queue + retry + cache stampede",
         },
     }
 
@@ -294,6 +305,16 @@ def make_cache_key(question: str) -> str:
         f"{store_name()}|{normalize_question(question)}"
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def get_inflight_lock(key: str):
+    """Lấy lock riêng cho từng câu hỏi."""
+    async with inflight_locks_guard:
+        lock = inflight_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            inflight_locks[key] = lock
+        return lock
 
 
 async def get_cached_answer(question: str):
@@ -415,21 +436,52 @@ def extract_answer_and_sources(result):
 
 
 async def ask_gemini_with_retry(question: str):
+    """
+    Gọi Gemini có kiểm soát tải.
+    - Chờ slot tối đa QUEUE_TIMEOUT giây.
+    - Không giữ slot trong lúc chờ retry.
+    - Retry lỗi tạm thời bằng exponential backoff + jitter.
+    """
     last_error = None
 
     for attempt in range(MAX_RETRIES):
+        acquired = False
+
         try:
-            async with request_semaphore:
+            try:
+                await asyncio.wait_for(
+                    request_semaphore.acquire(),
+                    timeout=QUEUE_TIMEOUT,
+                )
+                acquired = True
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    "Hệ thống đang có nhiều yêu cầu. "
+                    "Vui lòng thử lại sau ít giây."
+                )
+
+            try:
                 result = await asyncio.wait_for(
                     asyncio.to_thread(call_gemini, question),
                     timeout=REQUEST_TIMEOUT,
                 )
+            finally:
+                if acquired:
+                    request_semaphore.release()
+                    acquired = False
 
             return extract_answer_and_sources(result)
 
         except Exception as e:
+            if acquired:
+                request_semaphore.release()
+
             last_error = e
-            print("LỖI GEMINI:", repr(e))
+
+            print(
+                f"GEMINI ERROR attempt={attempt + 1}/{MAX_RETRIES}: "
+                f"{repr(e)}"
+            )
 
             retryable = is_retryable_error(e)
             print("RETRYABLE:", retryable)
@@ -437,14 +489,18 @@ async def ask_gemini_with_retry(question: str):
             if not retryable or attempt >= MAX_RETRIES - 1:
                 break
 
-            delay = min(8, 2 ** attempt) + random.uniform(0, 0.5)
+            delay = min(8.0, 2.0 ** attempt) + random.uniform(0.2, 0.8)
+
             print(
                 f"THỬ LẠI LẦN {attempt + 2}/{MAX_RETRIES} "
                 f"SAU {delay:.1f} GIÂY..."
             )
+
             await asyncio.sleep(delay)
 
-    raise last_error or RuntimeError("Gemini không thể xử lý câu hỏi.")
+    raise last_error or RuntimeError(
+        "Gemini không thể xử lý câu hỏi."
+    )
 
 
 @app.post("/ask")
@@ -456,7 +512,19 @@ async def ask(data: Question):
     print("=" * 60)
 
     if not question:
-        return {"status": "error", "answer": "Vui lòng nhập câu hỏi."}
+        return {
+            "status": "error",
+            "answer": "Vui lòng nhập câu hỏi.",
+        }
+
+    if len(question) > MAX_QUESTION_LENGTH:
+        return {
+            "status": "error",
+            "answer": (
+                f"Câu hỏi quá dài. Vui lòng giới hạn "
+                f"trong {MAX_QUESTION_LENGTH} ký tự."
+            ),
+        }
 
     if not GEMINI_API_KEY:
         return {
@@ -467,19 +535,22 @@ async def ask(data: Question):
     if gemini_client is None:
         return {
             "status": "error",
-            "answer": "THỦY LỢI AI chưa kết nối được Gemini API. Vui lòng thử lại sau.",
+            "answer": (
+                "THỦY LỢI AI chưa kết nối được Gemini API. "
+                "Vui lòng thử lại sau."
+            ),
         }
 
     if not GEMINI_FILE_SEARCH_STORE:
         return {
             "status": "error",
-            "answer": "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search.",
+            "answer": (
+                "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."
+            ),
         }
 
     try:
-        # ---------------------------------------------------------
-        # CACHE: trả ngay nếu đã có câu trả lời còn hạn
-        # ---------------------------------------------------------
+        # 1. Kiểm tra cache trước.
         cached = await get_cached_answer(question)
 
         if cached is not None:
@@ -498,36 +569,62 @@ async def ask(data: Question):
 
             return response
 
-        print("CACHE MISS - ĐANG GỬI CÂU HỎI GEMINI...")
+        # 2. Chống cache stampede:
+        # cùng một câu hỏi tại cùng thời điểm chỉ một request gọi Gemini.
+        key = make_cache_key(question)
+        question_lock = await get_inflight_lock(key)
 
-        answer, sources = await ask_gemini_with_retry(question)
+        async with question_lock:
+            # Request này có thể đã chờ một request khác xử lý xong.
+            # Kiểm tra cache lại trước khi gọi Gemini.
+            cached = await get_cached_answer(question)
 
-        print("ĐÃ NHẬN CÂU TRẢ LỜI GEMINI")
+            if cached is not None:
+                print("CACHE HIT SAU KHI CHỜ LOCK")
 
-        # Chỉ cache câu trả lời thành công.
-        await set_cached_answer(question, answer, sources)
+                response = {
+                    "status": "ok",
+                    "answer": cached["answer"],
+                    "engine": "Gemini File Search",
+                    "model": GEMINI_MODEL,
+                    "cached": True,
+                }
 
-        response = {
-            "status": "ok",
-            "answer": answer,
-            "engine": "Gemini File Search",
-            "model": GEMINI_MODEL,
-            "cached": False,
-        }
+                if cached["sources"]:
+                    response["sources"] = cached["sources"]
 
-        if sources:
-            response["sources"] = sources
+                return response
 
-        return response
+            print("CACHE MISS - ĐANG GỬI CÂU HỎI GEMINI...")
+
+            answer, sources = await ask_gemini_with_retry(question)
+
+            print("ĐÃ NHẬN CÂU TRẢ LỜI GEMINI")
+
+            await set_cached_answer(question, answer, sources)
+
+            response = {
+                "status": "ok",
+                "answer": answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cached": False,
+            }
+
+            if sources:
+                response["sources"] = sources
+
+            return response
 
     except Exception as e:
         print("GEMINI KHÔNG TRẢ LỜI:", repr(e))
+
         return {
             "status": "error",
             "answer": (
                 "THỦY LỢI AI tạm thời chưa lấy được câu trả lời "
-                "từ kho dữ liệu Gemini. Hệ thống đã tự thử lại. "
-                "Vui lòng thử lại sau ít giây."
+                "từ kho dữ liệu Gemini. Hệ thống đã tự kiểm tra và "
+                "thử lại khi có thể. Vui lòng thử lại sau ít giây."
             ),
             "engine": "Gemini File Search",
             "model": GEMINI_MODEL,
