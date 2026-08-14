@@ -127,18 +127,72 @@ async def home():
 
 @app.get("/health")
 async def health():
-    return {
+    """
+    Health check thực tế của THỦY LỢI AI.
+
+    Kiểm tra:
+    1. GEMINI_API_KEY
+    2. Gemini client
+    3. Gemini File Search Store
+    4. Khả năng thực tế truy cập và đọc Store
+    """
+
+    result = {
         "status": "ok",
         "service": "THỦY LỢI AI",
         "engine": "Gemini File Search",
+        "model": GEMINI_MODEL,
+
         "gemini_configured": bool(GEMINI_API_KEY),
         "gemini_connected": gemini_client is not None,
+        # Giữ tên này để frontend kiểm tra trạng thái thống nhất.
+        "gemini_client_ready": gemini_client is not None,
+
         "file_search_configured": bool(GEMINI_FILE_SEARCH_STORE),
-        "model": GEMINI_MODEL,
+        "file_search_ready": False,
+        "documents_count": 0,
+
         "max_concurrent": MAX_CONCURRENT,
         "request_timeout": REQUEST_TIMEOUT,
         "max_retries": MAX_RETRIES,
     }
+
+    # 1. Kiểm tra API key
+    if not GEMINI_API_KEY:
+        result["status"] = "error"
+        result["message"] = "Chưa cấu hình GEMINI_API_KEY."
+        return result
+
+    # 2. Kiểm tra Gemini client
+    if gemini_client is None:
+        result["status"] = "error"
+        result["message"] = "Gemini client chưa được khởi tạo."
+        return result
+
+    # 3. Kiểm tra File Search Store
+    if not GEMINI_FILE_SEARCH_STORE:
+        result["status"] = "error"
+        result["message"] = "Chưa cấu hình GEMINI_FILE_SEARCH_STORE."
+        return result
+
+    # 4. Kiểm tra thực tế Store bằng cách đọc danh sách tài liệu.
+    try:
+        documents = await asyncio.to_thread(list_documents_sync)
+        result["file_search_ready"] = True
+        result["documents_count"] = len(documents)
+
+    except Exception as e:
+        print("HEALTH FILE SEARCH ERROR:", repr(e))
+        result["status"] = "error"
+        result["message"] = (
+            "Gemini đã kết nối nhưng không truy cập được "
+            "File Search Store."
+        )
+        result["health_error"] = str(e)
+        return result
+
+    result["message"] = "THỦY LỢI AI hoạt động bình thường."
+    return result
 
 
 @app.get("/api")
