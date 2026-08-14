@@ -84,9 +84,10 @@ const q=document.getElementById("question"),send=document.getElementById("send")
 const typing=document.getElementById("typing"),dot=document.getElementById("dot"),statusEl=document.getElementById("status");
 const count=document.getElementById("count"),docs=document.getElementById("docs"),docList=document.getElementById("docList");
 
+let isCooldown = false;
+
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
-/* Làm sạch LaTeX/Markdown thường gặp trong câu trả lời Gemini */
 function cleanText(s){
   s=String(s??"");
   s=s.replace(/\\text\s*\{([^{}]*)\}/g,"$1");
@@ -120,6 +121,7 @@ function addUser(text){
   const b=document.createElement("div");b.className="bubble";b.textContent=text;m.appendChild(b);
   messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
 }
+
 function addAI(text,citations){
   const m=document.createElement("div");m.className="msg assistant";
   const b=document.createElement("div");b.className="bubble";
@@ -128,7 +130,7 @@ function addAI(text,citations){
     const box=document.createElement("div");box.className="source";box.innerHTML="<b>📚 Nguồn hồ sơ</b>";
     const seen=new Set();
     citations.forEach(c=>{
-      const name=c?.title||c?.display_name||c?.name;
+      const name=c?.file_name||c?.title||c?.display_name||c?.name;
       if(name&&!seen.has(name)){seen.add(name);const line=document.createElement("div");line.textContent="• "+name;box.appendChild(line);}
     });
     if(seen.size)b.appendChild(box);
@@ -149,12 +151,13 @@ async function fetchJSON(url,options={},timeout=40000){
   }finally{clearTimeout(timer);}
 }
 
+// KHẮC PHỤC LỖI TRẠNG THÁI CHƯA SẴN SÀNG TẠI ĐÂY
 async function health(){
   try{
     const d=await fetchJSON("/health",{},12000);
-    const ok=d.status==="ok" && d.gemini_configured && d.file_search_ready;
+    // Sửa d.file_search_ready -> d.gemini_client_ready && d.file_search_configured
+    const ok = d.status==="ok" && d.gemini_configured && d.gemini_client_ready && d.file_search_configured;
     dot.className="dot "+(ok?"ok":"bad");statusEl.textContent=ok?"Đã kết nối":"Chưa sẵn sàng";
-    if(Number.isFinite(Number(d.documents)))count.textContent=d.documents;
   }catch(e){dot.className="dot bad";statusEl.textContent="Không kết nối";}
 }
 
@@ -171,40 +174,51 @@ async function loadDocs(){
   }catch(e){docList.innerHTML='<div class="doc">Không tải được danh sách hồ sơ.</div>';}
 }
 
-/* Gọi /ask tối đa 3 lần. Rất quan trọng vì backend có thể trả HTTP 200 nhưng status=error khi Gemini File Search tạm thời chưa trả lời. */
-async function askWithRetry(question){
-  let lastError="Không thể lấy câu trả lời.";
-  for(let attempt=1;attempt<=3;attempt++){
-    try{
-      const d=await fetchJSON("/ask",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","Accept":"application/json"},
-        body:JSON.stringify({question})
-      },45000);
-
-      const failed=d.status==="error" || d.success===false || d.error;
-      if(!failed){
-        return d;
-      }
-      lastError=d.answer||d.error||"THỦY LỢI AI chưa thể trả lời câu hỏi.";
-    }catch(e){
-      lastError=e.name==="AbortError"?"Hệ thống phản hồi quá lâu.":(e.message||lastError);
+// Xử lý đếm ngược khi dính Rate Limit 429
+function startCooldown(seconds) {
+  isCooldown = true;
+  send.disabled = true;
+  q.disabled = true;
+  let left = Math.ceil(seconds || 30);
+  
+  const timer = setInterval(() => {
+    send.textContent = `${left}s`;
+    left--;
+    if (left < 0) {
+      clearInterval(timer);
+      isCooldown = false;
+      send.disabled = false;
+      q.disabled = false;
+      send.textContent = "Gửi";
+      q.focus();
     }
-    if(attempt<3)await new Promise(r=>setTimeout(r,1200*attempt));
-  }
-  throw new Error(lastError);
+  }, 1000);
 }
 
 async function ask(){
-  const question=q.value.trim();if(!question||send.disabled)return;
+  const question=q.value.trim();if(!question||send.disabled||isCooldown)return;
   addUser(question);q.value="";send.disabled=true;q.disabled=true;typing.classList.add("show");
+  
   try{
-    const d=await askWithRetry(question);
-    addAI(d.answer||d.message||"Không có câu trả lời.",d.citations||d.sources||[]);
+    const d = await fetchJSON("/ask",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({question})
+    },55000);
+
+    addAI(d.answer||d.message||"Không có câu trả lời.", d.sources||d.citations||[]);
+
+    // Nếu Backend báo 429 Rate Limit, kích hoạt đếm ngược khóa nút Gửi
+    if (d.status === "rate_limited" && d.retry_after) {
+      startCooldown(d.retry_after);
+    }
   }catch(e){
-    addAI("⚠️ Chưa lấy được câu trả lời.\n\n"+e.message,[]);
+    addAI("⚠️ "+(e.message||"Không thể lấy câu trả lời."),[]);
   }finally{
-    send.disabled=false;q.disabled=false;typing.classList.remove("show");q.focus();
+    if (!isCooldown) {
+      send.disabled=false;q.disabled=false;send.textContent="Gửi";q.focus();
+    }
+    typing.classList.remove("show");
   }
 }
 
@@ -215,6 +229,7 @@ document.getElementById("docsBtn").onclick=()=>{docs.classList.toggle("show");if
 document.querySelectorAll(".quick button").forEach(btn=>btn.onclick=()=>{q.value=btn.getAttribute("data-q")||"";q.focus();});
 
 health();
+loadDocs();
 setInterval(health,30000);
 </script>
 </body>
