@@ -200,7 +200,7 @@ async function ask(){
   addUser(question);q.value="";send.disabled=true;q.disabled=true;typing.classList.add("show");
   
   try{
-    const d = await fetchJSON("/ask",{
+  const d = await fetchJSON("https://thuyloi-cache.thaotltb.workers.dev/ask", {
       method:"POST",
       headers:{"Content-Type":"application/json","Accept":"application/json"},
       body:JSON.stringify({question})
