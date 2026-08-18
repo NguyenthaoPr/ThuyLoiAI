@@ -62,9 +62,39 @@ textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E
 
 .docs{display:none;padding:0 10px 10px}.docs.show{display:block}.doc{padding:9px;border:1px solid var(--border);border-radius:10px;background:var(--surface-soft);margin-top:7px;font-size:13px;line-height:1.5;color:var(--text-secondary)}.doc b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}.doc i{color:var(--success);font-style:normal}
 
-@media(max-width:380px){
-  .brand h1{font-size:17px}.status{font-size:10px}.hero h2{font-size:19px}.bubble{font-size:16px}.quick button{font-size:12px}.messages{min-height:300px}
+@media(max-width:760px){
+  main{padding-left:9px;padding-right:9px}
+  .header{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
+  .compose{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  .messages{max-height:none}
 }
+
+@media(max-width:480px){
+  .header-inner{gap:9px}
+  .logo{width:40px;height:40px;border-radius:12px;font-size:23px}
+  .brand h1{font-size:18px}
+  .brand p{font-size:10.5px}
+  .status{font-size:10px;padding:5px 7px}
+  .hero{padding:17px}
+  .hero h2{font-size:21px}
+  .quick{grid-template-columns:1fr 1fr;gap:7px}
+  .quick button{min-height:44px;font-size:12px}
+  .messages{height:52dvh;min-height:300px;padding:14px 11px}
+  .bubble{max-width:94%;font-size:16px;line-height:1.65}
+  .compose{padding-top:9px}
+  textarea{height:50px}
+  .send{width:60px;min-width:60px}
+}
+
+@media(max-width:380px){
+  .brand h1{font-size:17px}
+  .status{font-size:9px}
+  .hero h2{font-size:19px}
+  .bubble{font-size:16px}
+  .quick button{font-size:11px}
+  .messages{min-height:290px}
+}
+
 </style>
 </head>
 <body>
