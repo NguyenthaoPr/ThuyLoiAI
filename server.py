@@ -17,7 +17,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from google import genai
 
-
 # ============================================================
 # THỦY LỢI AI - SERVER.PY
 # BẢN NÂNG CẤP ỔN ĐỊNH - GIỮ NGUYÊN KIẾN TRÚC HIỆN TẠI
