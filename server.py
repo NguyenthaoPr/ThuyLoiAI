@@ -1247,7 +1247,7 @@ async def image_upload(file: UploadFile = File(...)):
 
     image_hash = hashlib.sha256(content).hexdigest()
 
-print(
+ print(
     "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s"
     % (
         filename,
@@ -1257,7 +1257,7 @@ print(
     )
 )
 
-return {
+ return {
         "success": True,
         "status": "received",
         "filename": filename,
