@@ -119,6 +119,96 @@ textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E
   <div class="messages" id="messages">
   </div>
   <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
+  <!-- =========================================================
+     BÁO CÁO HIỆN TRƯỜNG
+     ========================================================= -->
+
+<div class="field-report-entry">
+  <button id="fieldReportBtn" type="button">
+    📋 Báo cáo hiện trường
+  </button>
+</div>
+
+<div id="fieldReportPanel" class="field-report-panel" hidden>
+
+  <div class="field-report-title">
+    <strong>📋 Lập báo cáo hiện trường</strong>
+    <button id="closeFieldReport" type="button">✕</button>
+  </div>
+
+  <div class="field-report-desc">
+    Chụp ảnh hiện trạng, THỦY LỢI AI sẽ phân tích
+    và tạo dự thảo báo cáo nhanh.
+  </div>
+
+  <div class="field-report-types">
+
+    <button type="button" data-report-type="incident">
+      🚨
+      <span>Sự cố công trình</span>
+    </button>
+
+    <button type="button" data-report-type="corridor">
+      ⚠️
+      <span>Hành lang thủy lợi</span>
+    </button>
+
+    <button type="button" data-report-type="dry_area">
+      🌾
+      <span>Diện tích khô</span>
+    </button>
+
+    <button type="button" data-report-type="water_level">
+      💧
+      <span>Mực nước</span>
+    </button>
+
+  </div>
+
+  <input
+    id="fieldReportImage"
+    type="file"
+    accept="image/*"
+    capture="environment"
+    hidden
+  >
+
+  <button
+    id="fieldReportCamera"
+    class="field-report-camera"
+    type="button"
+  >
+    📷 Chụp ảnh hiện trường
+  </button>
+
+  <div
+    id="fieldReportPreview"
+    class="field-report-preview"
+    hidden
+  ></div>
+
+  <textarea
+    id="fieldReportQuestion"
+    class="field-report-question"
+    placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"
+  ></textarea>
+
+  <button
+    id="createFieldReport"
+    class="create-field-report"
+    type="button"
+    disabled
+  >
+    🤖 Phân tích và lập báo cáo
+  </button>
+
+  <div
+    id="fieldReportStatus"
+    class="field-report-status"
+    hidden
+  ></div>
+
+</div>
   <div class="compose">
     <div class="row"><input id="imageInput" type="file" accept="image/*" capture="environment" hidden aria-label="Chụp hoặc chọn ảnh hiện trường"><button id="cameraBtn" class="camera-btn" type="button" aria-label="Chụp hoặc chọn ảnh" title="Chụp hoặc chọn ảnh">📷</button><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button></div><div id="imagePreview" class="image-preview" hidden aria-live="polite"></div>
     <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
@@ -471,6 +561,370 @@ document.querySelectorAll(".quick button").forEach(btn=>btn.onclick=()=>{q.value
 health();
 loadDocs();
 setInterval(health,30000);
+  // ============================================================
+// BÁO CÁO HIỆN TRƯỜNG - THỦY LỢI AI
+// Chụp ảnh → chọn loại báo cáo → gửi AI phân tích
+// ============================================================
+
+(function () {
+
+    const fieldReportBtn = document.getElementById("fieldReportBtn");
+    const fieldReportPanel = document.getElementById("fieldReportPanel");
+    const closeFieldReport = document.getElementById("closeFieldReport");
+
+    // --------------------------------------------------------
+    // MỞ / ĐÓNG BẢNG BÁO CÁO
+    // --------------------------------------------------------
+
+    if (fieldReportBtn && fieldReportPanel) {
+
+        fieldReportBtn.addEventListener("click", function () {
+            fieldReportPanel.classList.remove("hidden");
+        });
+
+    }
+
+    if (closeFieldReport && fieldReportPanel) {
+
+        closeFieldReport.addEventListener("click", function () {
+            fieldReportPanel.classList.add("hidden");
+        });
+
+    }
+
+
+    // --------------------------------------------------------
+    // TẠO Ô CHỌN ẢNH / CAMERA
+    // --------------------------------------------------------
+
+    const reportButtons =
+        document.querySelectorAll("[data-report-type]");
+
+    reportButtons.forEach(function (button) {
+
+        button.addEventListener("click", function () {
+
+            const reportType =
+                button.getAttribute("data-report-type");
+
+            // Tạo input camera
+            const input = document.createElement("input");
+
+            input.type = "file";
+            input.accept = "image/*";
+            input.capture = "environment";
+
+            input.style.display = "none";
+
+            document.body.appendChild(input);
+
+            input.addEventListener("change", async function () {
+
+                const file = input.files && input.files[0];
+
+                if (!file) {
+                    input.remove();
+                    return;
+                }
+
+                await createFieldReport(
+                    file,
+                    reportType
+                );
+
+                input.remove();
+
+            });
+
+            input.click();
+
+        });
+
+    });
+
+
+    // ========================================================
+    // GỬI ẢNH LÊN SERVER
+    // ========================================================
+
+    async function createFieldReport(file, reportType) {
+
+        const messages =
+            document.getElementById("messages");
+
+        const typing =
+            document.getElementById("typing");
+
+        // Hiển thị thông báo người dùng
+        if (messages) {
+
+            const bubble = document.createElement("div");
+
+            bubble.className = "msg user";
+
+            bubble.innerHTML =
+                "<div class='bubble'>" +
+                "📷 Báo cáo hiện trường: " +
+                escapeHtml(reportType) +
+                "</div>";
+
+            messages.appendChild(bubble);
+
+            messages.scrollTop =
+                messages.scrollHeight;
+        }
+
+
+        if (typing) {
+            typing.classList.add("show");
+        }
+
+
+        try {
+
+            const formData = new FormData();
+
+            formData.append(
+                "file",
+                file
+            );
+
+            formData.append(
+                "report_type",
+                reportType
+            );
+
+
+            // ------------------------------------------------
+            // GỌI API FIELD REPORT
+            // ------------------------------------------------
+
+            const response = await fetch(
+                "/field-report",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+
+            const data = await response.json();
+
+
+            if (!response.ok || !data.success) {
+
+                throw new Error(
+                    data.error ||
+                    "Không tạo được báo cáo hiện trường."
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // HIỂN THỊ KẾT QUẢ
+            // ------------------------------------------------
+
+            let answer =
+                data.answer ||
+                data.report ||
+                "AI đã phân tích hiện trường.";
+
+
+            if (messages) {
+
+                const bubble =
+                    document.createElement("div");
+
+                bubble.className =
+                    "msg assistant";
+
+                bubble.innerHTML =
+                    "<div class='bubble'>" +
+                    "<strong>📋 BÁO CÁO HIỆN TRƯỜNG</strong><br><br>" +
+                    formatReport(answer) +
+                    "</div>";
+
+                messages.appendChild(bubble);
+
+                messages.scrollTop =
+                    messages.scrollHeight;
+            }
+
+
+            // ------------------------------------------------
+            // NẾU SERVER ĐÃ TẠO PDF
+            // ------------------------------------------------
+
+            if (data.pdf_url) {
+
+                addReportDownloadButton(
+                    data.pdf_url
+                );
+
+            }
+
+
+        } catch (error) {
+
+            console.error(
+                "FIELD REPORT ERROR:",
+                error
+            );
+
+
+            if (messages) {
+
+                const bubble =
+                    document.createElement("div");
+
+                bubble.className =
+                    "msg assistant";
+
+                bubble.innerHTML =
+                    "<div class='bubble'>" +
+                    "⚠️ Không tạo được báo cáo.<br><br>" +
+                    escapeHtml(error.message) +
+                    "</div>";
+
+                messages.appendChild(bubble);
+
+                messages.scrollTop =
+                    messages.scrollHeight;
+            }
+
+        } finally {
+
+            if (typing) {
+                typing.classList.remove("show");
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // ĐỊNH DẠNG NỘI DUNG BÁO CÁO
+    // ========================================================
+
+    function formatReport(text) {
+
+        if (!text) {
+            return "";
+        }
+
+        let html =
+            escapeHtml(String(text));
+
+
+        // Tiêu đề Markdown
+        html = html.replace(
+            /^### (.*?)$/gm,
+            "<strong>$1</strong>"
+        );
+
+
+        html = html.replace(
+            /^## (.*?)$/gm,
+            "<strong>$1</strong>"
+        );
+
+
+        html = html.replace(
+            /^# (.*?)$/gm,
+            "<strong>$1</strong>"
+        );
+
+
+        // In đậm
+        html = html.replace(
+            /\*\*(.*?)\*\*/g,
+            "<strong>$1</strong>"
+        );
+
+
+        // Xuống dòng
+        html = html.replace(
+            /\n/g,
+            "<br>"
+        );
+
+
+        return html;
+
+    }
+
+
+    // ========================================================
+    // NÚT XEM / TẢI PDF
+    // ========================================================
+
+    function addReportDownloadButton(pdfUrl) {
+
+        const messages =
+            document.getElementById("messages");
+
+        if (!messages) {
+            return;
+        }
+
+
+        const box =
+            document.createElement("div");
+
+        box.className =
+            "msg assistant";
+
+
+        box.innerHTML =
+            "<div class='bubble'>" +
+
+            "<strong>📄 Hồ sơ báo cáo</strong><br><br>" +
+
+            "<a href='" +
+            encodeURI(pdfUrl) +
+            "' " +
+            "target='_blank' " +
+            "style='display:inline-block;" +
+            "padding:10px 14px;" +
+            "background:#2563eb;" +
+            "color:white;" +
+            "border-radius:10px;" +
+            "text-decoration:none;'>" +
+
+            "📄 Mở báo cáo PDF" +
+
+            "</a>" +
+
+            "</div>";
+
+
+        messages.appendChild(box);
+
+        messages.scrollTop =
+            messages.scrollHeight;
+
+    }
+
+
+    // ========================================================
+    // BẢO VỆ HTML
+    // ========================================================
+
+    function escapeHtml(value) {
+
+        return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+
+    }
+
+
+})();
 </script>
 </body>
 </html>
