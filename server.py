@@ -5,6 +5,8 @@ import random
 import tempfile
 import time
 import hashlib
+from PIL import Image
+from io import BytesIO
 from collections import OrderedDict
 from pathlib import Path
 from contextlib import asynccontextmanager
