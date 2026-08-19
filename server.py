@@ -2309,6 +2309,294 @@ GHI CHÚ CỦA NGƯỜI DÙNG:
         ),
         "next_step": "review",
     }
+ # ============================================================
+# BÁO CÁO HIỆN TRƯỜNG
+# Ảnh → Gemini Vision → Báo cáo chuyên ngành
+# ============================================================
+
+@app.post("/field-report")
+async def field_report(
+    file: UploadFile = File(...),
+    report_type: str = "Sự cố công trình",
+):
+    """
+    Phân tích ảnh hiện trường bằng Gemini Vision.
+    Có thể kết hợp File Search của THỦY LỢI AI.
+    """
+
+    # --------------------------------------------------------
+    # KIỂM TRA GEMINI
+    # --------------------------------------------------------
+
+    if not GEMINI_API_KEY:
+        return {
+            "success": False,
+            "error": "THỦY LỢI AI chưa được cấu hình Gemini API.",
+        }
+
+    if gemini_client is None:
+        return {
+            "success": False,
+            "error": "Gemini API chưa được kết nối.",
+        }
+
+    # --------------------------------------------------------
+    # KIỂM TRA FILE
+    # --------------------------------------------------------
+
+    if not file.filename:
+        return {
+            "success": False,
+            "error": "Chưa chọn ảnh.",
+        }
+
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
+    content_type = (
+        file.content_type or ""
+    ).lower().strip()
+
+    if content_type not in allowed_types:
+        return {
+            "success": False,
+            "error": "Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.",
+        }
+
+    # --------------------------------------------------------
+    # ĐỌC ẢNH
+    # --------------------------------------------------------
+
+    try:
+
+        content = await file.read()
+
+        if not content:
+            return {
+                "success": False,
+                "error": "Ảnh rỗng.",
+            }
+
+        # Giới hạn ảnh gốc 10 MB
+        if len(content) > 10 * 1024 * 1024:
+            return {
+                "success": False,
+                "error": "Ảnh vượt quá giới hạn 10 MB.",
+            }
+
+        # ----------------------------------------------------
+        # RESIZE + NÉN
+        # ----------------------------------------------------
+
+        image = Image.open(
+            BytesIO(content)
+        )
+
+        image.thumbnail(
+            (1600, 1600),
+            Image.Resampling.LANCZOS
+        )
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        output = BytesIO()
+
+        image.save(
+            output,
+            format="JPEG",
+            quality=75,
+            optimize=True,
+        )
+
+        content = output.getvalue()
+
+        image_b64 = base64.b64encode(
+            content
+        ).decode("utf-8")
+
+        # ----------------------------------------------------
+        # LOẠI BÁO CÁO
+        # ----------------------------------------------------
+
+        report_type = (
+            report_type or "Sự cố công trình"
+        ).strip()
+
+        # ----------------------------------------------------
+        # PROMPT CHUYÊN DỤNG
+        # ----------------------------------------------------
+
+        report_prompt = f"""
+Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi
+của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
+
+Hãy lập BÁO CÁO NHANH HIỆN TRƯỜNG
+dựa trên hình ảnh được cung cấp.
+
+LOẠI BÁO CÁO:
+{report_type}
+
+NHIỆM VỤ:
+
+1. Quan sát chính xác hình ảnh.
+
+2. Nhận diện những gì thực sự nhìn thấy:
+- công trình;
+- thiết bị;
+- kênh mương;
+- hồ chứa;
+- mực nước;
+- dòng chảy;
+- diện tích khô;
+- hư hỏng;
+- dấu hiệu vi phạm hành lang;
+- biển báo;
+- chữ, số liệu hoặc thước đo nếu có.
+
+3. Nếu hình ảnh có chữ hoặc số:
+hãy đọc lại chính xác.
+Không tự đoán số bị mờ hoặc không nhìn thấy rõ.
+
+4. Nếu vấn đề liên quan đến quy định,
+quy trình, tiêu chuẩn hoặc hồ sơ thủy lợi,
+hãy sử dụng File Search để đối chiếu
+với kho tài liệu THỦY LỢI AI.
+
+5. Phân biệt rõ:
+- thông tin quan sát từ hình ảnh;
+- thông tin lấy từ hồ sơ;
+- nhận định chuyên môn;
+- kiến nghị.
+
+6. Tuyệt đối không tự bịa:
+- số liệu;
+- cao trình;
+- lưu lượng;
+- mực nước;
+- khoảng cách;
+- điều khoản pháp luật;
+- quy trình;
+- tên công trình.
+
+7. Nếu chưa đủ căn cứ xác định một thông tin,
+hãy ghi rõ:
+"Chưa đủ căn cứ xác định."
+
+CẤU TRÚC BÁO CÁO:
+
+### 1. Thời gian và hiện trường
+
+### 2. Hiện trạng quan sát được
+
+### 3. Phân tích chuyên ngành
+
+### 4. Đối chiếu hồ sơ, quy định
+
+### 5. Đánh giá mức độ ảnh hưởng
+
+### 6. Kiến nghị xử lý
+
+### 7. Thông tin cần kiểm tra bổ sung
+
+YÊU CẦU TRÌNH BÀY:
+
+- Viết bằng tiếng Việt.
+- Ngắn gọn nhưng đầy đủ.
+- Phù hợp với công tác quản lý,
+  vận hành công trình thủy lợi.
+- Không kết luận vượt quá những gì
+  hình ảnh và hồ sơ cho phép.
+"""
+
+        # ----------------------------------------------------
+        # INPUT GEMINI
+        # ----------------------------------------------------
+
+        gemini_input = [
+            {
+                "type": "text",
+                "text": report_prompt,
+            },
+            {
+                "type": "image",
+                "data": image_b64,
+                "mime_type": "image/jpeg",
+            },
+        ]
+
+        # ----------------------------------------------------
+        # FILE SEARCH
+        # ----------------------------------------------------
+
+        tools = []
+
+        if GEMINI_FILE_SEARCH_STORE:
+            tools.append(
+                {
+                    "type": "file_search",
+                    "file_search_store_names": [
+                        store_name()
+                    ],
+                }
+            )
+
+        # ----------------------------------------------------
+        # GỌI GEMINI
+        # ----------------------------------------------------
+
+        result = await asyncio.to_thread(
+            lambda: gemini_client.interactions.create(
+                model=GEMINI_MODEL,
+                system_instruction=SYSTEM_PROMPT,
+                input=gemini_input,
+                tools=tools if tools else None,
+            )
+        )
+
+        # ----------------------------------------------------
+        # LẤY CÂU TRẢ LỜI
+        # ----------------------------------------------------
+
+        answer, sources = (
+            extract_answer_and_sources(result)
+        )
+
+        # ----------------------------------------------------
+        # TRẢ KẾT QUẢ
+        # ----------------------------------------------------
+
+        return {
+            "success": True,
+            "status": "analyzed",
+            "report_type": report_type,
+            "filename": file.filename,
+            "mime_type": content_type,
+            "size_bytes": len(content),
+            "answer": answer,
+            "sources": sources,
+            "engine": "Gemini Vision",
+            "model": GEMINI_MODEL,
+            "file_search": bool(
+                GEMINI_FILE_SEARCH_STORE
+            ),
+        }
+
+    except Exception as e:
+
+        print(
+            "FIELD REPORT ERROR:",
+            repr(e)
+        )
+
+        return {
+            "success": False,
+            "status": "error",
+            "error": str(e),
+        }   
 # ============================================================
 # MAIN
 # ============================================================
