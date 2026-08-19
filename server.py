@@ -1247,13 +1247,15 @@ async def image_upload(file: UploadFile = File(...)):
 
     image_hash = hashlib.sha256(content).hexdigest()
 
-    logger.info(
-        "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s",
+print(
+    "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s"
+    % (
         filename,
         len(content) / 1024,
         content_type,
         image_hash,
     )
+)
 
     return {
         "success": True,
