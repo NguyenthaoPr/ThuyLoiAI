@@ -1246,7 +1246,33 @@ async def image_upload(file: UploadFile = File(...)):
             status_code=413,
             detail="Ảnh vượt quá giới hạn 10 MB."
         )
+# 13B-1B: RESIZE + NÉN ẢNH
+    try:
+    image = Image.open(BytesIO(content))
 
+    image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    output = BytesIO()
+
+    image.save(
+        output,
+        format="JPEG",
+        quality=75,
+        optimize=True
+    )
+
+    content = output.getvalue()
+
+    except Exception:
+    raise HTTPException(
+        status_code=400,
+        detail="Không thể xử lý ảnh."
+    )
+
+image_hash = hashlib.sha256(content).hexdigest()
     image_hash = hashlib.sha256(content).hexdigest()
 
     print(
