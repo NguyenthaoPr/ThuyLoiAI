@@ -259,7 +259,23 @@ function resizeImage(file,maxSide=1600,quality=.82){
 }
 
 cameraBtn.addEventListener("click",()=>imageInput.click());
+// ============================================================
+// CAMERA BÁO CÁO HIỆN TRƯỜNG
+// ============================================================
 
+const fieldReportCamera =
+  document.getElementById("fieldReportCamera");
+
+const fieldReportImage =
+  document.getElementById("fieldReportImage");
+
+if (fieldReportCamera && fieldReportImage) {
+
+  fieldReportCamera.addEventListener("click", () => {
+    fieldReportImage.click();
+  });
+
+}
 imageInput.addEventListener("change",async()=>{
   const file=imageInput.files?.[0];
   if(!file)return;
