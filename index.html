@@ -849,13 +849,40 @@ async function fetchJSON(url,options={},timeout=40000){
 // KHẮC PHỤC LỖI TRẠNG THÁI CHƯA SẴN SÀNG TẠI ĐÂY
 async function health(){
   try{
-    const d=await fetchJSON("/health",{},12000);
-    // Sửa d.file_search_ready -> d.gemini_client_ready && d.file_search_configured
-    const ok = d.status==="ok" && d.gemini_configured && d.gemini_client_ready && d.file_search_configured;
-    dot.className="dot "+(ok?"ok":"bad");statusEl.textContent=ok?"Đã kết nối":"Chưa sẵn sàng";
-  }catch(e){dot.className="dot bad";statusEl.textContent="Không kết nối";}
-}
+    statusEl.textContent = "Đang kiểm tra...";
 
+    const d = await fetchJSON(
+      "/health?t=" + Date.now(),
+      {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+          "Cache-Control": "no-cache"
+        }
+      },
+      15000
+    );
+
+    const ok =
+      d &&
+      d.status === "ok" &&
+      d.gemini_configured === true &&
+      d.file_search_configured === true;
+
+    if(ok){
+      dot.className = "dot ok";
+      statusEl.textContent = "Đã kết nối";
+    }else{
+      dot.className = "dot bad";
+      statusEl.textContent = "Chưa sẵn sàng";
+    }
+
+  }catch(e){
+    console.error("HEALTH ERROR:", e);
+    dot.className = "dot bad";
+    statusEl.textContent = "Không kết nối";
+  }
+}
 async function loadDocs(){
   try{
     const d=await fetchJSON("/documents",{},15000);docList.innerHTML="";
