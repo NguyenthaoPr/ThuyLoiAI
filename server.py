@@ -4,11 +4,12 @@ import asyncio
 import random
 import tempfile
 import time
+import hashlib
 from collections import OrderedDict
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -1210,7 +1211,58 @@ async def upload_file(file: UploadFile = File(...)):
         except Exception:
             pass
 
+# ============================================================
+# IMAGE UPLOAD - BƯỚC 13B-1A
+# Chỉ nhận ảnh + kiểm tra + tạo SHA-256.
+# KHÔNG gọi Gemini.
+# KHÔNG đưa ảnh vào File Search.
+# ============================================================
 
+@app.post("/image-upload")
+async def image_upload(file: UploadFile = File(...)):
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
+    max_image_bytes = 10 * 1024 * 1024  # 10 MB
+
+    filename = Path(file.filename or "image").name
+    content_type = (file.content_type or "").lower().strip()
+
+    if content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP."
+        )
+
+    content = await file.read()
+
+    if len(content) > max_image_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail="Ảnh vượt quá giới hạn 10 MB."
+        )
+
+    image_hash = hashlib.sha256(content).hexdigest()
+
+    logger.info(
+        "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s",
+        filename,
+        len(content) / 1024,
+        content_type,
+        image_hash,
+    )
+
+    return {
+        "success": True,
+        "status": "received",
+        "filename": filename,
+        "mime_type": content_type,
+        "size_bytes": len(content),
+        "image_hash": image_hash,
+    }
 # ============================================================
 # MAIN
 # ============================================================
