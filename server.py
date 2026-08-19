@@ -6,7 +6,7 @@ import tempfile
 import time
 import hashlib
 import base64
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 from collections import OrderedDict
 from pathlib import Path
