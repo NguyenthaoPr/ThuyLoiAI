@@ -138,6 +138,9 @@ const imageInput=document.getElementById("imageInput");
 const cameraBtn=document.getElementById("cameraBtn");
 const imagePreview=document.getElementById("imagePreview");
 
+let preparedImageBlob = null;
+let preparedImageName = "image.jpg";
+
 async function sha256Hex(blob){
   const buffer=await blob.arrayBuffer();
   const digest=await crypto.subtle.digest("SHA-256",buffer);
@@ -170,22 +173,35 @@ cameraBtn.addEventListener("click",()=>imageInput.click());
 imageInput.addEventListener("change",async()=>{
   const file=imageInput.files?.[0];
   if(!file)return;
+
   imagePreview.hidden=false;
   imagePreview.innerHTML="📷 Đang chuẩn bị ảnh...";
+  preparedImageBlob=null;
+
   try{
     const result=await resizeImage(file);
+
+    // Lưu ảnh đã nén để gửi lên Gemini
+    preparedImageBlob=result.blob;
+    preparedImageName=(file.name||"image.jpg").replace(/\.[^.]+$/,"")+".jpg";
+
     const hash=await sha256Hex(result.blob);
     const sizeKB=Math.round(result.blob.size/1024);
     const originalKB=Math.round(file.size/1024);
+
     const thumbUrl=URL.createObjectURL(result.blob);
+
     imagePreview.innerHTML=
       '<img class="thumb" src="'+thumbUrl+'" alt="Ảnh đã chuẩn bị">'+
       '<strong>Ảnh sẵn sàng</strong><br>'+
       'JPEG · '+result.w+'×'+result.h+
       ' · '+sizeKB+' KB'+
       ' · gốc '+originalKB+' KB'+
-      '<br>SHA-256: '+hash;
+      '<br>SHA-256: '+hash+
+      '<br><span>💡 Gửi câu hỏi để THỦY LỢI AI phân tích ảnh.</span>';
+
   }catch(err){
+    preparedImageBlob=null;
     imagePreview.hidden=false;
     imagePreview.textContent="⚠️ "+(err.message||"Không xử lý được ảnh.");
   }
@@ -308,28 +324,140 @@ function startCooldown(seconds) {
 }
 
 async function ask(){
-  const question=q.value.trim();if(!question||send.disabled||isCooldown)return;
-  addUser(question);q.value="";send.disabled=true;q.disabled=true;typing.classList.add("show");
-  
+
+  const question=q.value.trim();
+
+  // Cho phép gửi nếu có câu hỏi hoặc có ảnh
+  if((!question && !preparedImageBlob) || send.disabled || isCooldown){
+    return;
+  }
+
+  const finalQuestion =
+    question ||
+    "Hãy phân tích hình ảnh này trong bối cảnh chuyên ngành thủy lợi.";
+
+  // Hiển thị câu hỏi người dùng
+  addUser(
+    preparedImageBlob
+      ? "📷 " + finalQuestion
+      : finalQuestion
+  );
+
+  q.value="";
+  send.disabled=true;
+  q.disabled=true;
+  cameraBtn.disabled=true;
+  typing.classList.add("show");
+
   try{
-  const d = await fetchJSON("https://thuyloi-cache.thaotltb.workers.dev/ask", {
-      method:"POST",
-      headers:{"Content-Type":"application/json","Accept":"application/json"},
-      body:JSON.stringify({question})
-    },55000);
 
-    addAI(d.answer||d.message||"Không có câu trả lời.", d.sources||d.citations||[]);
+    let d;
 
-    // Nếu Backend báo 429 Rate Limit, kích hoạt đếm ngược khóa nút Gửi
-    if (d.status === "rate_limited" && d.retry_after) {
-      startCooldown(d.retry_after);
+    // ==================================================
+    // TRƯỜNG HỢP 1: CÓ ẢNH → GEMINI VISION
+    // ==================================================
+    if(preparedImageBlob){
+
+      const formData=new FormData();
+
+      formData.append(
+        "file",
+        preparedImageBlob,
+        preparedImageName
+      );
+
+      const url =
+        "/image-analyze?question="+
+        encodeURIComponent(finalQuestion);
+
+      d=await fetchJSON(
+        url,
+        {
+          method:"POST",
+          body:formData
+        },
+        60000
+      );
+
+      addAI(
+        d.answer ||
+        d.message ||
+        "Gemini không trả về nội dung phân tích ảnh.",
+        d.sources ||
+        d.citations ||
+        []
+      );
+
+      // Xóa ảnh sau khi phân tích xong
+      preparedImageBlob=null;
+      preparedImageName="image.jpg";
+      imageInput.value="";
+      imagePreview.hidden=true;
+      imagePreview.innerHTML="";
+
     }
+
+    // ==================================================
+    // TRƯỜNG HỢP 2: KHÔNG CÓ ẢNH → CHAT BÌNH THƯỜNG
+    // ==================================================
+    else{
+
+      d=await fetchJSON(
+        "https://thuyloi-cache.thaotltb.workers.dev/ask",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "Accept":"application/json"
+          },
+          body:JSON.stringify({
+            question:finalQuestion
+          })
+        },
+        55000
+      );
+
+      addAI(
+        d.answer ||
+        d.message ||
+        "Không có câu trả lời.",
+        d.sources ||
+        d.citations ||
+        []
+      );
+
+      // Rate limit
+      if(
+        d.status==="rate_limited" &&
+        d.retry_after
+      ){
+        startCooldown(d.retry_after);
+      }
+    }
+
   }catch(e){
-    addAI("⚠️ "+(e.message||"Không thể lấy câu trả lời."),[]);
+
+    addAI(
+      "⚠️ "+(
+        e.message ||
+        "Không thể xử lý yêu cầu."
+      ),
+      []
+    );
+
   }finally{
-    if (!isCooldown) {
-      send.disabled=false;q.disabled=false;send.textContent="Gửi";q.focus();
+
+    if(!isCooldown){
+
+      send.disabled=false;
+      q.disabled=false;
+      cameraBtn.disabled=false;
+
+      send.innerHTML='<span aria-hidden="true">➤</span>';
+
+      q.focus();
     }
+
     typing.classList.remove("show");
   }
 }
