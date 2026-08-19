@@ -297,7 +297,468 @@ imageInput.addEventListener("change",async()=>{
   }
 });
 
+// ============================================================
+// BÁO CÁO HIỆN TRƯỜNG
+// Chụp ảnh → chọn loại → gửi /field-report → nhận dự thảo
+// ============================================================
 
+const fieldReportBtn =
+  document.getElementById("fieldReportBtn");
+
+const fieldReportPanel =
+  document.getElementById("fieldReportPanel");
+
+const closeFieldReport =
+  document.getElementById("closeFieldReport");
+
+const fieldReportImage =
+  document.getElementById("fieldReportImage");
+
+const fieldReportCamera =
+  document.getElementById("fieldReportCamera");
+
+const fieldReportPreview =
+  document.getElementById("fieldReportPreview");
+
+const fieldReportQuestion =
+  document.getElementById("fieldReportQuestion");
+
+const createFieldReport =
+  document.getElementById("createFieldReport");
+
+const fieldReportStatus =
+  document.getElementById("fieldReportStatus");
+
+const fieldReportTypeButtons =
+  document.querySelectorAll(
+    "[data-report-type]"
+  );
+
+let selectedReportType = "";
+let fieldReportFile = null;
+
+
+// ------------------------------------------------------------
+// MỞ / ĐÓNG BẢNG BÁO CÁO
+// ------------------------------------------------------------
+
+fieldReportBtn?.addEventListener("click", () => {
+
+  fieldReportPanel.hidden = false;
+
+  fieldReportPanel.scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
+
+});
+
+
+closeFieldReport?.addEventListener("click", () => {
+
+  fieldReportPanel.hidden = true;
+
+});
+
+
+// ------------------------------------------------------------
+// CHỌN LOẠI BÁO CÁO
+// ------------------------------------------------------------
+
+fieldReportTypeButtons.forEach(button => {
+
+  button.addEventListener("click", () => {
+
+    fieldReportTypeButtons.forEach(btn => {
+      btn.classList.remove("selected");
+    });
+
+    button.classList.add("selected");
+
+    selectedReportType =
+      button.getAttribute("data-report-type") || "";
+
+    updateFieldReportButton();
+
+    showFieldReportStatus(
+      "Đã chọn: " +
+      (button.querySelector("span")?.textContent || "Báo cáo"),
+      false
+    );
+
+  });
+
+});
+
+
+// ------------------------------------------------------------
+// NÚT CHỤP ẢNH
+// ------------------------------------------------------------
+
+fieldReportCamera?.addEventListener("click", () => {
+
+  fieldReportImage?.click();
+
+});
+
+
+// ------------------------------------------------------------
+// CHỌN / CHỤP ẢNH
+// ------------------------------------------------------------
+
+fieldReportImage?.addEventListener(
+  "change",
+  async () => {
+
+    const file =
+      fieldReportImage.files?.[0];
+
+    if (!file) return;
+
+    fieldReportFile = null;
+
+    fieldReportPreview.hidden = false;
+
+    fieldReportPreview.innerHTML =
+      "📷 Đang chuẩn bị ảnh...";
+
+    try {
+
+      const result =
+        await resizeImage(file, 1600, 0.82);
+
+      fieldReportFile = new File(
+        [result.blob],
+        (file.name || "hien-truong.jpg")
+          .replace(/\.[^.]+$/, "") + ".jpg",
+        {
+          type: "image/jpeg"
+        }
+      );
+
+      const url =
+        URL.createObjectURL(result.blob);
+
+      const sizeKB =
+        Math.round(result.blob.size / 1024);
+
+      fieldReportPreview.innerHTML = `
+        <div class="field-report-preview-inner">
+
+          <img
+            src="${url}"
+            class="thumb"
+            alt="Ảnh hiện trường"
+          >
+
+          <div>
+            <strong>📷 Ảnh hiện trường đã sẵn sàng</strong>
+
+            <br>
+
+            JPEG ·
+            ${result.w}×${result.h}
+            · ${sizeKB} KB
+
+            <br>
+
+            <span>
+              Có thể tiến hành phân tích.
+            </span>
+          </div>
+
+        </div>
+      `;
+
+      updateFieldReportButton();
+
+    } catch (err) {
+
+      fieldReportFile = null;
+
+      fieldReportPreview.hidden = false;
+
+      fieldReportPreview.textContent =
+        "⚠️ " +
+        (err.message ||
+        "Không xử lý được ảnh.");
+
+      updateFieldReportButton();
+
+    }
+
+  }
+);
+
+
+// ------------------------------------------------------------
+// GHI CHÚ
+// ------------------------------------------------------------
+
+fieldReportQuestion?.addEventListener(
+  "input",
+  updateFieldReportButton
+);
+
+
+// ------------------------------------------------------------
+// KIỂM TRA ĐỦ ĐIỀU KIỆN
+// ------------------------------------------------------------
+
+function updateFieldReportButton() {
+
+  if (!createFieldReport) return;
+
+  createFieldReport.disabled =
+    !selectedReportType ||
+    !fieldReportFile;
+
+}
+
+
+// ------------------------------------------------------------
+// HIỂN THỊ TRẠNG THÁI
+// ------------------------------------------------------------
+
+function showFieldReportStatus(
+  text,
+  error = false
+) {
+
+  if (!fieldReportStatus) return;
+
+  fieldReportStatus.hidden = false;
+
+  fieldReportStatus.textContent = text;
+
+  fieldReportStatus.classList.toggle(
+    "error",
+    !!error
+  );
+
+}
+
+
+// ------------------------------------------------------------
+// TÊN LOẠI BÁO CÁO
+// ------------------------------------------------------------
+
+function getReportTypeName(type) {
+
+  const names = {
+
+    incident:
+      "🚨 Sự cố công trình",
+
+    corridor:
+      "⚠️ Vi phạm hành lang thủy lợi",
+
+    dry_area:
+      "🌾 Diện tích khô",
+
+    water_level:
+      "💧 Mực nước"
+
+  };
+
+  return names[type] || "📋 Báo cáo hiện trường";
+
+}
+
+
+// ------------------------------------------------------------
+// TẠO BÁO CÁO
+// ------------------------------------------------------------
+
+createFieldReport?.addEventListener(
+  "click",
+  async () => {
+
+    if (!selectedReportType) {
+
+      showFieldReportStatus(
+        "⚠️ Vui lòng chọn loại báo cáo.",
+        true
+      );
+
+      return;
+    }
+
+    if (!fieldReportFile) {
+
+      showFieldReportStatus(
+        "⚠️ Vui lòng chụp hoặc chọn ảnh hiện trường.",
+        true
+      );
+
+      return;
+    }
+
+    createFieldReport.disabled = true;
+
+    showFieldReportStatus(
+      "🤖 THỦY LỢI AI đang phân tích hiện trường..."
+    );
+
+    try {
+
+      const formData =
+        new FormData();
+
+      formData.append(
+        "file",
+        fieldReportFile,
+        fieldReportFile.name
+      );
+
+      formData.append(
+        "report_type",
+        selectedReportType
+      );
+
+      formData.append(
+        "question",
+        (
+          fieldReportQuestion?.value || ""
+        ).trim()
+      );
+
+
+      const result =
+        await fetchJSON(
+          "/field-report",
+          {
+            method: "POST",
+            body: formData
+          },
+          90000
+        );
+
+
+      if (!result.success) {
+
+        throw new Error(
+          result.error ||
+          "Không tạo được báo cáo."
+        );
+
+      }
+
+
+      // ------------------------------------------------------
+      // HIỂN THỊ KẾT QUẢ VÀO KHUNG CHAT
+      // ------------------------------------------------------
+
+      const reportTitle =
+        result.report_title ||
+        getReportTypeName(
+          selectedReportType
+        );
+
+
+      const answer =
+        result.answer ||
+        "THỦY LỢI AI chưa tạo được nội dung báo cáo.";
+
+
+      addUser(
+        "📋 " +
+        reportTitle
+      );
+
+
+      addAI(
+        answer,
+        result.sources || []
+      );
+
+
+      // ------------------------------------------------------
+      // HIỂN THỊ THÔNG BÁO
+      // ------------------------------------------------------
+
+      showFieldReportStatus(
+        "✅ Đã tạo dự thảo báo cáo hiện trường."
+      );
+
+
+      // ------------------------------------------------------
+      // HIỂN THỊ BƯỚC TIẾP THEO
+      // ------------------------------------------------------
+
+      if (result.next_step) {
+
+        const nextBox =
+          document.createElement("div");
+
+        nextBox.className =
+          "msg assistant";
+
+        const bubble =
+          document.createElement("div");
+
+        bubble.className =
+          "bubble";
+
+        bubble.innerHTML =
+          "<strong>📌 Bước tiếp theo</strong><br>" +
+          md(result.next_step);
+
+        nextBox.appendChild(bubble);
+
+        messages.appendChild(
+          nextBox
+        );
+
+        messages.scrollTop =
+          messages.scrollHeight;
+
+      }
+
+
+      // ------------------------------------------------------
+      // ĐÓNG PANEL SAU KHI THÀNH CÔNG
+      // ------------------------------------------------------
+
+      setTimeout(() => {
+
+        fieldReportPanel.hidden =
+          true;
+
+      }, 1200);
+
+
+    } catch (err) {
+
+      console.error(
+        "FIELD REPORT ERROR:",
+        err
+      );
+
+      showFieldReportStatus(
+        "❌ " +
+        (
+          err.message ||
+          "Không thể tạo báo cáo."
+        ),
+        true
+      );
+
+    } finally {
+
+      updateFieldReportButton();
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// KHỞI TẠO
+// ============================================================
+
+updateFieldReportButton();
 const q=document.getElementById("question"),send=document.getElementById("send"),messages=document.getElementById("messages");
 const typing=document.getElementById("typing"),dot=document.getElementById("dot"),statusEl=document.getElementById("status");
 const count=document.getElementById("count"),docs=document.getElementById("docs"),docList=document.getElementById("docList");
