@@ -775,11 +775,8 @@ createFieldReport?.addEventListener(
 // ============================================================
 
 updateFieldReportButton();
-const q=document.getElementById("question"),send=document.getElementById("send"),messages=document.getElementById("messages");
-const typing=document.getElementById("typing"),dot=document.getElementById("dot"),statusEl=document.getElementById("status");
-const count=document.getElementById("count"),docs=document.getElementById("docs"),docList=document.getElementById("docList");
 
-let isCooldown = false;
+
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
