@@ -1293,6 +1293,166 @@ async def image_upload(file: UploadFile = File(...)):
         "size_bytes": len(content),
         "image_hash": image_hash,
     }
+    # ============================================================
+# IMAGE ANALYZE - GEMINI VISION + FILE SEARCH
+# ============================================================
+
+@app.post("/image-analyze")
+async def image_analyze(
+    file: UploadFile = File(...),
+    question: str = "Hãy phân tích hình ảnh này."
+):
+    """
+    Phân tích ảnh bằng Gemini.
+    Ảnh được gửi trực tiếp dưới dạng Base64.
+    Có thể kết hợp File Search của THỦY LỢI AI.
+    """
+
+    if not GEMINI_API_KEY:
+        return {
+            "success": False,
+            "error": "THỦY LỢI AI chưa được cấu hình Gemini API."
+        }
+
+    if gemini_client is None:
+        return {
+            "success": False,
+            "error": "Gemini API chưa được kết nối."
+        }
+
+    if not file.filename:
+        return {
+            "success": False,
+            "error": "Chưa chọn ảnh."
+        }
+
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
+    content_type = (file.content_type or "").lower().strip()
+
+    if content_type not in allowed_types:
+        return {
+            "success": False,
+            "error": "Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP."
+        }
+
+    try:
+        # Đọc ảnh
+        content = await file.read()
+
+        if not content:
+            return {
+                "success": False,
+                "error": "Ảnh rỗng."
+            }
+
+        # Giới hạn an toàn
+        if len(content) > 10 * 1024 * 1024:
+            return {
+                "success": False,
+                "error": "Ảnh vượt quá giới hạn 10 MB."
+            }
+
+        import base64
+
+        image_b64 = base64.b64encode(content).decode("utf-8")
+
+        question = (question or "").strip()
+
+        if not question:
+            question = "Hãy phân tích hình ảnh này."
+
+        # ----------------------------------------------------
+        # INPUT CHO GEMINI
+        # ----------------------------------------------------
+
+        gemini_input = [
+            {
+                "type": "text",
+                "text": (
+                    "Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi. "
+                    "Hãy quan sát kỹ hình ảnh được cung cấp và trả lời "
+                    "câu hỏi của người dùng.\n\n"
+                    f"CÂU HỎI:\n{question}\n\n"
+                    "Nếu hình ảnh có chữ, số liệu, bảng biểu, biển báo, "
+                    "bản vẽ hoặc thông tin kỹ thuật, hãy đọc và phân tích "
+                    "chính xác nhất có thể. "
+                    "Không được tự bịa thông tin không nhìn thấy trong ảnh."
+                )
+            },
+            {
+                "type": "image",
+                "data": image_b64,
+                "mime_type": content_type
+            }
+        ]
+
+        # ----------------------------------------------------
+        # GỌI GEMINI
+        # ----------------------------------------------------
+
+        tools = []
+
+        if GEMINI_FILE_SEARCH_STORE:
+            tools.append({
+                "type": "file_search",
+                "file_search_store_names": [
+                    store_name()
+                ]
+            })
+
+        result = await asyncio.to_thread(
+            lambda: gemini_client.interactions.create(
+                model=GEMINI_MODEL,
+                system_instruction=SYSTEM_PROMPT,
+                input=gemini_input,
+                tools=tools if tools else None,
+            )
+        )
+
+        answer = (
+            getattr(result, "output_text", None)
+            or ""
+        ).strip()
+
+        if not answer:
+            raise RuntimeError(
+                "Gemini không trả về nội dung phân tích ảnh."
+            )
+
+        # ----------------------------------------------------
+        # TRẢ KẾT QUẢ
+        # ----------------------------------------------------
+
+        return {
+            "success": True,
+            "status": "analyzed",
+            "filename": file.filename,
+            "mime_type": content_type,
+            "size_bytes": len(content),
+            "question": question,
+            "answer": answer,
+            "engine": "Gemini Vision",
+            "model": GEMINI_MODEL,
+            "file_search": bool(GEMINI_FILE_SEARCH_STORE),
+        }
+
+    except Exception as e:
+
+        print(
+            "IMAGE ANALYZE ERROR:",
+            repr(e)
+        )
+
+        return {
+            "success": False,
+            "status": "error",
+            "error": str(e),
+        }
 # ============================================================
 # MAIN
 # ============================================================
