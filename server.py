@@ -1611,10 +1611,22 @@ async def image_analyze(
     question: str = "Hãy phân tích hình ảnh này."
 ):
     """
-    Phân tích ảnh bằng Gemini.
-    Ảnh được resize/nén rồi gửi dưới dạng Base64.
-    Có thể kết hợp File Search của THỦY LỢI AI.
+    Phân tích ảnh bằng Gemini Vision.
+
+    Quy trình:
+    1. Nhận ảnh JPG / PNG / WebP.
+    2. Kiểm tra dung lượng ảnh gốc.
+    3. Sửa orientation ảnh điện thoại.
+    4. Resize tối đa 1600x1600.
+    5. Chuyển sang JPEG quality 75.
+    6. Gửi ảnh đã xử lý cho Gemini.
+    7. Kết hợp File Search của THỦY LỢI AI.
+    8. Trả về answer + sources.
     """
+
+    # ========================================================
+    # KIỂM TRA GEMINI
+    # ========================================================
 
     if not GEMINI_API_KEY:
         return {
@@ -1628,6 +1640,10 @@ async def image_analyze(
             "error": "Gemini API chưa được kết nối."
         }
 
+    # ========================================================
+    # KIỂM TRA FILE
+    # ========================================================
+
     if not file.filename:
         return {
             "success": False,
@@ -1640,7 +1656,9 @@ async def image_analyze(
         "image/webp",
     }
 
-    content_type = (file.content_type or "").lower().strip()
+    content_type = (
+        file.content_type or ""
+    ).lower().strip()
 
     if content_type not in allowed_types:
         return {
@@ -1649,7 +1667,11 @@ async def image_analyze(
         }
 
     try:
-        # Đọc ảnh
+
+        # ====================================================
+        # ĐỌC ẢNH GỐC
+        # ====================================================
+
         content = await file.read()
 
         if not content:
@@ -1658,28 +1680,54 @@ async def image_analyze(
                 "error": "Ảnh rỗng."
             }
 
-        # Giới hạn ảnh gốc
-        if len(content) > 10 * 1024 * 1024:
+        # Kích thước ảnh gốc
+        original_size_bytes = len(content)
+
+        # Giới hạn ảnh gốc 10 MB
+        if original_size_bytes > 10 * 1024 * 1024:
             return {
                 "success": False,
                 "error": "Ảnh vượt quá giới hạn 10 MB."
             }
 
-        # ==========================================
-        # RESIZE + NÉN ẢNH TRƯỚC KHI GỬI GEMINI
-        # ==========================================
-        try:
-            image = Image.open(BytesIO(content))
+        # ====================================================
+        # RESIZE + NÉN ẢNH
+        # ====================================================
 
-            # Giữ tỷ lệ, cạnh dài tối đa 1600 px
+        try:
+
+            image = Image.open(
+                BytesIO(content)
+            )
+
+            # ----------------------------------------------
+            # Sửa orientation của ảnh điện thoại
+            # ----------------------------------------------
+
+            image = ImageOps.exif_transpose(
+                image
+            )
+
+            # ----------------------------------------------
+            # Resize tối đa 1600 x 1600
+            # Giữ nguyên tỷ lệ ảnh
+            # ----------------------------------------------
+
             image.thumbnail(
                 (1600, 1600),
                 Image.Resampling.LANCZOS
             )
 
-            # Chuyển sang RGB để lưu JPEG
+            # ----------------------------------------------
+            # JPEG cần RGB
+            # ----------------------------------------------
+
             if image.mode != "RGB":
                 image = image.convert("RGB")
+
+            # ----------------------------------------------
+            # Lưu JPEG quality 75
+            # ----------------------------------------------
 
             output = BytesIO()
 
@@ -1692,57 +1740,107 @@ async def image_analyze(
 
             content = output.getvalue()
 
-        except Exception:
+        except Exception as image_error:
+
+            print(
+                "IMAGE PROCESS ERROR:",
+                repr(image_error)
+            )
+
             return {
                 "success": False,
+                "status": "error",
                 "error": "Không thể xử lý ảnh."
             }
 
-        # Chuyển ảnh đã nén sang Base64
-        image_b64 = base64.b64encode(content).decode("utf-8")
+        # ====================================================
+        # THỐNG KÊ ẢNH SAU XỬ LÝ
+        # ====================================================
 
-        question = (question or "").strip()
+        processed_size_bytes = len(
+            content
+        )
+
+        # ====================================================
+        # CHUYỂN SANG BASE64
+        # ====================================================
+
+        image_b64 = base64.b64encode(
+            content
+        ).decode("utf-8")
+
+        # ====================================================
+        # CÂU HỎI
+        # ====================================================
+
+        question = (
+            question or ""
+        ).strip()
 
         if not question:
-            question = "Hãy phân tích hình ảnh này."
+            question = (
+                "Hãy phân tích hình ảnh này."
+            )
 
-        # ----------------------------------------------------
+        # ====================================================
         # INPUT CHO GEMINI
-        # ----------------------------------------------------
+        # ====================================================
 
         gemini_input = [
             {
                 "type": "text",
                 "text": (
-                    "Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi "
-                    "của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.\n\n"
+                    "Bạn là THỦY LỢI AI, trợ lý chuyên ngành "
+                    "thủy lợi của Chi nhánh Thủy lợi "
+                    "Vu Gia - Thu Bồn.\n\n"
 
                     "NHIỆM VỤ:\n"
-                    "1. Quan sát và đọc chính xác hình ảnh được cung cấp.\n"
-                    "2. Nhận diện chữ, số liệu, bảng biểu, bản vẽ, "
-                    "công trình, thiết bị hoặc hiện trạng nếu có.\n"
-                    "3. Nếu câu hỏi liên quan đến quy định, quy trình, "
-                    "vận hành, tiêu chuẩn, hồ sơ hoặc nghiệp vụ thủy lợi, "
-                    "hãy sử dụng File Search để đối chiếu với kho tài liệu "
+                    "1. Quan sát và đọc chính xác hình ảnh "
+                    "được cung cấp.\n"
+
+                    "2. Nhận diện chữ, số liệu, bảng biểu, "
+                    "bản vẽ, công trình, thiết bị hoặc "
+                    "hiện trạng nếu có.\n"
+
+                    "3. Nếu câu hỏi liên quan đến quy định, "
+                    "quy trình, vận hành, tiêu chuẩn, hồ sơ "
+                    "hoặc nghiệp vụ thủy lợi, hãy sử dụng "
+                    "File Search để đối chiếu với kho tài liệu "
                     "THỦY LỢI AI.\n"
-                    "4. Ưu tiên thông tin trong hồ sơ THỦY LỢI AI khi "
-                    "trả lời các vấn đề nghiệp vụ.\n"
-                    "5. Phân biệt rõ thông tin nhìn thấy trong ảnh với "
-                    "thông tin lấy từ hồ sơ.\n"
-                    "6. Nếu không tìm thấy căn cứ phù hợp trong hồ sơ, "
-                    "phải nói rõ điều đó.\n"
-                    "7. Không tự bịa số liệu, quy định, điều khoản hoặc "
-                    "thông tin không nhìn thấy trong ảnh và không có "
-                    "trong nguồn tài liệu.\n\n"
+
+                    "4. Ưu tiên thông tin trong hồ sơ "
+                    "THỦY LỢI AI khi trả lời các vấn đề "
+                    "nghiệp vụ.\n"
+
+                    "5. Phân biệt rõ thông tin nhìn thấy "
+                    "trong ảnh với thông tin lấy từ hồ sơ.\n"
+
+                    "6. Nếu không tìm thấy căn cứ phù hợp "
+                    "trong hồ sơ, phải nói rõ điều đó.\n"
+
+                    "7. Không tự bịa số liệu, quy định, "
+                    "điều khoản hoặc thông tin không nhìn "
+                    "thấy trong ảnh và không có trong "
+                    "nguồn tài liệu.\n\n"
 
                     "CÁCH TRẢ LỜI:\n"
-                    "- Trình bày rõ ràng, ngắn gọn.\n"
-                    "- Nếu có chữ hoặc số liệu trong ảnh, đọc lại chính xác.\n"
-                    "- Nếu phát hiện vấn đề kỹ thuật, nêu rõ vấn đề.\n"
-                    "- Nếu có căn cứ từ hồ sơ, nêu tên tài liệu liên quan.\n"
-                    "- Nếu chưa đủ căn cứ, nói rõ cần thêm thông tin.\n\n"
 
-                    f"CÂU HỎI CỦA NGƯỜI DÙNG:\n{question}"
+                    "- Trình bày rõ ràng, ngắn gọn.\n"
+
+                    "- Nếu có chữ hoặc số liệu trong ảnh, "
+                    "đọc lại chính xác.\n"
+
+                    "- Nếu phát hiện vấn đề kỹ thuật, "
+                    "nêu rõ vấn đề.\n"
+
+                    "- Nếu có căn cứ từ hồ sơ, "
+                    "nêu tên tài liệu liên quan.\n"
+
+                    "- Nếu chưa đủ căn cứ, nói rõ "
+                    "cần thêm thông tin.\n\n"
+
+                    f"CÂU HỎI CỦA NGƯỜI DÙNG:\n"
+                    f"{question}"
                 )
             },
             {
@@ -1752,13 +1850,14 @@ async def image_analyze(
             }
         ]
 
-        # ----------------------------------------------------
-        # GỌI GEMINI
-        # ----------------------------------------------------
+        # ====================================================
+        # FILE SEARCH
+        # ====================================================
 
         tools = []
 
         if GEMINI_FILE_SEARCH_STORE:
+
             tools.append({
                 "type": "file_search",
                 "file_search_store_names": [
@@ -1766,33 +1865,75 @@ async def image_analyze(
                 ]
             })
 
+        # ====================================================
+        # GỌI GEMINI
+        # ====================================================
+
         result = await asyncio.to_thread(
             lambda: gemini_client.interactions.create(
                 model=GEMINI_MODEL,
                 system_instruction=SYSTEM_PROMPT,
                 input=gemini_input,
-                tools=tools if tools else None,
+                tools=(
+                    tools
+                    if tools
+                    else None
+                ),
             )
         )
 
-        answer, sources = extract_answer_and_sources(result)
+        # ====================================================
+        # LẤY ANSWER + SOURCES
+        # ====================================================
 
-        # ----------------------------------------------------
+        answer, sources = (
+            extract_answer_and_sources(
+                result
+            )
+        )
+
+        if not answer:
+            raise RuntimeError(
+                "Gemini không trả về nội dung "
+                "phân tích ảnh."
+            )
+
+        # ====================================================
         # TRẢ KẾT QUẢ
-        # ----------------------------------------------------
+        # ====================================================
 
         return {
             "success": True,
             "status": "analyzed",
+
             "filename": file.filename,
-            "mime_type": content_type,
-            "size_bytes": len(content),
+
+            # Ảnh sau xử lý luôn là JPEG
+            "mime_type": "image/jpeg",
+
+            # Dung lượng ảnh gốc
+            "original_size_bytes": (
+                original_size_bytes
+            ),
+
+            # Dung lượng ảnh sau resize/nén
+            "processed_size_bytes": (
+                processed_size_bytes
+            ),
+
             "question": question,
+
             "answer": answer,
+
             "sources": sources,
+
             "engine": "Gemini Vision",
+
             "model": GEMINI_MODEL,
-            "file_search": bool(GEMINI_FILE_SEARCH_STORE),
+
+            "file_search": bool(
+                GEMINI_FILE_SEARCH_STORE
+            ),
         }
 
     except Exception as e:
@@ -1807,8 +1948,6 @@ async def image_analyze(
             "status": "error",
             "error": str(e),
         }
-
-
 # ============================================================
 # MAIN
 # ============================================================
