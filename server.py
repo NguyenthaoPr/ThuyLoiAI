@@ -1248,23 +1248,23 @@ async def image_upload(file: UploadFile = File(...)):
         )
 # 13B-1B: RESIZE + NÉN ẢNH
     try:
-    image = Image.open(BytesIO(content))
+        image = Image.open(BytesIO(content))
 
-    image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
 
-    if image.mode != "RGB":
-        image = image.convert("RGB")
+        if image.mode != "RGB":
+            image = image.convert("RGB")
 
-    output = BytesIO()
+        output = BytesIO()
 
-    image.save(
-        output,
-        format="JPEG",
-        quality=75,
-        optimize=True
-    )
+        image.save(
+            output,
+            format="JPEG",
+            quality=75,
+            optimize=True
+        )
 
-    content = output.getvalue()
+        content = output.getvalue()
 
     except Exception:
     raise HTTPException(
