@@ -1257,7 +1257,7 @@ print(
     )
 )
 
-    return {
+return {
         "success": True,
         "status": "received",
         "filename": filename,
