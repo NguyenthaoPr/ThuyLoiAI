@@ -11,3 +11,4 @@ python-multipart>=0.0.9
 # Xử lý định dạng dữ liệu (Đã tích hợp trong FastAPI nhưng nên khai báo rõ)
 pydantic>=2.6.0
 Pillow
+reportlab
