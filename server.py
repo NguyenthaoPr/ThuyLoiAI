@@ -1948,6 +1948,367 @@ async def image_analyze(
             "status": "error",
             "error": str(e),
         }
+
+# ============================================================
+# FIELD REPORT - BƯỚC 1
+# LẬP BÁO CÁO HIỆN TRƯỜNG TỪ HÌNH ẢNH
+# ============================================================
+
+@app.post("/field-report")
+async def field_report(
+    file: UploadFile = File(...),
+    report_type: str = "incident",
+    question: str = "",
+):
+    """
+    Tạo DỰ THẢO báo cáo hiện trường từ ảnh.
+
+    Các loại:
+    - incident     : Sự cố công trình
+    - corridor     : Vi phạm hành lang
+    - dry_area     : Diện tích khô / thiếu nước
+    - water_level  : Mực nước hồ / kênh
+
+    Bước này CHỈ tạo dự thảo.
+    Chưa tạo PDF và chưa gửi Zalo.
+    """
+
+    # --------------------------------------------------------
+    # 1. KIỂM TRA GEMINI
+    # --------------------------------------------------------
+
+    if not GEMINI_API_KEY:
+        return {
+            "success": False,
+            "error": "THỦY LỢI AI chưa được cấu hình Gemini API."
+        }
+
+    if gemini_client is None:
+        return {
+            "success": False,
+            "error": "Gemini API chưa được kết nối."
+        }
+
+    # --------------------------------------------------------
+    # 2. KIỂM TRA FILE
+    # --------------------------------------------------------
+
+    if not file.filename:
+        return {
+            "success": False,
+            "error": "Chưa chọn ảnh."
+        }
+
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
+    content_type = (
+        file.content_type or ""
+    ).lower().strip()
+
+    if content_type not in allowed_types:
+        return {
+            "success": False,
+            "error": "Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP."
+        }
+
+    # --------------------------------------------------------
+    # 3. KIỂM TRA LOẠI BÁO CÁO
+    # --------------------------------------------------------
+
+    allowed_report_types = {
+        "incident": "SỰ CỐ CÔNG TRÌNH",
+        "corridor": "KIỂM TRA HÀNH LANG BẢO VỆ CÔNG TRÌNH THỦY LỢI",
+        "dry_area": "KHU VỰC KHÔ / THIẾU NƯỚC",
+        "water_level": "MỰC NƯỚC HỒ / KÊNH",
+    }
+
+    if report_type not in allowed_report_types:
+        report_type = "incident"
+
+    report_title = allowed_report_types[report_type]
+
+    # --------------------------------------------------------
+    # 4. ĐỌC ẢNH
+    # --------------------------------------------------------
+
+    try:
+        content = await file.read()
+
+        if not content:
+            return {
+                "success": False,
+                "error": "Ảnh rỗng."
+            }
+
+        # Giới hạn ảnh gốc 10 MB
+        if len(content) > 10 * 1024 * 1024:
+            return {
+                "success": False,
+                "error": "Ảnh vượt quá giới hạn 10 MB."
+            }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Không thể đọc ảnh: {str(e)}"
+        }
+
+    # --------------------------------------------------------
+    # 5. RESIZE + NÉN ẢNH
+    # --------------------------------------------------------
+
+    try:
+
+        image = Image.open(
+            BytesIO(content)
+        )
+
+        # Giữ tỷ lệ
+        image.thumbnail(
+            (1600, 1600),
+            Image.Resampling.LANCZOS
+        )
+
+        # Chuyển RGB
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        output = BytesIO()
+
+        image.save(
+            output,
+            format="JPEG",
+            quality=75,
+            optimize=True
+        )
+
+        content = output.getvalue()
+
+    except Exception as e:
+
+        return {
+            "success": False,
+            "error": f"Không thể xử lý ảnh: {str(e)}"
+        }
+
+    # --------------------------------------------------------
+    # 6. BASE64
+    # --------------------------------------------------------
+
+    image_b64 = base64.b64encode(
+        content
+    ).decode("utf-8")
+
+    # --------------------------------------------------------
+    # 7. CÂU HỎI / GHI CHÚ CỦA NGƯỜI DÙNG
+    # --------------------------------------------------------
+
+    question = (question or "").strip()
+
+    if not question:
+        question = (
+            "Hãy lập dự thảo báo cáo hiện trường "
+            "dựa trên hình ảnh."
+        )
+
+    # --------------------------------------------------------
+    # 8. PROMPT CHUYÊN BIỆT CHO BÁO CÁO
+    # --------------------------------------------------------
+
+    report_prompt = f"""
+Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi
+của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
+
+NHIỆM VỤ:
+
+Lập DỰ THẢO báo cáo hiện trường dựa trên hình ảnh
+người dùng cung cấp.
+
+LOẠI BÁO CÁO:
+
+{report_title}
+
+NGUYÊN TẮC BẮT BUỘC:
+
+1. Chỉ mô tả những gì có thể quan sát hoặc có căn cứ.
+
+2. Không tự bịa:
+- địa điểm;
+- thời gian;
+- diện tích;
+- mực nước;
+- lưu lượng;
+- số lượng;
+- khoảng cách;
+- thông số kỹ thuật.
+
+3. Nếu ảnh không đủ căn cứ xác định một thông tin,
+ghi rõ:
+"Chưa xác định được từ hình ảnh."
+
+4. Với vi phạm hành lang:
+Không được tự kết luận vi phạm chỉ dựa vào hình ảnh.
+Phải phân biệt:
+- dấu hiệu cần kiểm tra;
+- căn cứ hồ sơ;
+- kết luận chính thức.
+
+5. Với diện tích khô:
+Không tự ước lượng diện tích ha nếu ảnh không có
+căn cứ đo đạc hoặc dữ liệu bản đồ.
+
+6. Với mực nước:
+Nếu nhìn thấy thước đo hoặc vạch mực nước,
+hãy đọc giá trị nếu đủ rõ.
+Nếu không rõ, phải nói rõ chưa xác định chính xác.
+
+7. Nếu có căn cứ từ File Search:
+hãy đối chiếu và nêu tên tài liệu liên quan.
+
+8. Phân biệt rõ:
+- THÔNG TIN QUAN SÁT TỪ ẢNH
+- THÔNG TIN ĐỐI CHIẾU HỒ SƠ
+- NHẬN ĐỊNH / KIẾN NGHỊ
+
+9. Đây là DỰ THẢO báo cáo.
+Không xem đây là kết luận pháp lý hoặc kết luận
+kỹ thuật cuối cùng.
+
+CẤU TRÚC BÁO CÁO:
+
+# BÁO CÁO NHANH HIỆN TRƯỜNG
+
+## 1. Thông tin chung
+
+- Loại báo cáo:
+{report_title}
+- Thời gian:
+Chưa xác định từ hình ảnh.
+- Địa điểm:
+Chưa xác định từ hình ảnh.
+- Công trình:
+Chưa xác định từ hình ảnh.
+
+## 2. Hiện trạng quan sát từ hình ảnh
+
+Mô tả chính xác những gì nhìn thấy.
+
+## 3. Đánh giá sơ bộ
+
+Nêu những vấn đề có thể nhận biết từ hình ảnh.
+
+## 4. Đối chiếu hồ sơ
+
+Nếu có căn cứ phù hợp từ File Search,
+nêu rõ tài liệu và nội dung liên quan.
+
+Nếu chưa có căn cứ:
+"Chưa tìm thấy căn cứ phù hợp trong hồ sơ."
+
+## 5. Kiến nghị
+
+Đề xuất các bước kiểm tra hoặc xử lý tiếp theo,
+không vượt quá căn cứ có được.
+
+## 6. Thông tin cần bổ sung
+
+Liệt kê những thông tin cán bộ hiện trường
+cần cung cấp thêm nếu cần.
+
+GHI CHÚ CỦA NGƯỜI DÙNG:
+
+{question}
+"""
+
+    # --------------------------------------------------------
+    # 9. INPUT GEMINI
+    # --------------------------------------------------------
+
+    gemini_input = [
+        {
+            "type": "text",
+            "text": report_prompt
+        },
+        {
+            "type": "image",
+            "data": image_b64,
+            "mime_type": "image/jpeg"
+        }
+    ]
+
+    # --------------------------------------------------------
+    # 10. FILE SEARCH
+    # --------------------------------------------------------
+
+    tools = []
+
+    if GEMINI_FILE_SEARCH_STORE:
+
+        tools.append({
+            "type": "file_search",
+            "file_search_store_names": [
+                store_name()
+            ]
+        })
+
+    # --------------------------------------------------------
+    # 11. GỌI GEMINI
+    # --------------------------------------------------------
+
+    try:
+
+        result = await asyncio.to_thread(
+            lambda: gemini_client.interactions.create(
+                model=GEMINI_MODEL,
+                system_instruction=SYSTEM_PROMPT,
+                input=gemini_input,
+                tools=tools if tools else None,
+            )
+        )
+
+        answer, sources = extract_answer_and_sources(
+            result
+        )
+
+    except Exception as e:
+
+        print(
+            "FIELD REPORT ERROR:",
+            repr(e)
+        )
+
+        return {
+            "success": False,
+            "status": "error",
+            "error": str(e),
+        }
+
+    # --------------------------------------------------------
+    # 12. TRẢ KẾT QUẢ
+    # --------------------------------------------------------
+
+    return {
+        "success": True,
+        "status": "draft",
+        "report_type": report_type,
+        "report_title": report_title,
+        "filename": file.filename,
+        "mime_type": content_type,
+        "size_bytes": len(content),
+        "question": question,
+        "answer": answer,
+        "sources": sources,
+        "engine": "Gemini Vision",
+        "model": GEMINI_MODEL,
+        "file_search": bool(
+            GEMINI_FILE_SEARCH_STORE
+        ),
+        "next_step": "review",
+    }
 # ============================================================
 # MAIN
 # ============================================================
