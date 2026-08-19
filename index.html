@@ -57,6 +57,13 @@ main{width:100%;max-width:960px;margin:auto;padding:12px 10px 28px}
 
 .compose{background:var(--surface);border-top:1px solid var(--border);padding:11px}.row{display:flex;gap:8px;align-items:stretch}
 textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E0;border-radius:14px;padding:12px 13px;font-size:16px;line-height:1.45;resize:none;outline:none;background:var(--surface);color:var(--text)}textarea::placeholder{color:var(--text-secondary);opacity:1}textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--focus-ring)}
+
+.camera-btn{width:48px;min-width:48px;height:52px;border:1px solid var(--border);border-radius:14px;background:var(--surface);color:var(--text);font-size:21px;display:flex;align-items:center;justify-content:center}
+.camera-btn:hover{background:var(--surface-soft);border-color:#B9CCE0}
+.camera-btn:active{background:#EAF3FF}
+.image-preview{margin-top:8px;padding:9px 10px;border:1px solid var(--border);border-radius:11px;background:var(--surface-soft);font-size:12px;line-height:1.45;color:var(--text-secondary)}
+.image-preview strong{color:var(--text)}
+.image-preview .thumb{width:58px;height:58px;object-fit:cover;border-radius:9px;border:1px solid var(--border);vertical-align:middle;margin-right:8px}
 .send{width:52px;min-width:52px;height:52px;border:0;border-radius:14px;background:var(--primary);color:#fff;font-weight:700;font-size:21px;display:flex;align-items:center;justify-content:center;transition:background .15s ease,transform .05s ease}.send:hover{background:#1D4ED8}.send:active{background:#1E40AF;transform:translateY(1px)}.send:disabled{opacity:.55;cursor:not-allowed}
 .hint{display:none}.footer{display:none}
 
@@ -113,7 +120,7 @@ textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E
   </div>
   <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
   <div class="compose">
-    <div class="row"><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button></div>
+    <div class="row"><input id="imageInput" type="file" accept="image/*" capture="environment" hidden aria-label="Chụp hoặc chọn ảnh hiện trường"><button id="cameraBtn" class="camera-btn" type="button" aria-label="Chụp hoặc chọn ảnh" title="Chụp hoặc chọn ảnh">📷</button><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button></div><div id="imagePreview" class="image-preview" hidden aria-live="polite"></div>
     <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
   </div>
 </section>
@@ -127,6 +134,64 @@ textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E
 </main>
 
 <script>
+const imageInput=document.getElementById("imageInput");
+const cameraBtn=document.getElementById("cameraBtn");
+const imagePreview=document.getElementById("imagePreview");
+
+async function sha256Hex(blob){
+  const buffer=await blob.arrayBuffer();
+  const digest=await crypto.subtle.digest("SHA-256",buffer);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+function resizeImage(file,maxSide=1600,quality=.82){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+      const w=Math.max(1,Math.round(img.naturalWidth*scale));
+      const h=Math.max(1,Math.round(img.naturalHeight*scale));
+      const canvas=document.createElement("canvas");
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext("2d",{alpha:false});
+      if(!ctx){reject(new Error("Không tạo được bộ xử lý ảnh."));return}
+      ctx.drawImage(img,0,0,w,h);
+      canvas.toBlob(blob=>blob?resolve({blob,w,h}):reject(new Error("Không nén được ảnh.")),"image/jpeg",quality);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Không đọc được ảnh."))};
+    img.src=url;
+  });
+}
+
+cameraBtn.addEventListener("click",()=>imageInput.click());
+
+imageInput.addEventListener("change",async()=>{
+  const file=imageInput.files?.[0];
+  if(!file)return;
+  imagePreview.hidden=false;
+  imagePreview.innerHTML="📷 Đang chuẩn bị ảnh...";
+  try{
+    const result=await resizeImage(file);
+    const hash=await sha256Hex(result.blob);
+    const sizeKB=Math.round(result.blob.size/1024);
+    const originalKB=Math.round(file.size/1024);
+    const thumbUrl=URL.createObjectURL(result.blob);
+    imagePreview.innerHTML=
+      '<img class="thumb" src="'+thumbUrl+'" alt="Ảnh đã chuẩn bị">'+
+      '<strong>Ảnh sẵn sàng</strong><br>'+
+      'JPEG · '+result.w+'×'+result.h+
+      ' · '+sizeKB+' KB'+
+      ' · gốc '+originalKB+' KB'+
+      '<br>SHA-256: '+hash;
+  }catch(err){
+    imagePreview.hidden=false;
+    imagePreview.textContent="⚠️ "+(err.message||"Không xử lý được ảnh.");
+  }
+});
+
+
 const q=document.getElementById("question"),send=document.getElementById("send"),messages=document.getElementById("messages");
 const typing=document.getElementById("typing"),dot=document.getElementById("dot"),statusEl=document.getElementById("status");
 const count=document.getElementById("count"),docs=document.getElementById("docs"),docList=document.getElementById("docList");
