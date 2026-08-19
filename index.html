@@ -57,7 +57,7 @@ main{width:100%;max-width:960px;margin:auto;padding:12px 10px 28px}
 
 .compose{background:var(--surface);border-top:1px solid var(--border);padding:11px}.row{display:flex;gap:8px;align-items:stretch}
 textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E0;border-radius:14px;padding:12px 13px;font-size:16px;line-height:1.45;resize:none;outline:none;background:var(--surface);color:var(--text)}textarea::placeholder{color:var(--text-secondary);opacity:1}textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--focus-ring)}
-.send{width:64px;min-width:64px;border:0;border-radius:14px;background:var(--primary);color:#fff;font-weight:700;font-size:13px;transition:background .15s ease,transform .05s ease}.send:hover{background:#1D4ED8}.send:active{background:#1E40AF;transform:translateY(1px)}.send:disabled{opacity:.55;cursor:not-allowed}
+.send{width:52px;min-width:52px;height:52px;border:0;border-radius:14px;background:var(--primary);color:#fff;font-weight:700;font-size:21px;display:flex;align-items:center;justify-content:center;transition:background .15s ease,transform .05s ease}.send:hover{background:#1D4ED8}.send:active{background:#1E40AF;transform:translateY(1px)}.send:disabled{opacity:.55;cursor:not-allowed}
 .hint{display:none}.footer{display:none}
 
 .uiCompat{display:none}.docs{display:none;padding:0 10px 10px}.docs.show{display:block}.doc{padding:9px;border:1px solid var(--border);border-radius:10px;background:var(--surface-soft);margin-top:7px;font-size:13px;line-height:1.5;color:var(--text-secondary)}.doc b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}.doc i{color:var(--success);font-style:normal}
@@ -83,7 +83,7 @@ textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E
   .bubble{max-width:94%;font-size:16px;line-height:1.65}
   .compose{padding-top:9px;position:sticky;bottom:0;z-index:2}
   textarea{height:50px}
-  .send{width:60px;min-width:60px}
+  .send{width:52px;min-width:52px;height:52px}
 }
 
 @media(max-width:380px){
@@ -113,7 +113,7 @@ textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E
   </div>
   <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
   <div class="compose">
-    <div class="row"><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send">Gửi</button></div>
+    <div class="row"><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button></div>
     <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
   </div>
 </section>
