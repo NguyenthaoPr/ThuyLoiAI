@@ -1,1431 +1,1237 @@
 <!doctype html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#08233d">
-<title>THỦY LỢI AI</title>
-<style>
-:root{
-  --primary:#2563EB;
-  --deep-navy:#0F2742;
-  --success:#10B981;
-  --warning:#F59E0B;
-  --error:#EF4444;
-  --error-bg:#FEF2F2;
-  --success-bg:#ECFDF5;
-  --text:#1E293B;
-  --text-secondary:#64748B;
-  --border:#D9E2EC;
-  --background:#F5F8FB;
-  --surface:#FFFFFF;
-  --surface-soft:#F8FAFC;
-  --focus-ring:rgba(37,99,235,.16);
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;width:100%;min-height:100%;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:var(--background);color:var(--text)}
-body{overflow-x:hidden}
-button,textarea{font:inherit}
-button{cursor:pointer}
-button:focus-visible,textarea:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#08233d">
+  <title>THỦY LỢI AI</title>
+  <style>
+    :root {
+      --primary: #2563EB;
+      --deep-navy: #0F2742;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --error: #EF4444;
+      --error-bg: #FEF2F2;
+      --success-bg: #ECFDF5;
+      --text: #1E293B;
+      --text-secondary: #64748B;
+      --border: #D9E2EC;
+      --background: #F5F8FB;
+      --surface: #FFFFFF;
+      --surface-soft: #F8FAFC;
+      --focus-ring: rgba(37, 99, 235, .16);
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background: var(--background);
+      color: var(--text);
+    }
+    body {
+      overflow-x: hidden;
+    }
+    button, textarea {
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 1px;
+    }
 
-.header{background:var(--deep-navy);color:#fff;padding:13px 14px;position:sticky;top:0;z-index:10;box-shadow:0 2px 10px rgba(15,39,66,.14)}
-.header-inner{max-width:760px;margin:auto;display:flex;align-items:center;gap:11px;min-height:44px}
-.logo{width:42px;height:42px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;flex:none;box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.brand{min-width:0}.brand h1{font-size:19px;line-height:1.2;margin:0;font-weight:800;letter-spacing:.1px}.brand p{font-size:11px;line-height:1.35;margin:3px 0 0;opacity:.82}
-.status{margin-left:auto;font-size:11px;white-space:nowrap;display:flex;align-items:center;padding:5px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.07)}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warning);margin-right:5px;box-shadow:0 0 0 2px rgba(245,158,11,.12)}.dot.ok{background:var(--success);box-shadow:0 0 0 2px rgba(16,185,129,.14)}.dot.bad{background:var(--error);box-shadow:0 0 0 2px rgba(239,68,68,.14)}
+    .header {
+      background: var(--deep-navy);
+      color: #fff;
+      padding: 13px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 10px rgba(15, 39, 66, .14);
+    }
+    .header-inner {
+      max-width: 760px;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 44px;
+    }
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+    }
+    .brand {
+      min-width: 0;
+    }
+    .brand h1 {
+      font-size: 19px;
+      line-height: 1.2;
+      margin: 0;
+      font-weight: 800;
+      letter-spacing: .1px;
+    }
+    .brand p {
+      font-size: 11px;
+      line-height: 1.35;
+      margin: 3px 0 0;
+      opacity: .82;
+    }
+    .status {
+      margin-left: auto;
+      font-size: 11px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      padding: 5px 8px;
+      border: 1px solid rgba(255, 255, 255, .18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .07);
+    }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+      margin-right: 5px;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, .12);
+    }
+    .dot.ok {
+      background: var(--success);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, .14);
+    }
+    .dot.bad {
+      background: var(--error);
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, .14);
+    }
 
-main{width:100%;max-width:960px;margin:auto;padding:12px 10px 28px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;margin-bottom:11px;box-shadow:0 5px 18px rgba(15,39,66,.06)}
-.hero{padding:19px}.hero h2{font-size:22px;line-height:1.3;margin:0 0 8px;font-weight:800;letter-spacing:-.2px}.hero p{font-size:15px;line-height:1.65;color:var(--text-secondary);margin:0;max-width:680px}
-.info{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.info span{font-size:12px;color:#496075;background:var(--surface-soft);border:1px solid var(--border);border-radius:10px;padding:7px 9px}
+    main {
+      width: 100%;
+      max-width: 960px;
+      margin: auto;
+      padding: 12px 10px 28px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      margin-bottom: 11px;
+      box-shadow: 0 5px 18px rgba(15, 39, 66, .06);
+    }
+    .hero {
+      padding: 19px;
+    }
+    .hero h2 {
+      font-size: 22px;
+      line-height: 1.3;
+      margin: 0 0 8px;
+      font-weight: 800;
+      letter-spacing: -.2px;
+    }
+    .hero p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin: 0;
+      max-width: 680px;
+    }
+    .info {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 13px;
+    }
+    .info span {
+      font-size: 12px;
+      color: #496075;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 9px;
+    }
 
-.quick-title{font-size:13px;font-weight:700;padding:13px 13px 8px;color:var(--text)}
-.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 10px 11px}.quick button{min-height:44px;border:1px solid var(--border);background:var(--surface-soft);border-radius:11px;padding:8px;font-size:13px;color:#344b5e}.quick button:hover{border-color:#B9CCE0;background:#F5F9FF}.quick button:active{background:#EAF3FF}
+    .quick-title {
+      font-size: 13px;
+      font-weight: 700;
+      padding: 13px 13px 8px;
+      color: var(--text);
+    }
+    .quick {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 0 10px 11px;
+    }
+    .quick button {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      border-radius: 11px;
+      padding: 8px;
+      font-size: 13px;
+      color: #344b5e;
+    }
+    .quick button:hover {
+      border-color: #B9CCE0;
+      background: #F5F9FF;
+    }
+    .quick button:active {
+      background: #EAF3FF;
+    }
 
-.chat{overflow:hidden;width:100%;display:flex;flex-direction:column;min-height:calc(100dvh - 84px)}.chat-title{height:49px;padding:0 13px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700}
-.clear{border:1px solid var(--border);background:var(--surface);border-radius:9px;padding:6px 9px;font-size:11px;color:var(--text-secondary)}.clear:hover{background:var(--surface-soft);color:var(--text)}
+    .chat {
+      overflow: hidden;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100dvh - 84px);
+    }
+    .chat-title {
+      height: 49px;
+      padding: 0 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .clear {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 9px;
+      padding: 6px 9px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .clear:hover {
+      background: var(--surface-soft);
+      color: var(--text);
+    }
 
-.messages{height:52vh;min-height:330px;max-height:600px;overflow-y:auto;padding:16px 14px;background:#F8FAFC;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
-.msg{display:flex;margin-bottom:13px}.msg.user{justify-content:flex-end}
-.bubble{max-width:92%;border-radius:16px;padding:12px 14px;font-size:16px;line-height:1.65;word-break:break-word;overflow-wrap:anywhere}
-.user .bubble{background:var(--primary);color:#fff;border-top-right-radius:5px;box-shadow:0 2px 7px rgba(37,99,235,.12)}.assistant .bubble{background:var(--surface);border:1px solid var(--border);border-top-left-radius:5px;box-shadow:0 2px 7px rgba(15,39,66,.04)}
-.bubble p{margin:0 0 8px}.bubble p:last-child{margin-bottom:0}.bubble strong{font-weight:750;color:inherit}.bubble ul,.bubble ol{margin:6px 0 6px 19px;padding:0}.bubble li{margin:3px 0}
+    .messages {
+      height: 52vh;
+      min-height: 330px;
+      max-height: 600px;
+      overflow-y: auto;
+      padding: 16px 14px;
+      background: #F8FAFC;
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+    .msg {
+      display: flex;
+      margin-bottom: 13px;
+    }
+    .msg.user {
+      justify-content: flex-end;
+    }
+    .bubble {
+      max-width: 92%;
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-size: 16px;
+      line-height: 1.65;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .user .bubble {
+      background: var(--primary);
+      color: #fff;
+      border-top-right-radius: 5px;
+      box-shadow: 0 2px 7px rgba(37, 99, 235, .12);
+    }
+    .assistant .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-left-radius: 5px;
+      box-shadow: 0 2px 7px rgba(15, 39, 66, .04);
+    }
+    .bubble p {
+      margin: 0 0 8px;
+    }
+    .bubble p:last-child {
+      margin-bottom: 0;
+    }
+    .bubble strong {
+      font-weight: 750;
+      color: inherit;
+    }
+    .bubble ul,
+    .bubble ol {
+      margin: 6px 0 6px 19px;
+      padding: 0;
+    }
+    .bubble li {
+      margin: 3px 0;
+    }
 
-.source{margin-top:12px;padding:12px 12px 11px;border-radius:12px;background:#F8FAFC;border:1px solid var(--border);border-left:4px solid var(--primary);font-size:13px;line-height:1.55;color:var(--text-secondary)}.source b{display:block;color:var(--text);font-size:14px;font-weight:750;margin-bottom:5px}
-.typing{display:none;padding:10px 13px;border-top:1px solid var(--border);color:var(--text-secondary);font-size:13px;line-height:1.45;background:var(--surface)}.typing.show{display:block}
+    .source {
+      margin-top: 12px;
+      padding: 12px 12px 11px;
+      border-radius: 12px;
+      background: #F8FAFC;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+    }
+    .source b {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 750;
+      margin-bottom: 5px;
+    }
 
-.compose{background:var(--surface);border-top:1px solid var(--border);padding:11px}.row{display:flex;gap:8px;align-items:stretch}
-textarea{flex:1;min-width:0;height:52px;max-height:130px;border:1px solid #C5D3E0;border-radius:14px;padding:12px 13px;font-size:16px;line-height:1.45;resize:none;outline:none;background:var(--surface);color:var(--text)}textarea::placeholder{color:var(--text-secondary);opacity:1}textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--focus-ring)}
+    .typing {
+      display: none;
+      padding: 10px 13px;
+      border-top: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.45;
+      background: var(--surface);
+    }
+    .typing.show {
+      display: block;
+    }
 
-.camera-btn{width:48px;min-width:48px;height:52px;border:1px solid var(--border);border-radius:14px;background:var(--surface);color:var(--text);font-size:21px;display:flex;align-items:center;justify-content:center}
-.camera-btn:hover{background:var(--surface-soft);border-color:#B9CCE0}
-.camera-btn:active{background:#EAF3FF}
-.image-preview{margin-top:8px;padding:9px 10px;border:1px solid var(--border);border-radius:11px;background:var(--surface-soft);font-size:12px;line-height:1.45;color:var(--text-secondary)}
-.image-preview strong{color:var(--text)}
-.image-preview .thumb{width:58px;height:58px;object-fit:cover;border-radius:9px;border:1px solid var(--border);vertical-align:middle;margin-right:8px}
-.send{width:52px;min-width:52px;height:52px;border:0;border-radius:14px;background:var(--primary);color:#fff;font-weight:700;font-size:21px;display:flex;align-items:center;justify-content:center;transition:background .15s ease,transform .05s ease}.send:hover{background:#1D4ED8}.send:active{background:#1E40AF;transform:translateY(1px)}.send:disabled{opacity:.55;cursor:not-allowed}
-.hint{display:none}.footer{display:none}
+    .compose {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 11px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    textarea {
+      flex: 1;
+      min-width: 0;
+      height: 52px;
+      max-height: 130px;
+      border: 1px solid #C5D3E0;
+      border-radius: 14px;
+      padding: 12px 13px;
+      font-size: 16px;
+      line-height: 1.45;
+      resize: none;
+      outline: none;
+      background: var(--surface);
+      color: var(--text);
+    }
+    textarea::placeholder {
+      color: var(--text-secondary);
+      opacity: 1;
+    }
+    textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
 
-.uiCompat{display:none}.docs{display:none;padding:0 10px 10px}.docs.show{display:block}.doc{padding:9px;border:1px solid var(--border);border-radius:10px;background:var(--surface-soft);margin-top:7px;font-size:13px;line-height:1.5;color:var(--text-secondary)}.doc b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}.doc i{color:var(--success);font-style:normal}
+    .camera-btn {
+      width: 48px;
+      min-width: 48px;
+      height: 52px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 21px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .camera-btn:hover {
+      background: var(--surface-soft);
+      border-color: #B9CCE0;
+    }
+    .camera-btn:active {
+      background: #EAF3FF;
+    }
 
-@media(max-width:760px){
-  main{max-width:960px;padding-left:9px;padding-right:9px}
-  .header{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
-  .compose{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));padding-bottom:max(10px,env(safe-area-inset-bottom))}
-  .messages{height:auto;flex:1;min-height:0;max-height:none}
-}
+    .image-preview {
+      margin-top: 8px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--surface-soft);
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+    }
+    .image-preview strong {
+      color: var(--text);
+    }
+    .image-preview .thumb {
+      width: 58px;
+      height: 58px;
+      object-fit: cover;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+      margin-right: 8px;
+    }
 
-@media(max-width:480px){
-  .header-inner{gap:9px}
-  .logo{width:40px;height:40px;border-radius:12px;font-size:23px}
-  .brand h1{font-size:18px}
-  .brand p{font-size:10.5px}
-  .status{font-size:10px;padding:5px 7px}
-  .hero{padding:17px}
-  .hero h2{font-size:21px}
-  .quick{grid-template-columns:1fr 1fr;gap:7px}
-  .quick button{min-height:44px;font-size:12px}
-  .messages{height:auto;flex:1;min-height:0;max-height:none;padding:14px 11px}
-  .bubble{max-width:94%;font-size:16px;line-height:1.65}
-  .compose{padding-top:9px;position:sticky;bottom:0;z-index:2}
-  textarea{height:50px}
-  .send{width:52px;min-width:52px;height:52px}
-}
+    .send {
+      width: 52px;
+      min-width: 52px;
+      height: 52px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      font-size: 21px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .15s ease, transform .05s ease;
+    }
+    .send:hover {
+      background: #1D4ED8;
+    }
+    .send:active {
+      background: #1E40AF;
+      transform: translateY(1px);
+    }
+    .send:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
 
-@media(max-width:380px){
-  .brand h1{font-size:17px}
-  .status{font-size:9px}
-  .hero h2{font-size:19px}
-  .bubble{font-size:16px}
-  .quick button{font-size:11px}
-  .messages{min-height:290px}
-}
+    .hint {
+      display: none;
+    }
+    .footer {
+      display: none;
+    }
+    .uiCompat {
+      display: none;
+    }
 
-</style>
+    /* ---------- FIELD REPORT PANEL ---------- */
+    .field-report-entry {
+      padding: 8px 14px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-soft);
+    }
+    #fieldReportBtn {
+      width: 100%;
+      border: 1px dashed var(--primary);
+      background: transparent;
+      border-radius: 12px;
+      padding: 10px 0;
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 15px;
+      transition: background .15s;
+    }
+    #fieldReportBtn:hover {
+      background: rgba(37, 99, 235, .06);
+    }
+
+    .field-report-panel {
+      padding: 14px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .field-report-panel.hidden {
+      display: none;
+    }
+    .field-report-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .field-report-title strong {
+      font-weight: 700;
+    }
+    #closeFieldReport {
+      background: transparent;
+      border: 0;
+      font-size: 20px;
+      line-height: 1;
+      color: var(--text-secondary);
+      padding: 0 4px;
+    }
+    #closeFieldReport:hover {
+      color: var(--text);
+    }
+
+    .field-report-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+    }
+
+    .field-report-types {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .field-report-types button {
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      border-radius: 10px;
+      padding: 10px 6px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: border-color .15s, background .15s;
+    }
+    .field-report-types button:hover {
+      border-color: var(--primary);
+      background: #F0F7FF;
+    }
+    .field-report-types button.selected {
+      border-color: var(--primary);
+      background: #E0EDFF;
+    }
+
+    .field-report-camera {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      padding: 12px;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+    .field-report-camera:hover {
+      background: var(--surface-soft);
+    }
+
+    .field-report-preview {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-soft);
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .field-report-preview .thumb {
+      width: 58px;
+      height: 58px;
+      object-fit: cover;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    .field-report-preview-inner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .field-report-question {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 48px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+    .field-report-question:focus {
+      border-color: var(--primary);
+      outline: 0;
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+
+    .create-field-report {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      background: var(--primary);
+      color: #fff;
+      padding: 12px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: background .15s;
+    }
+    .create-field-report:hover:not(:disabled) {
+      background: #1D4ED8;
+    }
+    .create-field-report:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .field-report-status {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--success-bg);
+      color: #065F46;
+      font-size: 14px;
+    }
+    .field-report-status.error {
+      background: var(--error-bg);
+      color: #991B1B;
+    }
+
+    /* responsive */
+    @media (max-width: 760px) {
+      main {
+        padding-left: 9px;
+        padding-right: 9px;
+      }
+      .header {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+      }
+      .compose {
+        padding-left: max(10px, env(safe-area-inset-left));
+        padding-right: max(10px, env(safe-area-inset-right));
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+      }
+      .messages {
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+      }
+    }
+    @media (max-width: 480px) {
+      .header-inner {
+        gap: 9px;
+      }
+      .logo {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-size: 23px;
+      }
+      .brand h1 {
+        font-size: 18px;
+      }
+      .brand p {
+        font-size: 10.5px;
+      }
+      .status {
+        font-size: 10px;
+        padding: 5px 7px;
+      }
+      .hero {
+        padding: 17px;
+      }
+      .hero h2 {
+        font-size: 21px;
+      }
+      .quick {
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+      .quick button {
+        min-height: 44px;
+        font-size: 12px;
+      }
+      .messages {
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+        padding: 14px 11px;
+      }
+      .bubble {
+        max-width: 94%;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      .compose {
+        padding-top: 9px;
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+      }
+      textarea {
+        height: 50px;
+      }
+      .send {
+        width: 52px;
+        min-width: 52px;
+        height: 52px;
+      }
+      .field-report-types {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (max-width: 380px) {
+      .brand h1 {
+        font-size: 17px;
+      }
+      .status {
+        font-size: 9px;
+      }
+      .hero h2 {
+        font-size: 19px;
+      }
+      .bubble {
+        font-size: 16px;
+      }
+      .quick button {
+        font-size: 11px;
+      }
+      .messages {
+        min-height: 290px;
+      }
+    }
+  </style>
 </head>
 <body>
-<header class="header">
-  <div class="header-inner">
-    <div class="logo">💧</div>
-    <div class="brand"><h1>THỦY LỢI AI</h1><p>Trợ lý AI chuyên ngành Thủy lợi</p></div>
-    <div class="status"><span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span></div>
-  </div>
-</header>
-
-<main>
-<section class="card chat">
-  <div class="chat-title"><span>💬 Trao đổi với THỦY LỢI AI</span><button class="clear" id="clear">Xóa</button></div>
-  <div class="messages" id="messages">
-  </div>
-  <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
-  <!-- =========================================================
-     BÁO CÁO HIỆN TRƯỜNG
-     ========================================================= -->
-
-<div class="field-report-entry">
-  <button id="fieldReportBtn" type="button">
-    📋 Báo cáo hiện trường
-  </button>
-</div>
-
-<div id="fieldReportPanel" class="field-report-panel" hidden>
-
-  <div class="field-report-title">
-    <strong>📋 Lập báo cáo hiện trường</strong>
-    <button id="closeFieldReport" type="button">✕</button>
-  </div>
-
-  <div class="field-report-desc">
-    Chụp ảnh hiện trạng, THỦY LỢI AI sẽ phân tích
-    và tạo dự thảo báo cáo nhanh.
-  </div>
-
-  <div class="field-report-types">
-
-    <button type="button" data-report-type="incident">
-      🚨
-      <span>Sự cố công trình</span>
-    </button>
-
-    <button type="button" data-report-type="corridor">
-      ⚠️
-      <span>Hành lang thủy lợi</span>
-    </button>
-
-    <button type="button" data-report-type="dry_area">
-      🌾
-      <span>Diện tích khô</span>
-    </button>
-
-    <button type="button" data-report-type="water_level">
-      💧
-      <span>Mực nước</span>
-    </button>
-
-  </div>
-
-  <input
-    id="fieldReportImage"
-    type="file"
-    accept="image/*"
-    capture="environment"
-    hidden
-  >
-
-  <button
-    id="fieldReportCamera"
-    class="field-report-camera"
-    type="button"
-  >
-    📷 Chụp ảnh hiện trường
-  </button>
-
-  <div
-    id="fieldReportPreview"
-    class="field-report-preview"
-    hidden
-  ></div>
-
-  <textarea
-    id="fieldReportQuestion"
-    class="field-report-question"
-    placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"
-  ></textarea>
-
-  <button
-    id="createFieldReport"
-    class="create-field-report"
-    type="button"
-    disabled
-  >
-    🤖 Phân tích và lập báo cáo
-  </button>
-
-  <div
-    id="fieldReportStatus"
-    class="field-report-status"
-    hidden
-  ></div>
-
-</div>
-  <div class="compose">
-    <div class="row"><input id="imageInput" type="file" accept="image/*" capture="environment" hidden aria-label="Chụp hoặc chọn ảnh hiện trường"><button id="cameraBtn" class="camera-btn" type="button" aria-label="Chụp hoặc chọn ảnh" title="Chụp hoặc chọn ảnh">📷</button><textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea><button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button></div><div id="imagePreview" class="image-preview" hidden aria-live="polite"></div>
-    <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
-  </div>
-</section>
-<div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
-
-<div id="uiCompat" hidden aria-hidden="true">
-  <span id="count">—</span>
-  <button id="docsBtn" type="button"></button>
-  <div id="docs"><div id="docList"></div></div>
-</div>
-</main>
-
-<script>
-const imageInput=document.getElementById("imageInput");
-const cameraBtn=document.getElementById("cameraBtn");
-const imagePreview=document.getElementById("imagePreview");
-
-let preparedImageBlob = null;
-let preparedImageName = "image.jpg";
-
-async function sha256Hex(blob){
-  const buffer=await blob.arrayBuffer();
-  const digest=await crypto.subtle.digest("SHA-256",buffer);
-  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
-}
-
-function resizeImage(file,maxSide=1600,quality=.82){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();
-    const url=URL.createObjectURL(file);
-    img.onload=()=>{
-      URL.revokeObjectURL(url);
-      const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
-      const w=Math.max(1,Math.round(img.naturalWidth*scale));
-      const h=Math.max(1,Math.round(img.naturalHeight*scale));
-      const canvas=document.createElement("canvas");
-      canvas.width=w; canvas.height=h;
-      const ctx=canvas.getContext("2d",{alpha:false});
-      if(!ctx){reject(new Error("Không tạo được bộ xử lý ảnh."));return}
-      ctx.drawImage(img,0,0,w,h);
-      canvas.toBlob(blob=>blob?resolve({blob,w,h}):reject(new Error("Không nén được ảnh.")),"image/jpeg",quality);
-    };
-    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Không đọc được ảnh."))};
-    img.src=url;
-  });
-}
-
-cameraBtn.addEventListener("click",()=>imageInput.click());
-// ============================================================
-// CAMERA BÁO CÁO HIỆN TRƯỜNG
-// ============================================================
-
-const fieldReportCamera =
-  document.getElementById("fieldReportCamera");
-
-const fieldReportImage =
-  document.getElementById("fieldReportImage");
-
-if (fieldReportCamera && fieldReportImage) {
-
-  fieldReportCamera.addEventListener("click", () => {
-    fieldReportImage.click();
-  });
-
-}
-imageInput.addEventListener("change",async()=>{
-  const file=imageInput.files?.[0];
-  if(!file)return;
-
-  imagePreview.hidden=false;
-  imagePreview.innerHTML="📷 Đang chuẩn bị ảnh...";
-  preparedImageBlob=null;
-
-  try{
-    const result=await resizeImage(file);
-
-    // Lưu ảnh đã nén để gửi lên Gemini
-    preparedImageBlob=result.blob;
-    preparedImageName=(file.name||"image.jpg").replace(/\.[^.]+$/,"")+".jpg";
-
-    const hash=await sha256Hex(result.blob);
-    const sizeKB=Math.round(result.blob.size/1024);
-    const originalKB=Math.round(file.size/1024);
-
-    const thumbUrl=URL.createObjectURL(result.blob);
-
-    imagePreview.innerHTML=
-      '<img class="thumb" src="'+thumbUrl+'" alt="Ảnh đã chuẩn bị">'+
-      '<strong>Ảnh sẵn sàng</strong><br>'+
-      'JPEG · '+result.w+'×'+result.h+
-      ' · '+sizeKB+' KB'+
-      ' · gốc '+originalKB+' KB'+
-      '<br>SHA-256: '+hash+
-      '<br><span>💡 Gửi câu hỏi để THỦY LỢI AI phân tích ảnh.</span>';
-
-  }catch(err){
-    preparedImageBlob=null;
-    imagePreview.hidden=false;
-    imagePreview.textContent="⚠️ "+(err.message||"Không xử lý được ảnh.");
-  }
-});
-
-// ============================================================
-// BÁO CÁO HIỆN TRƯỜNG
-// Chụp ảnh → chọn loại → gửi /field-report → nhận dự thảo
-// ============================================================
-
-const fieldReportBtn =
-  document.getElementById("fieldReportBtn");
-
-const fieldReportPanel =
-  document.getElementById("fieldReportPanel");
-
-const closeFieldReport =
-  document.getElementById("closeFieldReport");
-
-const fieldReportImage =
-  document.getElementById("fieldReportImage");
-
-const fieldReportCamera =
-  document.getElementById("fieldReportCamera");
-
-const fieldReportPreview =
-  document.getElementById("fieldReportPreview");
-
-const fieldReportQuestion =
-  document.getElementById("fieldReportQuestion");
-
-const createFieldReport =
-  document.getElementById("createFieldReport");
-
-const fieldReportStatus =
-  document.getElementById("fieldReportStatus");
-
-const fieldReportTypeButtons =
-  document.querySelectorAll(
-    "[data-report-type]"
-  );
-
-let selectedReportType = "";
-let fieldReportFile = null;
-
-
-// ------------------------------------------------------------
-// MỞ / ĐÓNG BẢNG BÁO CÁO
-// ------------------------------------------------------------
-
-fieldReportBtn?.addEventListener("click", () => {
-
-  fieldReportPanel.hidden = false;
-
-  fieldReportPanel.scrollIntoView({
-    behavior: "smooth",
-    block: "center"
-  });
-
-});
-
-
-closeFieldReport?.addEventListener("click", () => {
-
-  fieldReportPanel.hidden = true;
-
-});
-
-
-// ------------------------------------------------------------
-// CHỌN LOẠI BÁO CÁO
-// ------------------------------------------------------------
-
-fieldReportTypeButtons.forEach(button => {
-
-  button.addEventListener("click", () => {
-
-    fieldReportTypeButtons.forEach(btn => {
-      btn.classList.remove("selected");
-    });
-
-    button.classList.add("selected");
-
-    selectedReportType =
-      button.getAttribute("data-report-type") || "";
-
-    updateFieldReportButton();
-
-    showFieldReportStatus(
-      "Đã chọn: " +
-      (button.querySelector("span")?.textContent || "Báo cáo"),
-      false
-    );
-
-  });
-
-});
-
-
-// ------------------------------------------------------------
-// NÚT CHỤP ẢNH
-// ------------------------------------------------------------
-
-fieldReportCamera?.addEventListener("click", () => {
-
-  fieldReportImage?.click();
-
-});
-
-
-// ------------------------------------------------------------
-// CHỌN / CHỤP ẢNH
-// ------------------------------------------------------------
-
-fieldReportImage?.addEventListener(
-  "change",
-  async () => {
-
-    const file =
-      fieldReportImage.files?.[0];
-
-    if (!file) return;
-
-    fieldReportFile = null;
-
-    fieldReportPreview.hidden = false;
-
-    fieldReportPreview.innerHTML =
-      "📷 Đang chuẩn bị ảnh...";
-
-    try {
-
-      const result =
-        await resizeImage(file, 1600, 0.82);
-
-      fieldReportFile = new File(
-        [result.blob],
-        (file.name || "hien-truong.jpg")
-          .replace(/\.[^.]+$/, "") + ".jpg",
-        {
-          type: "image/jpeg"
-        }
-      );
-
-      const url =
-        URL.createObjectURL(result.blob);
-
-      const sizeKB =
-        Math.round(result.blob.size / 1024);
-
-      fieldReportPreview.innerHTML = `
-        <div class="field-report-preview-inner">
-
-          <img
-            src="${url}"
-            class="thumb"
-            alt="Ảnh hiện trường"
-          >
-
-          <div>
-            <strong>📷 Ảnh hiện trường đã sẵn sàng</strong>
-
-            <br>
-
-            JPEG ·
-            ${result.w}×${result.h}
-            · ${sizeKB} KB
-
-            <br>
-
-            <span>
-              Có thể tiến hành phân tích.
-            </span>
-          </div>
-
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">💧</div>
+      <div class="brand"><h1>THỦY LỢI AI</h1><p>Trợ lý AI chuyên ngành Thủy lợi</p></div>
+      <div class="status"><span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card chat">
+      <div class="chat-title"><span>💬 Trao đổi với THỦY LỢI AI</span><button class="clear" id="clear">Xóa</button></div>
+      <div class="messages" id="messages">
+        <div class="msg assistant"><div class="bubble"><strong>Chào bạn! 🌿</strong><p>Tôi là trợ lý AI chuyên ngành Thủy lợi. Hãy đặt câu hỏi hoặc gửi ảnh hiện trường để tôi phân tích.</p></div></div>
+      </div>
+      <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
+
+      <!-- Field Report Entry -->
+      <div class="field-report-entry">
+        <button id="fieldReportBtn" type="button">📋 Báo cáo hiện trường</button>
+      </div>
+
+      <!-- Field Report Panel -->
+      <div id="fieldReportPanel" class="field-report-panel hidden">
+        <div class="field-report-title">
+          <strong>📋 Lập báo cáo hiện trường</strong>
+          <button id="closeFieldReport" type="button">✕</button>
         </div>
-      `;
+        <div class="field-report-desc">
+          Chụp ảnh hiện trạng, THỦY LỢI AI sẽ phân tích và tạo dự thảo báo cáo nhanh.
+        </div>
+        <div class="field-report-types">
+          <button type="button" data-report-type="incident">🚨<span>Sự cố công trình</span></button>
+          <button type="button" data-report-type="corridor">⚠️<span>Hành lang thủy lợi</span></button>
+          <button type="button" data-report-type="dry_area">🌾<span>Diện tích khô</span></button>
+          <button type="button" data-report-type="water_level">💧<span>Mực nước</span></button>
+        </div>
 
-      updateFieldReportButton();
+        <input id="fieldReportImage" type="file" accept="image/*" capture="environment" hidden>
+        <button id="fieldReportCamera" class="field-report-camera" type="button">📷 Chụp ảnh hiện trường</button>
 
-    } catch (err) {
+        <div id="fieldReportPreview" class="field-report-preview" hidden></div>
 
-      fieldReportFile = null;
+        <textarea id="fieldReportQuestion" class="field-report-question" placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"></textarea>
 
-      fieldReportPreview.hidden = false;
+        <button id="createFieldReport" class="create-field-report" type="button" disabled>🤖 Phân tích và lập báo cáo</button>
 
-      fieldReportPreview.textContent =
-        "⚠️ " +
-        (err.message ||
-        "Không xử lý được ảnh.");
+        <div id="fieldReportStatus" class="field-report-status" hidden></div>
+      </div>
 
-      updateFieldReportButton();
+      <div class="compose">
+        <div class="row">
+          <input id="imageInput" type="file" accept="image/*" capture="environment" hidden aria-label="Chụp hoặc chọn ảnh hiện trường">
+          <button id="cameraBtn" class="camera-btn" type="button" aria-label="Chụp hoặc chọn ảnh" title="Chụp hoặc chọn ảnh">📷</button>
+          <textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea>
+          <button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button>
+        </div>
+        <div id="imagePreview" class="image-preview" hidden aria-live="polite"></div>
+        <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
+      </div>
+    </section>
+    <div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
+  </main>
 
-    }
+  <script>
+    (function() {
+      'use strict';
 
-  }
-);
+      // ===== DOM refs =====
+      const messages = document.getElementById('messages');
+      const typing = document.getElementById('typing');
+      const question = document.getElementById('question');
+      const sendBtn = document.getElementById('send');
+      const clearBtn = document.getElementById('clear');
+      const cameraBtn = document.getElementById('cameraBtn');
+      const imageInput = document.getElementById('imageInput');
+      const imagePreview = document.getElementById('imagePreview');
 
+      const dot = document.getElementById('dot');
+      const statusEl = document.getElementById('status');
 
-// ------------------------------------------------------------
-// GHI CHÚ
-// ------------------------------------------------------------
+      // Field report refs
+      const fieldReportBtn = document.getElementById('fieldReportBtn');
+      const fieldReportPanel = document.getElementById('fieldReportPanel');
+      const closeFieldReport = document.getElementById('closeFieldReport');
+      const fieldReportImage = document.getElementById('fieldReportImage');
+      const fieldReportCamera = document.getElementById('fieldReportCamera');
+      const fieldReportPreview = document.getElementById('fieldReportPreview');
+      const fieldReportQuestion = document.getElementById('fieldReportQuestion');
+      const createFieldReport = document.getElementById('createFieldReport');
+      const fieldReportStatus = document.getElementById('fieldReportStatus');
+      const reportTypeButtons = document.querySelectorAll('[data-report-type]');
 
-fieldReportQuestion?.addEventListener(
-  "input",
-  updateFieldReportButton
-);
+      // ===== State =====
+      let preparedImageBlob = null;
+      let preparedImageName = 'image.jpg';
+      let isCooldown = false;
 
-
-// ------------------------------------------------------------
-// KIỂM TRA ĐỦ ĐIỀU KIỆN
-// ------------------------------------------------------------
-
-function updateFieldReportButton() {
-
-  if (!createFieldReport) return;
-
-  createFieldReport.disabled =
-    !selectedReportType ||
-    !fieldReportFile;
-
-}
-
-
-// ------------------------------------------------------------
-// HIỂN THỊ TRẠNG THÁI
-// ------------------------------------------------------------
-
-function showFieldReportStatus(
-  text,
-  error = false
-) {
-
-  if (!fieldReportStatus) return;
-
-  fieldReportStatus.hidden = false;
-
-  fieldReportStatus.textContent = text;
-
-  fieldReportStatus.classList.toggle(
-    "error",
-    !!error
-  );
-
-}
-
-
-// ------------------------------------------------------------
-// TÊN LOẠI BÁO CÁO
-// ------------------------------------------------------------
-
-function getReportTypeName(type) {
-
-  const names = {
-
-    incident:
-      "🚨 Sự cố công trình",
-
-    corridor:
-      "⚠️ Vi phạm hành lang thủy lợi",
-
-    dry_area:
-      "🌾 Diện tích khô",
-
-    water_level:
-      "💧 Mực nước"
-
-  };
-
-  return names[type] || "📋 Báo cáo hiện trường";
-
-}
-
-
-// ------------------------------------------------------------
-// TẠO BÁO CÁO
-// ------------------------------------------------------------
-
-createFieldReport?.addEventListener(
-  "click",
-  async () => {
-
-    if (!selectedReportType) {
-
-      showFieldReportStatus(
-        "⚠️ Vui lòng chọn loại báo cáo.",
-        true
-      );
-
-      return;
-    }
-
-    if (!fieldReportFile) {
-
-      showFieldReportStatus(
-        "⚠️ Vui lòng chụp hoặc chọn ảnh hiện trường.",
-        true
-      );
-
-      return;
-    }
-
-    createFieldReport.disabled = true;
-
-    showFieldReportStatus(
-      "🤖 THỦY LỢI AI đang phân tích hiện trường..."
-    );
-
-    try {
-
-      const formData =
-        new FormData();
-
-      formData.append(
-        "file",
-        fieldReportFile,
-        fieldReportFile.name
-      );
-
-      formData.append(
-        "report_type",
-        selectedReportType
-      );
-
-      formData.append(
-        "question",
-        (
-          fieldReportQuestion?.value || ""
-        ).trim()
-      );
-
-
-      const result =
-        await fetchJSON(
-          "/field-report",
-          {
-            method: "POST",
-            body: formData
-          },
-          90000
-        );
-
-
-      if (!result.success) {
-
-        throw new Error(
-          result.error ||
-          "Không tạo được báo cáo."
-        );
-
+      // ===== Utilities =====
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, function(c) {
+          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
       }
 
-
-      // ------------------------------------------------------
-      // HIỂN THỊ KẾT QUẢ VÀO KHUNG CHAT
-      // ------------------------------------------------------
-
-      const reportTitle =
-        result.report_title ||
-        getReportTypeName(
-          selectedReportType
-        );
-
-
-      const answer =
-        result.answer ||
-        "THỦY LỢI AI chưa tạo được nội dung báo cáo.";
-
-
-      addUser(
-        "📋 " +
-        reportTitle
-      );
-
-
-      addAI(
-        answer,
-        result.sources || []
-      );
-
-
-      // ------------------------------------------------------
-      // HIỂN THỊ THÔNG BÁO
-      // ------------------------------------------------------
-
-      showFieldReportStatus(
-        "✅ Đã tạo dự thảo báo cáo hiện trường."
-      );
-
-
-      // ------------------------------------------------------
-      // HIỂN THỊ BƯỚC TIẾP THEO
-      // ------------------------------------------------------
-
-      if (result.next_step) {
-
-        const nextBox =
-          document.createElement("div");
-
-        nextBox.className =
-          "msg assistant";
-
-        const bubble =
-          document.createElement("div");
-
-        bubble.className =
-          "bubble";
-
-        bubble.innerHTML =
-          "<strong>📌 Bước tiếp theo</strong><br>" +
-          md(result.next_step);
-
-        nextBox.appendChild(bubble);
-
-        messages.appendChild(
-          nextBox
-        );
-
-        messages.scrollTop =
-          messages.scrollHeight;
-
+      function cleanText(s) {
+        s = String(s ?? '');
+        s = s.replace(/\\text\s*\{([^{}]*)\}/g, '$1');
+        s = s.replace(/\\mathrm\s*\{([^{}]*)\}/g, '$1');
+        s = s.replace(/\\operatorname\s*\{([^{}]*)\}/g, '$1');
+        s = s.replace(/\\varnothing/g, 'Ø').replace(/\\emptyset/g, 'Ø');
+        s = s.replace(/\\times/g, '×').replace(/\\cdot/g, '·');
+        s = s.replace(/\\pm/g, '±').replace(/\\leq/g, '≤').replace(/\\geq/g, '≥');
+        s = s.replace(/\\approx/g, '≈').replace(/\\Delta/g, 'Δ');
+        s = s.replace(/\\%/g, '%');
+        s = s.replace(/m\s*\^\s*3/g, 'm³').replace(/m3\b/gi, 'm³');
+        s = s.replace(/m\s*\^\s*2/g, 'm²');
+        s = s.replace(/\\left|\\right/g, '');
+        s = s.replace(/\$\$([\s\S]*?)\$\$/g, '$1').replace(/\$([^$\n]+)\$/g, '$1');
+        s = s.replace(/\\([A-Za-z]+)\s*\{([^{}]*)\}/g, '$2');
+        s = s.replace(/\\([A-Za-z]+)/g, '$1');
+        return s;
       }
 
-
-      // ------------------------------------------------------
-      // ĐÓNG PANEL SAU KHI THÀNH CÔNG
-      // ------------------------------------------------------
-
-      setTimeout(() => {
-
-        fieldReportPanel.hidden =
-          true;
-
-      }, 1200);
-
-
-    } catch (err) {
-
-      console.error(
-        "FIELD REPORT ERROR:",
-        err
-      );
-
-      showFieldReportStatus(
-        "❌ " +
-        (
-          err.message ||
-          "Không thể tạo báo cáo."
-        ),
-        true
-      );
-
-    } finally {
-
-      updateFieldReportButton();
-
-    }
-
-  }
-);
-
-
-// ============================================================
-// KHỞI TẠO
-// ============================================================
-
-updateFieldReportButton();
-
-
-
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
-
-function cleanText(s){
-  s=String(s??"");
-  s=s.replace(/\\text\s*\{([^{}]*)\}/g,"$1");
-  s=s.replace(/\\mathrm\s*\{([^{}]*)\}/g,"$1");
-  s=s.replace(/\\operatorname\s*\{([^{}]*)\}/g,"$1");
-  s=s.replace(/\\varnothing/g,"Ø").replace(/\\emptyset/g,"Ø");
-  s=s.replace(/\\times/g,"×").replace(/\\cdot/g,"·");
-  s=s.replace(/\\pm/g,"±").replace(/\\leq/g,"≤").replace(/\\geq/g,"≥");
-  s=s.replace(/\\approx/g,"≈").replace(/\\Delta/g,"Δ");
-  s=s.replace(/\\%/g,"%");
-  s=s.replace(/m\s*\^\s*3/g,"m³").replace(/m3\b/gi,"m³");
-  s=s.replace(/m\s*\^\s*2/g,"m²");
-  s=s.replace(/\\left|\\right/g,"");
-  s=s.replace(/\$\$([\s\S]*?)\$\$/g,"$1").replace(/\$([^$\n]+)\$/g,"$1");
-  s=s.replace(/\\([A-Za-z]+)\s*\{([^{}]*)\}/g,"$2");
-  s=s.replace(/\\([A-Za-z]+)/g,"$1");
-  return s;
-}
-
-function md(s){
-  s=esc(cleanText(s));
-  s=s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
-  s=s.replace(/__([^_]+)__/g,"<strong>$1</strong>");
-  s=s.replace(/^[-•]\s+(.+)$/gm,"• $1");
-  s=s.replace(/\n/g,"<br>");
-  return s;
-}
-
-function addUser(text){
-  const m=document.createElement("div");m.className="msg user";
-  const b=document.createElement("div");b.className="bubble";b.textContent=text;m.appendChild(b);
-  messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
-}
-
-function addAI(text,citations){
-  const m=document.createElement("div");m.className="msg assistant";
-  const b=document.createElement("div");b.className="bubble";
-  b.innerHTML=md(text||"Không có câu trả lời.");
-  if(Array.isArray(citations)&&citations.length){
-    const box=document.createElement("div");box.className="source";box.innerHTML="<b>📚 Nguồn hồ sơ</b>";
-    const seen=new Set();
-    citations.forEach(c=>{
-      const name=c?.file_name||c?.title||c?.display_name||c?.name;
-      if(name&&!seen.has(name)){seen.add(name);const line=document.createElement("div");line.textContent="• "+name;box.appendChild(line);}
-    });
-    if(seen.size)b.appendChild(box);
-  }
-  m.appendChild(b);messages.appendChild(m);messages.scrollTop=messages.scrollHeight;
-}
-
-async function fetchJSON(url,options={},timeout=40000){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),timeout);
-  try{
-    const r=await fetch(url,{...options,signal:controller.signal,cache:"no-store"});
-    const text=await r.text();
-    let data={};
-    try{data=text?JSON.parse(text):{};}catch{throw new Error("Server trả về dữ liệu không hợp lệ.");}
-    if(!r.ok)throw new Error(data.detail||data.error||("HTTP "+r.status));
-    return data;
-  }finally{clearTimeout(timer);}
-}
-
-// KHẮC PHỤC LỖI TRẠNG THÁI CHƯA SẴN SÀNG TẠI ĐÂY
-async function health(){
-  try{
-    statusEl.textContent = "Đang kiểm tra...";
-
-    const d = await fetchJSON(
-      "/health?t=" + Date.now(),
-      {
-        method: "GET",
-        headers: {
-          "Accept": "application/json",
-          "Cache-Control": "no-cache"
-        }
-      },
-      15000
-    );
-
-    const ok =
-      d &&
-      d.status === "ok" &&
-      d.gemini_configured === true &&
-      d.file_search_configured === true;
-
-    if(ok){
-      dot.className = "dot ok";
-      statusEl.textContent = "Đã kết nối";
-    }else{
-      dot.className = "dot bad";
-      statusEl.textContent = "Chưa sẵn sàng";
-    }
-
-  }catch(e){
-    console.error("HEALTH ERROR:", e);
-    dot.className = "dot bad";
-    statusEl.textContent = "Không kết nối";
-  }
-}
-async function loadDocs(){
-  try{
-    const d=await fetchJSON("/documents",{},15000);docList.innerHTML="";
-    if(!Array.isArray(d.documents)||!d.documents.length){docList.innerHTML='<div class="doc">Kho hồ sơ hiện chưa có tài liệu.</div>';return;}
-    count.textContent=d.count;
-    d.documents.forEach(x=>{
-      const el=document.createElement("div");el.className="doc";
-      el.innerHTML="<b>"+esc(x.display_name||x.name||"Tài liệu")+"</b><i>● "+esc(x.state||"ACTIVE")+"</i>";
-      docList.appendChild(el);
-    });
-  }catch(e){docList.innerHTML='<div class="doc">Không tải được danh sách hồ sơ.</div>';}
-}
-
-// Xử lý đếm ngược khi dính Rate Limit 429
-function startCooldown(seconds) {
-  isCooldown = true;
-  send.disabled = true;
-  q.disabled = true;
-  let left = Math.ceil(seconds || 30);
-  
-  const timer = setInterval(() => {
-    send.textContent = `${left}s`;
-    left--;
-    if (left < 0) {
-      clearInterval(timer);
-      isCooldown = false;
-      send.disabled = false;
-      q.disabled = false;
-      send.textContent = "Gửi";
-      q.focus();
-    }
-  }, 1000);
-}
-
-async function ask(){
-
-  const question=q.value.trim();
-
-  // Cho phép gửi nếu có câu hỏi hoặc có ảnh
-  if((!question && !preparedImageBlob) || send.disabled || isCooldown){
-    return;
-  }
-
-  const finalQuestion =
-    question ||
-    "Hãy phân tích hình ảnh này trong bối cảnh chuyên ngành thủy lợi.";
-
-  // Hiển thị câu hỏi người dùng
-  addUser(
-    preparedImageBlob
-      ? "📷 " + finalQuestion
-      : finalQuestion
-  );
-
-  q.value="";
-  send.disabled=true;
-  q.disabled=true;
-  cameraBtn.disabled=true;
-  typing.classList.add("show");
-
-  try{
-
-    let d;
-
-    // ==================================================
-    // TRƯỜNG HỢP 1: CÓ ẢNH → GEMINI VISION
-    // ==================================================
-    if(preparedImageBlob){
-
-      const formData=new FormData();
-
-      formData.append(
-        "file",
-        preparedImageBlob,
-        preparedImageName
-      );
-
-      const url =
-        "/image-analyze?question="+
-        encodeURIComponent(finalQuestion);
-
-      d=await fetchJSON(
-        url,
-        {
-          method:"POST",
-          body:formData
-        },
-        60000
-      );
-
-      addAI(
-        d.answer ||
-        d.message ||
-        "Gemini không trả về nội dung phân tích ảnh.",
-        d.sources ||
-        d.citations ||
-        []
-      );
-
-      // Xóa ảnh sau khi phân tích xong
-      preparedImageBlob=null;
-      preparedImageName="image.jpg";
-      imageInput.value="";
-      imagePreview.hidden=true;
-      imagePreview.innerHTML="";
-
-    }
-
-    // ==================================================
-    // TRƯỜNG HỢP 2: KHÔNG CÓ ẢNH → CHAT BÌNH THƯỜNG
-    // ==================================================
-    else{
-
-      d=await fetchJSON(
-        "https://thuyloi-cache.thaotltb.workers.dev/ask",
-        {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json",
-            "Accept":"application/json"
-          },
-          body:JSON.stringify({
-            question:finalQuestion
-          })
-        },
-        55000
-      );
-
-      addAI(
-        d.answer ||
-        d.message ||
-        "Không có câu trả lời.",
-        d.sources ||
-        d.citations ||
-        []
-      );
-
-      // Rate limit
-      if(
-        d.status==="rate_limited" &&
-        d.retry_after
-      ){
-        startCooldown(d.retry_after);
+      function md(s) {
+        s = esc(cleanText(s));
+        s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+        s = s.replace(/^[-•]\s+(.+)$/gm, '• $1');
+        s = s.replace(/\n/g, '<br>');
+        return s;
       }
-    }
 
-  }catch(e){
+      function addUser(text) {
+        const m = document.createElement('div');
+        m.className = 'msg user';
+        const b = document.createElement('div');
+        b.className = 'bubble';
+        b.textContent = text;
+        m.appendChild(b);
+        messages.appendChild(m);
+        messages.scrollTop = messages.scrollHeight;
+      }
 
-    addAI(
-      "⚠️ "+(
-        e.message ||
-        "Không thể xử lý yêu cầu."
-      ),
-      []
-    );
+      function addAI(text, citations) {
+        const m = document.createElement('div');
+        m.className = 'msg assistant';
+        const b = document.createElement('div');
+        b.className = 'bubble';
+        b.innerHTML = md(text || 'Không có câu trả lời.');
+        if (Array.isArray(citations) && citations.length) {
+          const box = document.createElement('div');
+          box.className = 'source';
+          box.innerHTML = '<b>📚 Nguồn hồ sơ</b>';
+          const seen = new Set();
+          citations.forEach(function(c) {
+            const name = c?.file_name || c?.title || c?.display_name || c?.name;
+            if (name && !seen.has(name)) {
+              seen.add(name);
+              const line = document.createElement('div');
+              line.textContent = '• ' + name;
+              box.appendChild(line);
+            }
+          });
+          if (seen.size) b.appendChild(box);
+        }
+        m.appendChild(b);
+        messages.appendChild(m);
+        messages.scrollTop = messages.scrollHeight;
+      }
 
-  }finally{
+      async function fetchJSON(url, options, timeout) {
+        timeout = timeout || 40000;
+        const controller = new AbortController();
+        const timer = setTimeout(function() { controller.abort(); }, timeout);
+        try {
+          const r = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
+          const text = await r.text();
+          let data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (_) { throw new Error('Server trả về dữ liệu không hợp lệ.'); }
+          if (!r.ok) throw new Error(data.detail || data.error || ('HTTP ' + r.status));
+          return data;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
 
-    if(!isCooldown){
+      async function sha256Hex(blob) {
+        const buffer = await blob.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        return Array.from(new Uint8Array(digest)).map(function(b) {
+          return b.toString(16).padStart(2, '0');
+        }).join('');
+      }
 
-      send.disabled=false;
-      q.disabled=false;
-      cameraBtn.disabled=false;
-
-      send.innerHTML='<span aria-hidden="true">➤</span>';
-
-      q.focus();
-    }
-
-    typing.classList.remove("show");
-  }
-}
-
-send.onclick=ask;
-q.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}});
-document.getElementById("clear").onclick=()=>{messages.innerHTML='<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';};
-document.getElementById("docsBtn").onclick=()=>{docs.classList.toggle("show");if(docs.classList.contains("show"))loadDocs();};
-document.querySelectorAll(".quick button").forEach(btn=>btn.onclick=()=>{q.value=btn.getAttribute("data-q")||"";q.focus();});
-
-health();
-loadDocs();
-setInterval(health,30000);
-  // ============================================================
-// BÁO CÁO HIỆN TRƯỜNG - THỦY LỢI AI
-// Chụp ảnh → chọn loại báo cáo → gửi AI phân tích
-// ============================================================
-
-(function () {
-
-    const fieldReportBtn = document.getElementById("fieldReportBtn");
-    const fieldReportPanel = document.getElementById("fieldReportPanel");
-    const closeFieldReport = document.getElementById("closeFieldReport");
-
-    // --------------------------------------------------------
-    // MỞ / ĐÓNG BẢNG BÁO CÁO
-    // --------------------------------------------------------
-
-    if (fieldReportBtn && fieldReportPanel) {
-
-        fieldReportBtn.addEventListener("click", function () {
-            fieldReportPanel.classList.remove("hidden");
+      function resizeImage(file, maxSide, quality) {
+        maxSide = maxSide || 1600;
+        quality = quality || 0.82;
+        return new Promise(function(resolve, reject) {
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+          img.onload = function() {
+            URL.revokeObjectURL(url);
+            const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+            const w = Math.max(1, Math.round(img.naturalWidth * scale));
+            const h = Math.max(1, Math.round(img.naturalHeight * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            if (!ctx) { reject(new Error('Không tạo được bộ xử lý ảnh.')); return; }
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(function(blob) {
+              if (blob) resolve({ blob: blob, w: w, h: h });
+              else reject(new Error('Không nén được ảnh.'));
+            }, 'image/jpeg', quality);
+          };
+          img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('Không đọc được ảnh.')); };
+          img.src = url;
         });
+      }
 
-    }
+      // ===== Image handling for chat =====
+      cameraBtn.addEventListener('click', function() {
+        imageInput.click();
+      });
 
-    if (closeFieldReport && fieldReportPanel) {
+      imageInput.addEventListener('change', async function() {
+        const file = imageInput.files?.[0];
+        if (!file) return;
+        imagePreview.hidden = false;
+        imagePreview.innerHTML = '📷 Đang chuẩn bị ảnh...';
+        preparedImageBlob = null;
+        try {
+          const result = await resizeImage(file);
+          preparedImageBlob = result.blob;
+          preparedImageName = (file.name || 'image.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+          const hash = await sha256Hex(result.blob);
+          const sizeKB = Math.round(result.blob.size / 1024);
+          const originalKB = Math.round(file.size / 1024);
+          const thumbUrl = URL.createObjectURL(result.blob);
+          imagePreview.innerHTML =
+            '<img class="thumb" src="' + thumbUrl + '" alt="Ảnh đã chuẩn bị">' +
+            '<strong>Ảnh sẵn sàng</strong><br>' +
+            'JPEG · ' + result.w + '×' + result.h +
+            ' · ' + sizeKB + ' KB' +
+            ' · gốc ' + originalKB + ' KB' +
+            '<br>SHA-256: ' + hash +
+            '<br><span>💡 Gửi câu hỏi để THỦY LỢI AI phân tích ảnh.</span>';
+        } catch (err) {
+          preparedImageBlob = null;
+          imagePreview.hidden = false;
+          imagePreview.textContent = '⚠️ ' + (err.message || 'Không xử lý được ảnh.');
+        }
+      });
 
-        closeFieldReport.addEventListener("click", function () {
-            fieldReportPanel.classList.add("hidden");
-        });
+      // ===== Field Report logic (encapsulated) =====
+      (function() {
+        let selectedReportType = '';
+        let fieldReportFile = null;
 
-    }
-
-
-    // --------------------------------------------------------
-    // TẠO Ô CHỌN ẢNH / CAMERA
-    // --------------------------------------------------------
-
-    const reportButtons =
-        document.querySelectorAll("[data-report-type]");
-
-    reportButtons.forEach(function (button) {
-
-        button.addEventListener("click", function () {
-
-            const reportType =
-                button.getAttribute("data-report-type");
-
-            // Tạo input camera
-            const input = document.createElement("input");
-
-            input.type = "file";
-            input.accept = "image/*";
-            input.capture = "environment";
-
-            input.style.display = "none";
-
-            document.body.appendChild(input);
-
-            input.addEventListener("change", async function () {
-
-                const file = input.files && input.files[0];
-
-                if (!file) {
-                    input.remove();
-                    return;
-                }
-
-                await createFieldReport(
-                    file,
-                    reportType
-                );
-
-                input.remove();
-
-            });
-
-            input.click();
-
-        });
-
-    });
-
-
-    // ========================================================
-    // GỬI ẢNH LÊN SERVER
-    // ========================================================
-
-    async function createFieldReport(file, reportType) {
-
-        const messages =
-            document.getElementById("messages");
-
-        const typing =
-            document.getElementById("typing");
-
-        // Hiển thị thông báo người dùng
-        if (messages) {
-
-            const bubble = document.createElement("div");
-
-            bubble.className = "msg user";
-
-            bubble.innerHTML =
-                "<div class='bubble'>" +
-                "📷 Báo cáo hiện trường: " +
-                escapeHtml(reportType) +
-                "</div>";
-
-            messages.appendChild(bubble);
-
-            messages.scrollTop =
-                messages.scrollHeight;
+        function updateFieldReportButton() {
+          createFieldReport.disabled = !selectedReportType || !fieldReportFile;
         }
 
-
-        if (typing) {
-            typing.classList.add("show");
+        function showFieldReportStatus(text, error) {
+          fieldReportStatus.hidden = false;
+          fieldReportStatus.textContent = text;
+          fieldReportStatus.classList.toggle('error', !!error);
         }
 
+        function getReportTypeName(type) {
+          var names = {
+            incident: '🚨 Sự cố công trình',
+            corridor: '⚠️ Vi phạm hành lang thủy lợi',
+            dry_area: '🌾 Diện tích khô',
+            water_level: '💧 Mực nước'
+          };
+          return names[type] || '📋 Báo cáo hiện trường';
+        }
+
+        // Mở panel
+        fieldReportBtn.addEventListener('click', function() {
+          fieldReportPanel.classList.remove('hidden');
+          fieldReportPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+
+        closeFieldReport.addEventListener('click', function() {
+          fieldReportPanel.classList.add('hidden');
+        });
+
+        // Chọn loại báo cáo
+        reportTypeButtons.forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            reportTypeButtons.forEach(function(b) { b.classList.remove('selected'); });
+            btn.classList.add('selected');
+            selectedReportType = btn.getAttribute('data-report-type') || '';
+            updateFieldReportButton();
+            showFieldReportStatus('Đã chọn: ' + (btn.querySelector('span')?.textContent || 'Báo cáo'), false);
+          });
+        });
+
+        // Nút chụp ảnh
+        fieldReportCamera.addEventListener('click', function() {
+          fieldReportImage.click();
+        });
+
+        fieldReportImage.addEventListener('change', async function() {
+          const file = fieldReportImage.files?.[0];
+          if (!file) return;
+          fieldReportFile = null;
+          fieldReportPreview.hidden = false;
+          fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh...';
+          try {
+            const result = await resizeImage(file, 1600, 0.82);
+            fieldReportFile = new File([result.blob], (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+            const url = URL.createObjectURL(result.blob);
+            const sizeKB = Math.round(result.blob.size / 1024);
+            fieldReportPreview.innerHTML =
+              '<div class="field-report-preview-inner">' +
+              '<img src="' + url + '" class="thumb" alt="Ảnh hiện trường">' +
+              '<div><strong>📷 Ảnh hiện trường đã sẵn sàng</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB + ' KB<br><span>Có thể tiến hành phân tích.</span></div>' +
+              '</div>';
+            updateFieldReportButton();
+          } catch (err) {
+            fieldReportFile = null;
+            fieldReportPreview.hidden = false;
+            fieldReportPreview.textContent = '⚠️ ' + (err.message || 'Không xử lý được ảnh.');
+            updateFieldReportButton();
+          }
+        });
+
+        fieldReportQuestion.addEventListener('input', updateFieldReportButton);
+
+        // Tạo báo cáo
+        createFieldReport.addEventListener('click', async function() {
+          if (!selectedReportType) {
+            showFieldReportStatus('⚠️ Vui lòng chọn loại báo cáo.', true);
+            return;
+          }
+          if (!fieldReportFile) {
+            showFieldReportStatus('⚠️ Vui lòng chụp hoặc chọn ảnh hiện trường.', true);
+            return;
+          }
+
+          createFieldReport.disabled = true;
+          showFieldReportStatus('🤖 THỦY LỢI AI đang phân tích hiện trường...');
+
+          try {
+            const formData = new FormData();
+            formData.append('file', fieldReportFile, fieldReportFile.name);
+            formData.append('report_type', selectedReportType);
+            formData.append('question', (fieldReportQuestion.value || '').trim());
+
+            const result = await fetchJSON('/field-report', { method: 'POST', body: formData }, 90000);
+
+            if (!result.success) {
+              throw new Error(result.error || 'Không tạo được báo cáo.');
+            }
+
+            const reportTitle = result.report_title || getReportTypeName(selectedReportType);
+            const answer = result.answer || 'THỦY LỢI AI chưa tạo được nội dung báo cáo.';
+
+            addUser('📋 ' + reportTitle);
+            addAI(answer, result.sources || []);
+
+            showFieldReportStatus('✅ Đã tạo dự thảo báo cáo hiện trường.');
+
+            if (result.next_step) {
+              const nextBox = document.createElement('div');
+              nextBox.className = 'msg assistant';
+              const bubble = document.createElement('div');
+              bubble.className = 'bubble';
+              bubble.innerHTML = '<strong>📌 Bước tiếp theo</strong><br>' + md(result.next_step);
+              nextBox.appendChild(bubble);
+              messages.appendChild(nextBox);
+              messages.scrollTop = messages.scrollHeight;
+            }
+
+            // Đóng panel sau khi thành công
+            setTimeout(function() {
+              fieldReportPanel.classList.add('hidden');
+            }, 1200);
+
+          } catch (err) {
+            console.error('FIELD REPORT ERROR:', err);
+            showFieldReportStatus('❌ ' + (err.message || 'Không thể tạo báo cáo.'), true);
+          } finally {
+            updateFieldReportButton();
+          }
+        });
+
+        updateFieldReportButton();
+      })();
+
+      // ===== Health check =====
+      async function health() {
+        try {
+          statusEl.textContent = 'Đang kiểm tra...';
+          const d = await fetchJSON('/health?t=' + Date.now(), { method: 'GET', headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' } }, 15000);
+          const ok = d && d.status === 'ok' && d.gemini_configured === true && d.file_search_configured === true;
+          if (ok) {
+            dot.className = 'dot ok';
+            statusEl.textContent = 'Đã kết nối';
+          } else {
+            dot.className = 'dot bad';
+            statusEl.textContent = 'Chưa sẵn sàng';
+          }
+        } catch (e) {
+          console.error('HEALTH ERROR:', e);
+          dot.className = 'dot bad';
+          statusEl.textContent = 'Không kết nối';
+        }
+      }
+
+      // ===== Load documents (optional) =====
+      async function loadDocs() {
+        // Nếu bạn có nút hiển thị tài liệu, có thể gọi ở đây, nhưng hiện tại không dùng
+      }
+
+      // ===== Cooldown for rate limit =====
+      function startCooldown(seconds) {
+        isCooldown = true;
+        sendBtn.disabled = true;
+        question.disabled = true;
+        cameraBtn.disabled = true;
+        let left = Math.ceil(seconds || 30);
+        sendBtn.textContent = left + 's';
+        const timer = setInterval(function() {
+          left--;
+          if (left < 0) {
+            clearInterval(timer);
+            isCooldown = false;
+            sendBtn.disabled = false;
+            question.disabled = false;
+            cameraBtn.disabled = false;
+            sendBtn.innerHTML = '<span aria-hidden="true">➤</span>';
+            question.focus();
+          } else {
+            sendBtn.textContent = left + 's';
+          }
+        }, 1000);
+      }
+
+      // ===== Ask =====
+      async function ask() {
+        const q = question.value.trim();
+        if ((!q && !preparedImageBlob) || sendBtn.disabled || isCooldown) return;
+
+        const finalQuestion = q || 'Hãy phân tích hình ảnh này trong bối cảnh chuyên ngành thủy lợi.';
+
+        addUser(preparedImageBlob ? '📷 ' + finalQuestion : finalQuestion);
+        question.value = '';
+        sendBtn.disabled = true;
+        question.disabled = true;
+        cameraBtn.disabled = true;
+        typing.classList.add('show');
 
         try {
-
+          let d;
+          if (preparedImageBlob) {
             const formData = new FormData();
-
-            formData.append(
-                "file",
-                file
-            );
-
-            formData.append(
-                "report_type",
-                reportType
-            );
-
-
-            // ------------------------------------------------
-            // GỌI API FIELD REPORT
-            // ------------------------------------------------
-
-            const response = await fetch(
-                "/field-report",
-                {
-                    method: "POST",
-                    body: formData
-                }
-            );
-
-
-            const data = await response.json();
-
-
-            if (!response.ok || !data.success) {
-
-                throw new Error(
-                    data.error ||
-                    "Không tạo được báo cáo hiện trường."
-                );
-
+            formData.append('file', preparedImageBlob, preparedImageName);
+            const url = '/image-analyze?question=' + encodeURIComponent(finalQuestion);
+            d = await fetchJSON(url, { method: 'POST', body: formData }, 60000);
+            addAI(d.answer || d.message || 'Gemini không trả về nội dung phân tích ảnh.', d.sources || d.citations || []);
+            // Xóa ảnh
+            preparedImageBlob = null;
+            preparedImageName = 'image.jpg';
+            imageInput.value = '';
+            imagePreview.hidden = true;
+            imagePreview.innerHTML = '';
+          } else {
+            d = await fetchJSON('https://thuyloi-cache.thaotltb.workers.dev/ask', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify({ question: finalQuestion })
+            }, 55000);
+            addAI(d.answer || d.message || 'Không có câu trả lời.', d.sources || d.citations || []);
+            if (d.status === 'rate_limited' && d.retry_after) {
+              startCooldown(d.retry_after);
             }
-
-
-            // ------------------------------------------------
-            // HIỂN THỊ KẾT QUẢ
-            // ------------------------------------------------
-
-            let answer =
-                data.answer ||
-                data.report ||
-                "AI đã phân tích hiện trường.";
-
-
-            if (messages) {
-
-                const bubble =
-                    document.createElement("div");
-
-                bubble.className =
-                    "msg assistant";
-
-                bubble.innerHTML =
-                    "<div class='bubble'>" +
-                    "<strong>📋 BÁO CÁO HIỆN TRƯỜNG</strong><br><br>" +
-                    formatReport(answer) +
-                    "</div>";
-
-                messages.appendChild(bubble);
-
-                messages.scrollTop =
-                    messages.scrollHeight;
-            }
-
-
-            // ------------------------------------------------
-            // NẾU SERVER ĐÃ TẠO PDF
-            // ------------------------------------------------
-
-            if (data.pdf_url) {
-
-                addReportDownloadButton(
-                    data.pdf_url
-                );
-
-            }
-
-
-        } catch (error) {
-
-            console.error(
-                "FIELD REPORT ERROR:",
-                error
-            );
-
-
-            if (messages) {
-
-                const bubble =
-                    document.createElement("div");
-
-                bubble.className =
-                    "msg assistant";
-
-                bubble.innerHTML =
-                    "<div class='bubble'>" +
-                    "⚠️ Không tạo được báo cáo.<br><br>" +
-                    escapeHtml(error.message) +
-                    "</div>";
-
-                messages.appendChild(bubble);
-
-                messages.scrollTop =
-                    messages.scrollHeight;
-            }
-
+          }
+        } catch (e) {
+          addAI('⚠️ ' + (e.message || 'Không thể xử lý yêu cầu.'), []);
         } finally {
-
-            if (typing) {
-                typing.classList.remove("show");
-            }
-
+          if (!isCooldown) {
+            sendBtn.disabled = false;
+            question.disabled = false;
+            cameraBtn.disabled = false;
+            sendBtn.innerHTML = '<span aria-hidden="true">➤</span>';
+            question.focus();
+          }
+          typing.classList.remove('show');
         }
+      }
 
-    }
-
-
-    // ========================================================
-    // ĐỊNH DẠNG NỘI DUNG BÁO CÁO
-    // ========================================================
-
-    function formatReport(text) {
-
-        if (!text) {
-            return "";
+      // ===== Event listeners =====
+      sendBtn.addEventListener('click', ask);
+      question.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          ask();
         }
+      });
+      clearBtn.addEventListener('click', function() {
+        messages.innerHTML = '<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';
+      });
 
-        let html =
-            escapeHtml(String(text));
+      // Quick buttons
+      document.querySelectorAll('.quick button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          question.value = btn.getAttribute('data-q') || '';
+          question.focus();
+        });
+      });
 
+      // ===== Init =====
+      health();
+      setInterval(health, 30000);
+      loadDocs();
 
-        // Tiêu đề Markdown
-        html = html.replace(
-            /^### (.*?)$/gm,
-            "<strong>$1</strong>"
-        );
-
-
-        html = html.replace(
-            /^## (.*?)$/gm,
-            "<strong>$1</strong>"
-        );
-
-
-        html = html.replace(
-            /^# (.*?)$/gm,
-            "<strong>$1</strong>"
-        );
-
-
-        // In đậm
-        html = html.replace(
-            /\*\*(.*?)\*\*/g,
-            "<strong>$1</strong>"
-        );
-
-
-        // Xuống dòng
-        html = html.replace(
-            /\n/g,
-            "<br>"
-        );
-
-
-        return html;
-
-    }
-
-
-    // ========================================================
-    // NÚT XEM / TẢI PDF
-    // ========================================================
-
-    function addReportDownloadButton(pdfUrl) {
-
-        const messages =
-            document.getElementById("messages");
-
-        if (!messages) {
-            return;
-        }
-
-
-        const box =
-            document.createElement("div");
-
-        box.className =
-            "msg assistant";
-
-
-        box.innerHTML =
-            "<div class='bubble'>" +
-
-            "<strong>📄 Hồ sơ báo cáo</strong><br><br>" +
-
-            "<a href='" +
-            encodeURI(pdfUrl) +
-            "' " +
-            "target='_blank' " +
-            "style='display:inline-block;" +
-            "padding:10px 14px;" +
-            "background:#2563eb;" +
-            "color:white;" +
-            "border-radius:10px;" +
-            "text-decoration:none;'>" +
-
-            "📄 Mở báo cáo PDF" +
-
-            "</a>" +
-
-            "</div>";
-
-
-        messages.appendChild(box);
-
-        messages.scrollTop =
-            messages.scrollHeight;
-
-    }
-
-
-    // ========================================================
-    // BẢO VỆ HTML
-    // ========================================================
-
-    function escapeHtml(value) {
-
-        return String(value)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-
-    }
-
-
-})();
-</script>
+    })();
+  </script>
 </body>
 </html>
