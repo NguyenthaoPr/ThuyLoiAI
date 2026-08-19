@@ -1267,13 +1267,13 @@ async def image_upload(file: UploadFile = File(...)):
         content = output.getvalue()
 
     except Exception:
-    raise HTTPException(
-        status_code=400,
-        detail="Không thể xử lý ảnh."
-    )
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể xử lý ảnh."
+        )
 
-image_hash = hashlib.sha256(content).hexdigest()
     image_hash = hashlib.sha256(content).hexdigest()
+   
 
     print(
     "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s"
