@@ -1648,23 +1648,57 @@ async def image_analyze(
         }
 
     try:
-        # Đọc ảnh
-        content = await file.read()
+    # Đọc ảnh
+    content = await file.read()
 
-        if not content:
-            return {
-                "success": False,
-                "error": "Ảnh rỗng."
-            }
+    if not content:
+        return {
+            "success": False,
+            "error": "Ảnh rỗng."
+        }
 
-        # Giới hạn an toàn
-        if len(content) > 10 * 1024 * 1024:
-            return {
-                "success": False,
-                "error": "Ảnh vượt quá giới hạn 10 MB."
-            }
+    # Giới hạn ảnh gốc
+    if len(content) > 10 * 1024 * 1024:
+        return {
+            "success": False,
+            "error": "Ảnh vượt quá giới hạn 10 MB."
+        }
 
-        image_b64 = base64.b64encode(content).decode("utf-8")
+    # ==========================================
+    # RESIZE + NÉN ẢNH TRƯỚC KHI GỬI GEMINI
+    # ==========================================
+    try:
+        image = Image.open(BytesIO(content))
+
+        # Giữ tỷ lệ, cạnh dài tối đa 1600 px
+        image.thumbnail(
+            (1600, 1600),
+            Image.Resampling.LANCZOS
+        )
+
+        # Chuyển sang RGB để lưu JPEG
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        output = BytesIO()
+
+        image.save(
+            output,
+            format="JPEG",
+            quality=75,
+            optimize=True
+        )
+
+        content = output.getvalue()
+
+    except Exception:
+        return {
+            "success": False,
+            "error": "Không thể xử lý ảnh."
+        }
+
+    # Chuyển ảnh đã nén sang Base64
+    image_b64 = base64.b64encode(content).decode("utf-8")
 
         question = (question or "").strip()
 
@@ -1713,7 +1747,7 @@ async def image_analyze(
             {
                 "type": "image",
                 "data": image_b64,
-                "mime_type": content_type
+                "mime_type": "image/jpeg"
             }
         ]
 
