@@ -5,6 +5,7 @@ import random
 import tempfile
 import time
 import hashlib
+import base64
 from PIL import Image
 from io import BytesIO
 from collections import OrderedDict
@@ -20,6 +21,8 @@ from google import genai
 # ============================================================
 # THỦY LỢI AI - SERVER.PY
 # BẢN NÂNG CẤP ỔN ĐỊNH - GIỮ NGUYÊN KIẾN TRÚC HIỆN TẠI
+# ĐÃ SỬA LỖI: extract_answer_and_sources() thiếu return ở
+# nhánh thành công, khiến /ask và /image-analyze luôn lỗi.
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -402,6 +405,8 @@ async def api_info():
             "pdf_documents": "/documents/pdf",
             "delete_pdf": "/documents/pdf",
             "upload": "/upload",
+            "image_upload": "/image-upload",
+            "image_analyze": "/image-analyze",
             "cache": "/cache",
             "clear_cache": "/cache",
         },
@@ -499,100 +504,112 @@ def call_gemini(question: str):
 
 # ============================================================
 # ANSWER + SOURCES
+# ĐÃ SỬA: trước đây phần "answer = answer.strip(); if not answer:
+# raise ...; return answer, sources" nằm LỒNG BÊN TRONG khối
+# except, nên khi trích xuất citation thành công (không có lỗi)
+# hàm sẽ chạy hết và KHÔNG return gì cả -> gây lỗi
+# "cannot unpack non-iterable NoneType object" ở mọi nơi gọi
+# hàm này. Nay đưa các dòng đó ra ngoài, chạy sau cả try/except.
 # ============================================================
 
 def extract_answer_and_sources(result):
     answer = (getattr(result, "output_text", None) or "").strip()
+
     # ----------------------------------------------------
-# LẤY NGUỒN TÀI LIỆU TỪ FILE SEARCH
-# ----------------------------------------------------
+    # LẤY NGUỒN TÀI LIỆU TỪ FILE SEARCH
+    # ----------------------------------------------------
 
-sources = []
-seen_sources = set()
+    sources = []
+    seen_sources = set()
 
-try:
-    for step in getattr(result, "steps", []) or []:
+    try:
+        for step in getattr(result, "steps", []) or []:
 
-        if getattr(step, "type", None) != "model_output":
-            continue
-
-        for block in getattr(step, "content", []) or []:
-
-            if getattr(block, "type", None) != "text":
+            if getattr(step, "type", None) != "model_output":
                 continue
 
-            for annotation in getattr(block, "annotations", []) or []:
+            for block in getattr(step, "content", []) or []:
 
-                if getattr(annotation, "type", None) != "file_citation":
+                if getattr(block, "type", None) != "text":
                     continue
 
-                file_name = (
-                    getattr(annotation, "file_name", None)
-                    or "Tài liệu THỦY LỢI AI"
-                )
+                for annotation in getattr(block, "annotations", []) or []:
 
-                page_number = getattr(
-                    annotation,
-                    "page_number",
-                    None
-                )
+                    if getattr(annotation, "type", None) != "file_citation":
+                        continue
 
-                source = getattr(
-                    annotation,
-                    "source",
-                    None
-                )
+                    file_name = (
+                        getattr(annotation, "file_name", None)
+                        or "Tài liệu THỦY LỢI AI"
+                    )
 
-                key = (
-                    str(file_name),
-                    str(page_number),
-                    str(source)
-                )
+                    page_number = getattr(
+                        annotation,
+                        "page_number",
+                        None,
+                    )
 
-                if key in seen_sources:
-                    continue
+                    source = getattr(
+                        annotation,
+                        "source",
+                        None,
+                    )
 
-                seen_sources.add(key)
+                    key = (
+                        str(file_name),
+                        str(page_number),
+                        str(source),
+                    )
 
-                sources.append({
-                    "file_name": file_name,
-                    "page_number": page_number,
-                    "source": source,
-                })
+                    if key in seen_sources:
+                        continue
 
-except Exception as source_error:
+                    seen_sources.add(key)
 
-    print(
-        "FILE SEARCH CITATION ERROR:",
-        repr(source_error)
-    )
-    sources = []
+                    sources.append({
+                        "file_name": file_name,
+                        "page_number": page_number,
+                        "source": source,
+                    })
 
-    for step in (getattr(result, "steps", []) or []):
-        if getattr(step, "type", None) != "model_output":
-            continue
+    except Exception as source_error:
 
-        for block in (getattr(step, "content", []) or []):
-            if not answer and getattr(block, "type", None) == "text":
-                answer += getattr(block, "text", "") or ""
+        print(
+            "FILE SEARCH CITATION ERROR:",
+            repr(source_error),
+        )
+        sources = []
 
-            for annotation in (getattr(block, "annotations", []) or []):
-                if getattr(annotation, "type", None) != "file_citation":
-                    continue
+        for step in (getattr(result, "steps", []) or []):
+            if getattr(step, "type", None) != "model_output":
+                continue
 
-                item = {}
+            for block in (getattr(step, "content", []) or []):
+                if not answer and getattr(block, "type", None) == "text":
+                    answer += getattr(block, "text", "") or ""
 
-                file_name = getattr(annotation, "file_name", None)
-                source = getattr(annotation, "source", None)
+                for annotation in (getattr(block, "annotations", []) or []):
+                    if getattr(annotation, "type", None) != "file_citation":
+                        continue
 
-                if file_name:
-                    item["file_name"] = str(file_name)
+                    item = {}
 
-                if source:
-                    item["source"] = str(source)
+                    file_name = getattr(annotation, "file_name", None)
+                    source = getattr(annotation, "source", None)
 
-                if item and item not in sources:
-                    sources.append(item)
+                    if file_name:
+                        item["file_name"] = str(file_name)
+
+                    if source:
+                        item["source"] = str(source)
+
+                    if item and item not in sources:
+                        sources.append(item)
+
+    # --------------------------------------------------------
+    # PHẦN NÀY CHẠY SAU CẢ HAI TRƯỜNG HỢP (thành công hoặc lỗi
+    # khi trích xuất citation), không còn nằm lồng trong except.
+    # --------------------------------------------------------
 
     answer = answer.strip()
 
@@ -1275,6 +1292,7 @@ async def upload_file(file: UploadFile = File(...)):
         except Exception:
             pass
 
+
 # ============================================================
 # IMAGE UPLOAD - BƯỚC 13B-1A
 # Chỉ nhận ảnh + kiểm tra + tạo SHA-256.
@@ -1308,7 +1326,8 @@ async def image_upload(file: UploadFile = File(...)):
             status_code=413,
             detail="Ảnh vượt quá giới hạn 10 MB."
         )
-# 13B-1B: RESIZE + NÉN ẢNH
+
+    # 13B-1B: RESIZE + NÉN ẢNH
     try:
         image = Image.open(BytesIO(content))
 
@@ -1335,17 +1354,16 @@ async def image_upload(file: UploadFile = File(...)):
         )
 
     image_hash = hashlib.sha256(content).hexdigest()
-   
 
     print(
-    "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s"
-    % (
-        filename,
-        len(content) / 1024,
-        content_type,
-        image_hash,
+        "IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s"
+        % (
+            filename,
+            len(content) / 1024,
+            content_type,
+            image_hash,
+        )
     )
-)
 
     return {
         "success": True,
@@ -1355,7 +1373,9 @@ async def image_upload(file: UploadFile = File(...)):
         "size_bytes": len(content),
         "image_hash": image_hash,
     }
-    # ============================================================
+
+
+# ============================================================
 # IMAGE ANALYZE - GEMINI VISION + FILE SEARCH
 # ============================================================
 
@@ -1419,8 +1439,6 @@ async def image_analyze(
                 "error": "Ảnh vượt quá giới hạn 10 MB."
             }
 
-        import base64
-
         image_b64 = base64.b64encode(content).decode("utf-8")
 
         question = (question or "").strip()
@@ -1436,36 +1454,36 @@ async def image_analyze(
             {
                 "type": "text",
                 "text": (
-    "Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi "
-    "của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.\n\n"
+                    "Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi "
+                    "của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.\n\n"
 
-    "NHIỆM VỤ:\n"
-    "1. Quan sát và đọc chính xác hình ảnh được cung cấp.\n"
-    "2. Nhận diện chữ, số liệu, bảng biểu, bản vẽ, "
-    "công trình, thiết bị hoặc hiện trạng nếu có.\n"
-    "3. Nếu câu hỏi liên quan đến quy định, quy trình, "
-    "vận hành, tiêu chuẩn, hồ sơ hoặc nghiệp vụ thủy lợi, "
-    "hãy sử dụng File Search để đối chiếu với kho tài liệu "
-    "THỦY LỢI AI.\n"
-    "4. Ưu tiên thông tin trong hồ sơ THỦY LỢI AI khi "
-    "trả lời các vấn đề nghiệp vụ.\n"
-    "5. Phân biệt rõ thông tin nhìn thấy trong ảnh với "
-    "thông tin lấy từ hồ sơ.\n"
-    "6. Nếu không tìm thấy căn cứ phù hợp trong hồ sơ, "
-    "phải nói rõ điều đó.\n"
-    "7. Không tự bịa số liệu, quy định, điều khoản hoặc "
-    "thông tin không nhìn thấy trong ảnh và không có "
-    "trong nguồn tài liệu.\n\n"
+                    "NHIỆM VỤ:\n"
+                    "1. Quan sát và đọc chính xác hình ảnh được cung cấp.\n"
+                    "2. Nhận diện chữ, số liệu, bảng biểu, bản vẽ, "
+                    "công trình, thiết bị hoặc hiện trạng nếu có.\n"
+                    "3. Nếu câu hỏi liên quan đến quy định, quy trình, "
+                    "vận hành, tiêu chuẩn, hồ sơ hoặc nghiệp vụ thủy lợi, "
+                    "hãy sử dụng File Search để đối chiếu với kho tài liệu "
+                    "THỦY LỢI AI.\n"
+                    "4. Ưu tiên thông tin trong hồ sơ THỦY LỢI AI khi "
+                    "trả lời các vấn đề nghiệp vụ.\n"
+                    "5. Phân biệt rõ thông tin nhìn thấy trong ảnh với "
+                    "thông tin lấy từ hồ sơ.\n"
+                    "6. Nếu không tìm thấy căn cứ phù hợp trong hồ sơ, "
+                    "phải nói rõ điều đó.\n"
+                    "7. Không tự bịa số liệu, quy định, điều khoản hoặc "
+                    "thông tin không nhìn thấy trong ảnh và không có "
+                    "trong nguồn tài liệu.\n\n"
 
-    "CÁCH TRẢ LỜI:\n"
-    "- Trình bày rõ ràng, ngắn gọn.\n"
-    "- Nếu có chữ hoặc số liệu trong ảnh, đọc lại chính xác.\n"
-    "- Nếu phát hiện vấn đề kỹ thuật, nêu rõ vấn đề.\n"
-    "- Nếu có căn cứ từ hồ sơ, nêu tên tài liệu liên quan.\n"
-    "- Nếu chưa đủ căn cứ, nói rõ cần thêm thông tin.\n\n"
+                    "CÁCH TRẢ LỜI:\n"
+                    "- Trình bày rõ ràng, ngắn gọn.\n"
+                    "- Nếu có chữ hoặc số liệu trong ảnh, đọc lại chính xác.\n"
+                    "- Nếu phát hiện vấn đề kỹ thuật, nêu rõ vấn đề.\n"
+                    "- Nếu có căn cứ từ hồ sơ, nêu tên tài liệu liên quan.\n"
+                    "- Nếu chưa đủ căn cứ, nói rõ cần thêm thông tin.\n\n"
 
-    f"CÂU HỎI CỦA NGƯỜI DÙNG:\n{question}"
-)
+                    f"CÂU HỎI CỦA NGƯỜI DÙNG:\n{question}"
+                )
             },
             {
                 "type": "image",
@@ -1499,11 +1517,6 @@ async def image_analyze(
 
         answer, sources = extract_answer_and_sources(result)
 
-        if not answer:
-            raise RuntimeError(
-                "Gemini không trả về nội dung phân tích ảnh."
-            )
-
         # ----------------------------------------------------
         # TRẢ KẾT QUẢ
         # ----------------------------------------------------
@@ -1534,6 +1547,8 @@ async def image_analyze(
             "status": "error",
             "error": str(e),
         }
+
+
 # ============================================================
 # MAIN
 # ============================================================
