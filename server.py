@@ -1649,13 +1649,13 @@ async def image_analyze(
 
     try:
     # Đọc ảnh
-    content = await file.read()
+        content = await file.read()
 
-    if not content:
-        return {
-            "success": False,
-            "error": "Ảnh rỗng."
-        }
+        if not content:
+            return {
+                "success": False,
+                "error": "Ảnh rỗng."
+            }
 
     # Giới hạn ảnh gốc
     if len(content) > 10 * 1024 * 1024:
