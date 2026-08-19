@@ -21,8 +21,18 @@ from google import genai
 # ============================================================
 # THỦY LỢI AI - SERVER.PY
 # BẢN NÂNG CẤP ỔN ĐỊNH - GIỮ NGUYÊN KIẾN TRÚC HIỆN TẠI
-# ĐÃ SỬA LỖI: extract_answer_and_sources() thiếu return ở
-# nhánh thành công, khiến /ask và /image-analyze luôn lỗi.
+#
+# ĐÃ SỬA (so với bản trước):
+# 1. extract_answer_and_sources(): return/raise đã ở ngoài
+#    try/except nên luôn trả về giá trị, không còn crash khi
+#    trích citation thành công.
+# 2. /image-analyze: sửa lỗi thụt lề sai (mix nhiều mức indent
+#    trong cùng một khối try) từng khiến server bị SyntaxError
+#    và không khởi động được.
+# 3. SYSTEM_PROMPT: bỏ placeholder "{question}" ở cuối vì không
+#    hề được .format() ở bất kỳ đâu -> trước đây Gemini nhận
+#    nguyên văn chữ "{question}" thay vì câu hỏi thật. Câu hỏi
+#    thật vẫn luôn được gửi riêng qua input/gemini_input.
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -320,9 +330,6 @@ VI. CÁCH TRẢ LỜI
 - Với quy trình: trình bày theo từng bước.
 - Với báo cáo: có thể tổng hợp thành các mục.
 - Với hình ảnh: luôn phân biệt quan sát, hồ sơ và phân tích.
-
-CÂU HỎI CỦA NGƯỜI DÙNG:
-{question}
 """
 
 
@@ -729,12 +736,6 @@ def call_gemini(question: str):
 
 # ============================================================
 # ANSWER + SOURCES
-# ĐÃ SỬA: trước đây phần "answer = answer.strip(); if not answer:
-# raise ...; return answer, sources" nằm LỒNG BÊN TRONG khối
-# except, nên khi trích xuất citation thành công (không có lỗi)
-# hàm sẽ chạy hết và KHÔNG return gì cả -> gây lỗi
-# "cannot unpack non-iterable NoneType object" ở mọi nơi gọi
-# hàm này. Nay đưa các dòng đó ra ngoài, chạy sau cả try/except.
 # ============================================================
 
 def extract_answer_and_sources(result):
@@ -832,8 +833,8 @@ def extract_answer_and_sources(result):
                         sources.append(item)
 
     # --------------------------------------------------------
-    # PHẦN NÀY CHẠY SAU CẢ HAI TRƯỜNG HỢP (thành công hoặc lỗi
-    # khi trích xuất citation), không còn nằm lồng trong except.
+    # Chạy sau cả hai trường hợp (thành công hoặc lỗi khi trích
+    # xuất citation) - không nằm lồng trong except.
     # --------------------------------------------------------
 
     answer = answer.strip()
@@ -1611,7 +1612,7 @@ async def image_analyze(
 ):
     """
     Phân tích ảnh bằng Gemini.
-    Ảnh được gửi trực tiếp dưới dạng Base64.
+    Ảnh được resize/nén rồi gửi dưới dạng Base64.
     Có thể kết hợp File Search của THỦY LỢI AI.
     """
 
@@ -1648,7 +1649,7 @@ async def image_analyze(
         }
 
     try:
-    # Đọc ảnh
+        # Đọc ảnh
         content = await file.read()
 
         if not content:
@@ -1657,48 +1658,48 @@ async def image_analyze(
                 "error": "Ảnh rỗng."
             }
 
-    # Giới hạn ảnh gốc
-    if len(content) > 10 * 1024 * 1024:
-        return {
-            "success": False,
-            "error": "Ảnh vượt quá giới hạn 10 MB."
-        }
+        # Giới hạn ảnh gốc
+        if len(content) > 10 * 1024 * 1024:
+            return {
+                "success": False,
+                "error": "Ảnh vượt quá giới hạn 10 MB."
+            }
 
-    # ==========================================
-    # RESIZE + NÉN ẢNH TRƯỚC KHI GỬI GEMINI
-    # ==========================================
-    try:
-        image = Image.open(BytesIO(content))
+        # ==========================================
+        # RESIZE + NÉN ẢNH TRƯỚC KHI GỬI GEMINI
+        # ==========================================
+        try:
+            image = Image.open(BytesIO(content))
 
-        # Giữ tỷ lệ, cạnh dài tối đa 1600 px
-        image.thumbnail(
-            (1600, 1600),
-            Image.Resampling.LANCZOS
-        )
+            # Giữ tỷ lệ, cạnh dài tối đa 1600 px
+            image.thumbnail(
+                (1600, 1600),
+                Image.Resampling.LANCZOS
+            )
 
-        # Chuyển sang RGB để lưu JPEG
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+            # Chuyển sang RGB để lưu JPEG
+            if image.mode != "RGB":
+                image = image.convert("RGB")
 
-        output = BytesIO()
+            output = BytesIO()
 
-        image.save(
-            output,
-            format="JPEG",
-            quality=75,
-            optimize=True
-        )
+            image.save(
+                output,
+                format="JPEG",
+                quality=75,
+                optimize=True
+            )
 
-        content = output.getvalue()
+            content = output.getvalue()
 
-    except Exception:
-        return {
-            "success": False,
-            "error": "Không thể xử lý ảnh."
-        }
+        except Exception:
+            return {
+                "success": False,
+                "error": "Không thể xử lý ảnh."
+            }
 
-    # Chuyển ảnh đã nén sang Base64
-    image_b64 = base64.b64encode(content).decode("utf-8")
+        # Chuyển ảnh đã nén sang Base64
+        image_b64 = base64.b64encode(content).decode("utf-8")
 
         question = (question or "").strip()
 
