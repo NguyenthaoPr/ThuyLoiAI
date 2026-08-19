@@ -504,6 +504,69 @@ def call_gemini(question: str):
 
 def extract_answer_and_sources(result):
     answer = (getattr(result, "output_text", None) or "").strip()
+    # ----------------------------------------------------
+# LẤY NGUỒN TÀI LIỆU TỪ FILE SEARCH
+# ----------------------------------------------------
+
+sources = []
+seen_sources = set()
+
+try:
+    for step in getattr(result, "steps", []) or []:
+
+        if getattr(step, "type", None) != "model_output":
+            continue
+
+        for block in getattr(step, "content", []) or []:
+
+            if getattr(block, "type", None) != "text":
+                continue
+
+            for annotation in getattr(block, "annotations", []) or []:
+
+                if getattr(annotation, "type", None) != "file_citation":
+                    continue
+
+                file_name = (
+                    getattr(annotation, "file_name", None)
+                    or "Tài liệu THỦY LỢI AI"
+                )
+
+                page_number = getattr(
+                    annotation,
+                    "page_number",
+                    None
+                )
+
+                source = getattr(
+                    annotation,
+                    "source",
+                    None
+                )
+
+                key = (
+                    str(file_name),
+                    str(page_number),
+                    str(source)
+                )
+
+                if key in seen_sources:
+                    continue
+
+                seen_sources.add(key)
+
+                sources.append({
+                    "file_name": file_name,
+                    "page_number": page_number,
+                    "source": source,
+                })
+
+except Exception as source_error:
+
+    print(
+        "FILE SEARCH CITATION ERROR:",
+        repr(source_error)
+    )
     sources = []
 
     for step in (getattr(result, "steps", []) or []):
@@ -1435,10 +1498,7 @@ async def image_analyze(
             )
         )
 
-        answer = (
-            getattr(result, "output_text", None)
-            or ""
-        ).strip()
+        answer, sources = extract_answer_and_sources(result)
 
         if not answer:
             raise RuntimeError(
@@ -1457,6 +1517,7 @@ async def image_analyze(
             "size_bytes": len(content),
             "question": question,
             "answer": answer,
+            "sources": sources,
             "engine": "Gemini Vision",
             "model": GEMINI_MODEL,
             "file_search": bool(GEMINI_FILE_SEARCH_STORE),
