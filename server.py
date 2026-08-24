@@ -2727,87 +2727,171 @@ def create_field_report_pdf(
     # NỘI DUNG BÁO CÁO
     # =========================================================
 
-    lines = (answer or "").splitlines()
+# =========================================================
+# CHUẨN HÓA NỘI DUNG BÁO CÁO
+# =========================================================
 
-    for line in lines:
+text = (answer or "").strip()
 
-        # Giữ nguyên dòng gốc để kiểm tra Markdown
-        line = line.strip()
+# ---------------------------------------------------------
+# 1. Tách các mục đánh số nếu AI trả về trên cùng một dòng
+# ---------------------------------------------------------
 
-        if not line:
-            story.append(Spacer(1, 5))
-            continue
+text = re.sub(
+    r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)",
+    "\n",
+    text,
+)
 
-        # -----------------------------------------------------
-        # KIỂM TRA MARKDOWN TRƯỚC KHI ESCAPE
-        # -----------------------------------------------------
+# ---------------------------------------------------------
+# 2. Tách tiêu đề Markdown nếu AI dùng ### / ## / #
+# ---------------------------------------------------------
 
-        if line.startswith("### "):
+text = re.sub(
+    r"\s+(?=###\s+\d+\.)",
+    "\n",
+    text,
+)
 
-            text = esc_pdf(line[4:])
+text = re.sub(
+    r"\s+(?=##\s+\d+\.)",
+    "\n",
+    text,
+)
 
-            story.append(
-                Paragraph(
-                    text,
-                    heading_style,
-                )
+# ---------------------------------------------------------
+# 3. Tách nội dung ngay sau tiêu đề
+# ---------------------------------------------------------
+
+text = re.sub(
+    r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+",
+    r"\1\n",
+    text,
+    flags=re.IGNORECASE,
+)
+
+# ---------------------------------------------------------
+# 4. Chuyển thành từng dòng
+# ---------------------------------------------------------
+
+lines = text.splitlines()
+
+for line in lines:
+
+    line = line.strip()
+
+    if not line:
+        story.append(
+            Spacer(1, 5)
+        )
+        continue
+
+    # =====================================================
+    # TIÊU ĐỀ MARKDOWN
+    # =====================================================
+
+    if line.startswith("### "):
+
+        text_line = esc_pdf(
+            line[4:].strip()
+        )
+
+        story.append(
+            Paragraph(
+                text_line,
+                heading_style,
             )
+        )
 
-        elif line.startswith("## "):
+    elif line.startswith("## "):
 
-            text = esc_pdf(line[3:])
+        text_line = esc_pdf(
+            line[3:].strip()
+        )
 
-            story.append(
-                Paragraph(
-                    text,
-                    heading_style,
-                )
+        story.append(
+            Paragraph(
+                text_line,
+                heading_style,
             )
+        )
 
-        elif line.startswith("# "):
+    elif line.startswith("# "):
 
-            text = esc_pdf(line[2:])
+        text_line = esc_pdf(
+            line[2:].strip()
+        )
 
-            story.append(
-                Paragraph(
-                    text,
-                    heading_style,
-                )
+        story.append(
+            Paragraph(
+                text_line,
+                heading_style,
             )
+        )
 
-        elif line.startswith("- "):
+    # =====================================================
+    # TIÊU ĐỀ ĐÁNH SỐ
+    # =====================================================
 
-            text = esc_pdf(line[2:])
+    elif re.match(
+        r"^\d+\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b",
+        line,
+        re.IGNORECASE,
+    ):
 
-            story.append(
-                Paragraph(
-                    "• " + text,
-                    body_style,
-                )
+        text_line = esc_pdf(line)
+
+        story.append(
+            Paragraph(
+                text_line,
+                heading_style,
             )
+        )
 
-        elif line.startswith("* "):
+    # =====================================================
+    # DANH SÁCH
+    # =====================================================
 
-            text = esc_pdf(line[2:])
+    elif line.startswith("- "):
 
-            story.append(
-                Paragraph(
-                    "• " + text,
-                    body_style,
-                )
+        text_line = esc_pdf(
+            line[2:].strip()
+        )
+
+        story.append(
+            Paragraph(
+                "• " + text_line,
+                body_style,
             )
+        )
 
-        else:
+    elif line.startswith("* "):
 
-            text = esc_pdf(line)
+        text_line = esc_pdf(
+            line[2:].strip()
+        )
 
-            story.append(
-                Paragraph(
-                    text,
-                    body_style,
-                )
+        story.append(
+            Paragraph(
+                "• " + text_line,
+                body_style,
             )
+        )
 
+    # =====================================================
+    # NỘI DUNG THƯỜNG
+    # =====================================================
+
+    else:
+
+        text_line = esc_pdf(line)
+
+        story.append(
+            Paragraph(
+                text_line,
+                body_style,
+            )
+        )
     # =========================================================
     # TẠO PDF
     # =========================================================
