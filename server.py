@@ -2398,18 +2398,27 @@ def register_pdf_font():
     return "Helvetica"
 
 
+# ============================================================
+# THAY TOÀN BỘ HÀM create_field_report_pdf() HIỆN TẠI
+# Từ: def create_field_report_pdf(
+# Đến: return buffer
+# ============================================================
+
 def create_field_report_pdf(
     report_title: str,
     answer: str,
 ):
     """
     Tạo PDF báo cáo nhanh hiện trường từ nội dung AI.
-    Giữ nguyên nội dung của 4 loại báo cáo,
-    chỉ nâng cấp bố cục và trình bày PDF.
+
+    Lưu ý:
+    - Không thay đổi nội dung 4 loại báo cáo.
+    - Nội dung AI được chuyển thành các Paragraph/Heading/Bullet
+      để ReportLab thực sự vẽ lên PDF.
+    - Có xử lý markdown cơ bản: #, ##, **đậm**, -, *, 1.
     """
 
     buffer = BytesIO()
-
     font_name = register_pdf_font()
 
     doc = SimpleDocTemplate(
@@ -2426,7 +2435,7 @@ def create_field_report_pdf(
     styles = getSampleStyleSheet()
 
     # ============================================================
-    # TIÊU ĐỀ CHÍNH
+    # STYLE
     # ============================================================
 
     title_style = ParagraphStyle(
@@ -2440,24 +2449,35 @@ def create_field_report_pdf(
         spaceAfter=10,
     )
 
-    # ============================================================
-    # DÒNG LOẠI BÁO CÁO
-    # ============================================================
-
     report_type_style = ParagraphStyle(
         "ThuyLoiReportType",
         parent=styles["BodyText"],
         fontName=font_name,
         fontSize=10.5,
         leading=15,
-        alignment=TA_LEFT,
         textColor=colors.HexColor("#333333"),
-        spaceAfter=12,
+        spaceAfter=9,
     )
 
-    # ============================================================
-    # NỘI DUNG
-    # ============================================================
+    heading_style = ParagraphStyle(
+        "ThuyLoiHeading",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=12,
+        leading=17,
+        textColor=colors.HexColor("#123B5D"),
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+
+    subheading_style = ParagraphStyle(
+        "ThuyLoiSubHeading",
+        parent=heading_style,
+        fontSize=11,
+        leading=15,
+        spaceBefore=7,
+        spaceAfter=5,
+    )
 
     body_style = ParagraphStyle(
         "ThuyLoiBody",
@@ -2466,37 +2486,70 @@ def create_field_report_pdf(
         fontSize=10.5,
         leading=16,
         textColor=colors.HexColor("#222222"),
-        spaceAfter=7,
+        spaceAfter=6,
     )
-
-    # ============================================================
-    # TIÊU ĐỀ CÁC MỤC
-    # ============================================================
-
-    heading_style = ParagraphStyle(
-        "ThuyLoiHeading",
-        parent=body_style,
-        fontName=font_name,
-        fontSize=12,
-        leading=17,
-        textColor=colors.HexColor("#123B5D"),
-        spaceBefore=9,
-        spaceAfter=7,
-    )
-
-    # ============================================================
-    # DANH SÁCH
-    # ============================================================
 
     bullet_style = ParagraphStyle(
         "ThuyLoiBullet",
         parent=body_style,
-        leftIndent=12,
+        leftIndent=14,
         firstLineIndent=-8,
-        spaceAfter=5,
+        spaceAfter=4,
+    )
+
+    number_style = ParagraphStyle(
+        "ThuyLoiNumber",
+        parent=body_style,
+        leftIndent=18,
+        firstLineIndent=-18,
+        spaceAfter=4,
+    )
+
+    note_style = ParagraphStyle(
+        "ThuyLoiNote",
+        parent=body_style,
+        fontSize=9.5,
+        leading=14,
+        textColor=colors.HexColor("#536878"),
+        leftIndent=8,
+        borderColor=colors.HexColor("#D7E2EA"),
+        borderWidth=0.5,
+        borderPadding=7,
+        spaceBefore=5,
+        spaceAfter=7,
     )
 
     story = []
+
+    # ============================================================
+    # HÀM CHUYỂN MARKDOWN CƠ BẢN -> REPORTLAB
+    # ============================================================
+
+    def pdf_inline(text):
+        text = esc_pdf(str(text or ""))
+
+        # **đậm**
+        text = re.sub(
+            r"\*\*(.+?)\*\*",
+            r"<b>\1</b>",
+            text,
+        )
+
+        # __đậm__
+        text = re.sub(
+            r"__(.+?)__",
+            r"<b>\1</b>",
+            text,
+        )
+
+        # *nghiêng*
+        text = re.sub(
+            r"(?<!\*)\*([^*]+)\*(?!\*)",
+            r"<i>\1</i>",
+            text,
+        )
+
+        return text
 
     # ============================================================
     # TIÊU ĐỀ
@@ -2509,10 +2562,6 @@ def create_field_report_pdf(
         )
     )
 
-    # ============================================================
-    # LOẠI BÁO CÁO
-    # ============================================================
-
     story.append(
         Paragraph(
             f"<b>Loại báo cáo:</b> {esc_pdf(report_title)}",
@@ -2520,7 +2569,6 @@ def create_field_report_pdf(
         )
     )
 
-    # Đường phân cách nhẹ
     story.append(
         HRFlowable(
             width="100%",
@@ -2535,9 +2583,142 @@ def create_field_report_pdf(
     # NỘI DUNG BÁO CÁO
     # ============================================================
 
-    
+    story.append(
+        Paragraph(
+            "NỘI DUNG BÁO CÁO",
+            heading_style,
+        )
+    )
+
+    answer_text = str(answer or "").strip()
+
+    if not answer_text:
+        story.append(
+            Paragraph(
+                "Chưa có nội dung báo cáo.",
+                note_style,
+            )
+        )
+    else:
+        # Chuẩn hóa xuống dòng
+        answer_text = answer_text.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Tách từng dòng để không làm mất cấu trúc AI đã tạo.
+        lines = answer_text.split("\n")
+
+        for raw_line in lines:
+            line = raw_line.strip()
+
+            # Dòng trống
+            if not line:
+                continue
+
+            # ----------------------------------------------------
+            # Heading markdown: # / ## / ###
+            # ----------------------------------------------------
+            m = re.match(r"^#{1,3}\s+(.+)$", line)
+
+            if m:
+                heading_text = pdf_inline(m.group(1))
+
+                if line.startswith("###"):
+                    story.append(
+                        Paragraph(
+                            heading_text,
+                            subheading_style,
+                        )
+                    )
+                else:
+                    story.append(
+                        Paragraph(
+                            heading_text,
+                            heading_style,
+                        )
+                    )
+
+                continue
+
+            # ----------------------------------------------------
+            # Bullet: -, *, •
+            # ----------------------------------------------------
+            m = re.match(r"^[-*•]\s+(.+)$", line)
+
+            if m:
+                story.append(
+                    Paragraph(
+                        "• " + pdf_inline(m.group(1)),
+                        bullet_style,
+                    )
+                )
+                continue
+
+            # ----------------------------------------------------
+            # Danh sách số: 1. / 2. / 3.
+            # ----------------------------------------------------
+            m = re.match(r"^(\d+)[.)]\s+(.+)$", line)
+
+            if m:
+                story.append(
+                    Paragraph(
+                        f"{m.group(1)}. {pdf_inline(m.group(2))}",
+                        number_style,
+                    )
+                )
+                continue
+
+            # ----------------------------------------------------
+            # Dòng "Ghi chú:" / "Lưu ý:" / "Kiến nghị:"
+            # ----------------------------------------------------
+            if re.match(
+                r"^(ghi chú|lưu ý|kiến nghị|đề xuất)\s*:",
+                line,
+                flags=re.IGNORECASE,
+            ):
+                story.append(
+                    Paragraph(
+                        pdf_inline(line),
+                        note_style,
+                    )
+                )
+                continue
+
+            # ----------------------------------------------------
+            # Paragraph bình thường
+            # ----------------------------------------------------
+            story.append(
+                Paragraph(
+                    pdf_inline(line),
+                    body_style,
+                )
+            )
+
     # ============================================================
-    # TẠO PDF
+    # CHÂN BÁO CÁO
+    # ============================================================
+
+    story.append(
+        Spacer(1, 10)
+    )
+
+    story.append(
+        HRFlowable(
+            width="100%",
+            thickness=0.5,
+            color=colors.HexColor("#D7E0E7"),
+            spaceBefore=2,
+            spaceAfter=7,
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "Báo cáo được lập với sự hỗ trợ của THỦY LỢI AI.",
+            note_style,
+        )
+    )
+
+    # ============================================================
+    # BUILD PDF
     # ============================================================
 
     doc.build(story)
