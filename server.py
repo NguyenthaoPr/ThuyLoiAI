@@ -2403,16 +2403,9 @@ def create_field_report_pdf(
     answer: str,
 ):
     """
-    Tạo PDF báo cáo hiện trường từ nội dung AI.
-
-    LƯU Ý SỬA LỖI: bản trước bị lỗi thụt lề khiến phần xử lý
-    nội dung "thoát" ra khỏi thân hàm, và doc.build()/return
-    buffer bị đặt lồng sai bên trong vòng lặp "for line in
-    lines" (chỉ chạy ở lần lặp cuối, không phải return hợp lệ
-    của hàm) -> hàm trả về None -> /field-report-pdf crash khi
-    đưa None vào StreamingResponse. Đã sửa lại toàn bộ về đúng
-    cấp thụt lề của hàm, doc.build()/return buffer đặt sau
-    vòng lặp for.
+    Tạo PDF báo cáo nhanh hiện trường từ nội dung AI.
+    Giữ nguyên nội dung của 4 loại báo cáo,
+    chỉ nâng cấp bố cục và trình bày PDF.
     """
 
     buffer = BytesIO()
@@ -2427,19 +2420,44 @@ def create_field_report_pdf(
         topMargin=45,
         bottomMargin=45,
         title="Báo cáo nhanh hiện trường - THỦY LỢI AI",
+        author="THỦY LỢI AI",
     )
 
     styles = getSampleStyleSheet()
+
+    # ============================================================
+    # TIÊU ĐỀ CHÍNH
+    # ============================================================
 
     title_style = ParagraphStyle(
         "ThuyLoiTitle",
         parent=styles["Title"],
         fontName=font_name,
-        fontSize=16,
-        leading=21,
+        fontSize=17,
+        leading=22,
         alignment=TA_CENTER,
-        spaceAfter=18,
+        textColor=colors.HexColor("#123B5D"),
+        spaceAfter=10,
     )
+
+    # ============================================================
+    # DÒNG LOẠI BÁO CÁO
+    # ============================================================
+
+    report_type_style = ParagraphStyle(
+        "ThuyLoiReportType",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=10.5,
+        leading=15,
+        alignment=TA_LEFT,
+        textColor=colors.HexColor("#333333"),
+        spaceAfter=12,
+    )
+
+    # ============================================================
+    # NỘI DUNG
+    # ============================================================
 
     body_style = ParagraphStyle(
         "ThuyLoiBody",
@@ -2447,8 +2465,13 @@ def create_field_report_pdf(
         fontName=font_name,
         fontSize=10.5,
         leading=16,
+        textColor=colors.HexColor("#222222"),
         spaceAfter=7,
     )
+
+    # ============================================================
+    # TIÊU ĐỀ CÁC MỤC
+    # ============================================================
 
     heading_style = ParagraphStyle(
         "ThuyLoiHeading",
@@ -2456,15 +2479,28 @@ def create_field_report_pdf(
         fontName=font_name,
         fontSize=12,
         leading=17,
-        spaceBefore=10,
-        spaceAfter=8,
+        textColor=colors.HexColor("#123B5D"),
+        spaceBefore=9,
+        spaceAfter=7,
+    )
+
+    # ============================================================
+    # DANH SÁCH
+    # ============================================================
+
+    bullet_style = ParagraphStyle(
+        "ThuyLoiBullet",
+        parent=body_style,
+        leftIndent=12,
+        firstLineIndent=-8,
+        spaceAfter=5,
     )
 
     story = []
 
-    # =========================================================
+    # ============================================================
     # TIÊU ĐỀ
-    # =========================================================
+    # ============================================================
 
     story.append(
         Paragraph(
@@ -2473,83 +2509,51 @@ def create_field_report_pdf(
         )
     )
 
-    # =========================================================
+    # ============================================================
     # LOẠI BÁO CÁO
-    # =========================================================
+    # ============================================================
 
     story.append(
         Paragraph(
             f"<b>Loại báo cáo:</b> {esc_pdf(report_title)}",
-            body_style,
+            report_type_style,
         )
     )
 
-    story.append(Spacer(1, 8))
-
-    # =========================================================
-    # CHUẨN HÓA NỘI DUNG BÁO CÁO
-    # =========================================================
-
-    text = (answer or "").strip()
-
-    # ---------------------------------------------------------
-    # 1. Tách các mục đánh số nếu AI trả về trên cùng một dòng
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)",
-        "\n",
-        text,
+    # Đường phân cách nhẹ
+    story.append(
+        HRFlowable(
+            width="100%",
+            thickness=0.7,
+            color=colors.HexColor("#B8C7D1"),
+            spaceBefore=1,
+            spaceAfter=12,
+        )
     )
 
-    # ---------------------------------------------------------
-    # 2. Tách tiêu đề Markdown nếu AI dùng ### / ## / #
-    # ---------------------------------------------------------
+    # ============================================================
+    # NỘI DUNG BÁO CÁO
+    # ============================================================
 
-    text = re.sub(
-        r"\s+(?=###\s+\d+\.)",
-        "\n",
-        text,
-    )
-
-    text = re.sub(
-        r"\s+(?=##\s+\d+\.)",
-        "\n",
-        text,
-    )
-
-    # ---------------------------------------------------------
-    # 3. Tách nội dung ngay sau tiêu đề
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+",
-        r"\1\n",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # ---------------------------------------------------------
-    # 4. Chuyển thành từng dòng
-    # ---------------------------------------------------------
-
-    lines = text.splitlines()
+    lines = (answer or "").splitlines()
 
     for line in lines:
 
         line = line.strip()
+
         # Không đưa lại tiêu đề chính vào nội dung PDF
         if line.upper() == "BÁO CÁO NHANH HIỆN TRƯỜNG":
-           continue
+            continue
+
         if not line:
             story.append(
                 Spacer(1, 5)
             )
             continue
 
-        # =====================================================
-        # TIÊU ĐỀ MARKDOWN
-        # =====================================================
+        # --------------------------------------------------------
+        # TIÊU ĐỀ MARKDOWN ###
+        # --------------------------------------------------------
 
         if line.startswith("### "):
 
@@ -2564,6 +2568,10 @@ def create_field_report_pdf(
                 )
             )
 
+        # --------------------------------------------------------
+        # TIÊU ĐỀ MARKDOWN ##
+        # --------------------------------------------------------
+
         elif line.startswith("## "):
 
             text_line = esc_pdf(
@@ -2576,6 +2584,10 @@ def create_field_report_pdf(
                     heading_style,
                 )
             )
+
+        # --------------------------------------------------------
+        # TIÊU ĐỀ MARKDOWN #
+        # --------------------------------------------------------
 
         elif line.startswith("# "):
 
@@ -2590,28 +2602,9 @@ def create_field_report_pdf(
                 )
             )
 
-        # =====================================================
-        # TIÊU ĐỀ ĐÁNH SỐ
-        # =====================================================
-
-        elif re.match(
-            r"^\d+\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b",
-            line,
-            re.IGNORECASE,
-        ):
-
-            text_line = esc_pdf(line)
-
-            story.append(
-                Paragraph(
-                    text_line,
-                    heading_style,
-                )
-            )
-
-        # =====================================================
-        # DANH SÁCH
-        # =====================================================
+        # --------------------------------------------------------
+        # DANH SÁCH -
+        # --------------------------------------------------------
 
         elif line.startswith("- "):
 
@@ -2622,9 +2615,13 @@ def create_field_report_pdf(
             story.append(
                 Paragraph(
                     "• " + text_line,
-                    body_style,
+                    bullet_style,
                 )
             )
+
+        # --------------------------------------------------------
+        # DANH SÁCH *
+        # --------------------------------------------------------
 
         elif line.startswith("* "):
 
@@ -2635,13 +2632,13 @@ def create_field_report_pdf(
             story.append(
                 Paragraph(
                     "• " + text_line,
-                    body_style,
+                    bullet_style,
                 )
             )
 
-        # =====================================================
+        # --------------------------------------------------------
         # NỘI DUNG THƯỜNG
-        # =====================================================
+        # --------------------------------------------------------
 
         else:
 
@@ -2654,10 +2651,9 @@ def create_field_report_pdf(
                 )
             )
 
-    # =========================================================
-    # TẠO PDF (đặt sau vòng lặp, ở cấp thân hàm - KHÔNG lồng
-    # trong "for line in lines" như bản trước)
-    # =========================================================
+    # ============================================================
+    # TẠO PDF
+    # ============================================================
 
     doc.build(story)
 
