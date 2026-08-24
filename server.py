@@ -41,6 +41,7 @@ from reportlab.lib.styles import (
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas as pdfgen_canvas
 
 # ============================================================
 # THỦY LỢI AI - SERVER.PY
@@ -57,12 +58,12 @@ from reportlab.pdfbase.ttfonts import TTFont
 #    hề được .format() ở bất kỳ đâu -> trước đây Gemini nhận
 #    nguyên văn chữ "{question}" thay vì câu hỏi thật. Câu hỏi
 #    thật vẫn luôn được gửi riêng qua input/gemini_input.
-# 4. (MỚI) Bỏ định nghĩa TRÙNG LẶP của "/field-report": trước đây
+# 4. Bỏ định nghĩa TRÙNG LẶP của "/field-report": trước đây
 #    có 2 hàm cùng gắn @app.post("/field-report"). FastAPI chỉ
 #    dùng route đăng ký đầu tiên nên hàm thứ hai không bao giờ
 #    chạy -> đã gộp lại thành một hàm duy nhất, giữ bản có
 #    report_title/report_type dạng Form (khớp với /field-report-pdf).
-# 5. (MỚI) Sửa lỗi thụt lề nghiêm trọng trong
+# 5. Sửa lỗi thụt lề nghiêm trọng trong
 #    create_field_report_pdf(): phần xử lý nội dung từng bị dedent
 #    ra khỏi thân hàm, và doc.build()/return buffer từng nằm lồng
 #    sai bên trong vòng lặp "for line in lines" (chỉ chạy ở lần
@@ -70,6 +71,16 @@ from reportlab.pdfbase.ttfonts import TTFont
 #    về None và /field-report-pdf sẽ crash. Đã đưa toàn bộ khối xử
 #    lý về đúng cấp thụt lề của hàm, và doc.build()/return buffer
 #    được đặt sau vòng lặp, ở cấp hàm.
+# 6. (MỚI) THIẾT KẾ LẠI PDF BÁO CÁO HIỆN TRƯỜNG:
+#    - Khối "THÔNG TIN BÁO CÁO" giờ có dải tiêu đề màu như khối
+#      "NỘI DUNG BÁO CÁO", tên đơn vị hiển thị dạng viết tắt.
+#    - Thêm khối cảnh báo "⚠ LƯU Ý" (nền vàng nhạt, có viền)
+#      thay cho dòng miễn trừ trách nhiệm nhỏ ở cuối trang.
+#    - Thêm khối "XÁC NHẬN HIỆN TRƯỜNG" với 2 cột chữ ký
+#      (Người lập / Người kiểm tra).
+#    - Chân trang hiển thị đúng "Trang X/Y" (tổng số trang thật)
+#      nhờ NumberedCanvas (kỹ thuật 2 lượt vẽ chuẩn của ReportLab),
+#      thay vì chỉ hiển thị số trang hiện tại như bản cũ.
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -2371,6 +2382,7 @@ GHI CHÚ CỦA NGƯỜI DÙNG:
 # ============================================================
 
 PDF_ORG_NAME = "CHI NHÁNH THỦY LỢI VU GIA - THU BỒN"
+PDF_ORG_SHORT = "Chi nhánh Thủy lợi VGTB"
 PDF_APP_NAME = "THỦY LỢI AI"
 PDF_DOC_LABEL = "BÁO CÁO NHANH HIỆN TRƯỜNG"
 
@@ -2380,6 +2392,12 @@ PDF_COLOR_TEXT = colors.HexColor("#20303B")      # màu chữ chính
 PDF_COLOR_MUTED = colors.HexColor("#5A6B75")     # màu chữ phụ / ghi chú
 PDF_COLOR_BORDER = colors.HexColor("#C9D8DE")    # viền / đường kẻ nhạt
 PDF_COLOR_LABEL_BG = colors.HexColor("#EAF2F5")  # nền ô nhãn trong bảng thông tin
+
+# Màu riêng cho khối cảnh báo "⚠ LƯU Ý"
+PDF_COLOR_WARN_HEADER_BG = colors.HexColor("#F4C542")
+PDF_COLOR_WARN_BODY_BG = colors.HexColor("#FFF6DE")
+PDF_COLOR_WARN_BORDER = colors.HexColor("#E7B93C")
+PDF_COLOR_WARN_TEXT = colors.HexColor("#5B4300")
 
 
 def esc_pdf(text):
@@ -2481,6 +2499,12 @@ def register_pdf_font():
 
 # ============================================================
 # HEADER / FOOTER - VẼ TRÊN MỖI TRANG
+#
+# LƯU Ý: từ bản này, phần "Trang X" ở chân trang KHÔNG còn vẽ
+# ở đây nữa. Vì onPage chỉ chạy MỘT LƯỢT khi dựng story, tại
+# thời điểm đó tổng số trang thật sự CHƯA XÁC ĐỊNH (đặc biệt
+# với báo cáo dài nhiều trang). Số trang "X/Y" chính xác được
+# NumberedCanvas vẽ riêng ở bước save() (xem create_field_report_pdf).
 # ============================================================
 
 def _draw_pdf_header_footer(
@@ -2524,7 +2548,7 @@ def _draw_pdf_header_footer(
     canvas_obj.drawString(
         20 * mm,
         page_height - 16 * mm,
-        f"{PDF_DOC_LABEL} · {report_title}",
+        f"{PDF_DOC_LABEL} • {report_title}",
     )
 
     canvas_obj.setFont(font_bold, 11)
@@ -2536,6 +2560,9 @@ def _draw_pdf_header_footer(
 
     # ------------------------------------------------------------
     # CHÂN TRANG (footer)
+    # Dòng kẻ + tên đơn vị căn giữa. Số trang "X/Y" được
+    # NumberedCanvas vẽ đè lên ở góc phải, cùng độ cao với
+    # dòng tên đơn vị, sau khi build() biết tổng số trang.
     # ------------------------------------------------------------
 
     canvas_obj.setStrokeColor(PDF_COLOR_BORDER)
@@ -2550,27 +2577,56 @@ def _draw_pdf_header_footer(
     canvas_obj.setFillColor(PDF_COLOR_MUTED)
     canvas_obj.setFont(font_regular, 8)
 
-    canvas_obj.drawString(
-        20 * mm,
-        11 * mm,
-        f"Tạo lúc: {generated_at}  ·  Nguồn: {PDF_APP_NAME}",
-    )
-
-    canvas_obj.drawRightString(
-        page_width - 20 * mm,
-        11 * mm,
-        f"Trang {doc_obj.page}",
-    )
-
-    canvas_obj.setFont(font_regular, 7.5)
     canvas_obj.drawCentredString(
         page_width / 2,
-        7 * mm,
-        "Đây là dự thảo tham khảo, không thay thế kết luận chính "
-        "thức của cán bộ kỹ thuật hoặc cấp có thẩm quyền.",
+        11 * mm,
+        f"{PDF_APP_NAME} • {PDF_ORG_NAME.title()}",
     )
 
     canvas_obj.restoreState()
+
+
+# ============================================================
+# NUMBEREDCANVAS-STYLE PAGE COUNTER
+# Kỹ thuật 2 lượt vẽ chuẩn của ReportLab: showPage() không xuất
+# trang ngay mà lưu lại trạng thái, đến save() mới biết chính
+# xác tổng số trang và vẽ "Trang X/Y" cho từng trang đã lưu.
+# ============================================================
+
+def make_numbered_canvas(font_regular, footer_text_color):
+    class NumberedCanvas(pdfgen_canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            pdfgen_canvas.Canvas.__init__(self, *args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            total_pages = len(self._saved_page_states)
+
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self._draw_page_count(total_pages)
+                pdfgen_canvas.Canvas.showPage(self)
+
+            pdfgen_canvas.Canvas.save(self)
+
+        def _draw_page_count(self, total_pages):
+            page_width, _ = A4
+
+            self.saveState()
+            self.setFont(font_regular, 8)
+            self.setFillColor(footer_text_color)
+            self.drawRightString(
+                page_width - 20 * mm,
+                11 * mm,
+                f"Trang {self._pageNumber}/{total_pages}",
+            )
+            self.restoreState()
+
+    return NumberedCanvas
 
 
 # ============================================================
@@ -2784,6 +2840,32 @@ def _build_pdf_content_flowables(
     return flowables
 
 
+def _pdf_section_header_table(text, doc_width, bg_color):
+    """
+    Dải tiêu đề màu dùng chung cho các khối "THÔNG TIN BÁO CÁO"
+    và "NỘI DUNG BÁO CÁO", để hai khối có cùng phong cách.
+    `text` phải là một Paragraph đã dựng sẵn (đúng font/màu chữ).
+    """
+
+    header_table = Table(
+        [[text]],
+        colWidths=[doc_width],
+    )
+
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), bg_color),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+
+    return header_table
+
+
 def create_field_report_pdf(
     report_title: str,
     answer: str,
@@ -2794,11 +2876,16 @@ def create_field_report_pdf(
     Bố cục:
     - Letterhead (dải màu header) lặp lại trên MỌI trang, có tên
       đơn vị, tên báo cáo, thương hiệu THỦY LỢI AI.
-    - Bảng thông tin chung (loại báo cáo / thời gian lập / đơn vị).
-    - Nội dung báo cáo được phân tích từ Markdown/đánh số của AI
-      thành heading, đoạn văn, danh sách có định dạng rõ ràng.
-    - Chân trang lặp lại trên MỌI trang: thời gian tạo, số trang,
-      dòng miễn trừ trách nhiệm (đây là dự thảo tham khảo).
+    - Khối "THÔNG TIN BÁO CÁO": bảng loại báo cáo / thời gian lập /
+      đơn vị (viết tắt) / nguồn, có dải tiêu đề màu.
+    - Khối "NỘI DUNG BÁO CÁO": nội dung được phân tích từ
+      Markdown/đánh số của AI thành heading, đoạn văn, danh sách.
+    - Khối cảnh báo "⚠ LƯU Ý": nền vàng nhạt, nhắc đây là dự thảo.
+    - Khối "XÁC NHẬN HIỆN TRƯỜNG": 2 cột chữ ký (Người lập /
+      Người kiểm tra).
+    - Chân trang lặp lại trên MỌI trang: tên đơn vị căn giữa và
+      số trang dạng "Trang X/Y" (tổng số trang thật, nhờ
+      NumberedCanvas).
 
     Sửa so với các bản trước:
     - Không còn lặp tiêu đề báo cáo 2 lần (đã có bước loại bỏ
@@ -2807,6 +2894,7 @@ def create_field_report_pdf(
       thẻ <b> rơi về Helvetica-Bold làm mất dấu tiếng Việt.
     - Toàn bộ logic nằm đúng cấp thụt lề của hàm, doc.build() và
       return buffer luôn được gọi đúng một lần, ở cuối hàm.
+    - Số trang chân trang hiển thị đúng "X/Y" thay vì chỉ "X".
     """
 
     buffer = BytesIO()
@@ -2952,6 +3040,64 @@ def create_field_report_pdf(
         spaceAfter=8,
     )
 
+    # ------------------------------------------------------------
+    # KIỂU RIÊNG CHO KHỐI "⚠ LƯU Ý"
+    # ------------------------------------------------------------
+
+    warn_header_style = ParagraphStyle(
+        "ThuyLoiWarnHeader",
+        parent=styles["BodyText"],
+        fontName=font_bold,
+        fontSize=10.5,
+        leading=14,
+        textColor=PDF_COLOR_WARN_TEXT,
+    )
+
+    warn_body_style = ParagraphStyle(
+        "ThuyLoiWarnBody",
+        parent=styles["BodyText"],
+        fontName=font_regular,
+        fontSize=9.5,
+        leading=14,
+        textColor=PDF_COLOR_WARN_TEXT,
+    )
+
+    # ------------------------------------------------------------
+    # KIỂU RIÊNG CHO KHỐI "XÁC NHẬN HIỆN TRƯỜNG"
+    # ------------------------------------------------------------
+
+    signature_title_style = ParagraphStyle(
+        "ThuyLoiSignatureTitle",
+        parent=styles["BodyText"],
+        fontName=font_bold,
+        fontSize=11.5,
+        leading=15,
+        alignment=TA_CENTER,
+        textColor=PDF_COLOR_PRIMARY,
+        spaceBefore=4,
+        spaceAfter=10,
+    )
+
+    signature_label_style = ParagraphStyle(
+        "ThuyLoiSignatureLabel",
+        parent=styles["BodyText"],
+        fontName=font_bold,
+        fontSize=10,
+        leading=13,
+        alignment=TA_CENTER,
+        textColor=PDF_COLOR_TEXT,
+    )
+
+    signature_caption_style = ParagraphStyle(
+        "ThuyLoiSignatureCaption",
+        parent=styles["BodyText"],
+        fontName=font_regular,
+        fontSize=8.5,
+        leading=12,
+        alignment=TA_CENTER,
+        textColor=PDF_COLOR_MUTED,
+    )
+
     story = []
 
     # ============================================================
@@ -2960,10 +3106,19 @@ def create_field_report_pdf(
     # ============================================================
 
     story.append(Paragraph(PDF_DOC_LABEL, title_style))
+    story.append(Spacer(1, 8))
 
     # ============================================================
-    # BẢNG THÔNG TIN CHUNG
+    # KHỐI "THÔNG TIN BÁO CÁO"
     # ============================================================
+
+    story.append(
+        _pdf_section_header_table(
+            Paragraph("THÔNG TIN BÁO CÁO", section_heading_style),
+            doc.width,
+            PDF_COLOR_PRIMARY,
+        )
+    )
 
     meta_rows = [
         [
@@ -2971,16 +3126,16 @@ def create_field_report_pdf(
             Paragraph(esc_pdf(report_title), value_style),
         ],
         [
-            Paragraph("Thời gian lập", label_style),
+            Paragraph("Thời gian", label_style),
             Paragraph(esc_pdf(generated_at), value_style),
         ],
         [
             Paragraph("Đơn vị", label_style),
-            Paragraph(esc_pdf(PDF_ORG_NAME), value_style),
+            Paragraph(esc_pdf(PDF_ORG_SHORT), value_style),
         ],
         [
-            Paragraph("Nguồn lập báo cáo", label_style),
-            Paragraph(esc_pdf(f"{PDF_APP_NAME} (dự thảo tự động)"), value_style),
+            Paragraph("Nguồn", label_style),
+            Paragraph(esc_pdf(PDF_APP_NAME), value_style),
         ],
     ]
 
@@ -3000,6 +3155,7 @@ def create_field_report_pdf(
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ("GRID", (0, 0), (-1, -1), 0.5, PDF_COLOR_BORDER),
+                ("LINEABOVE", (0, 0), (-1, 0), 0, colors.white),
             ]
         )
     )
@@ -3008,31 +3164,17 @@ def create_field_report_pdf(
     story.append(Spacer(1, 14))
 
     # ============================================================
-    # DẢI TIÊU ĐỀ "NỘI DUNG BÁO CÁO"
+    # KHỐI "NỘI DUNG BÁO CÁO"
     # ============================================================
 
-    section_header_table = Table(
-        [[Paragraph("NỘI DUNG BÁO CÁO", section_heading_style)]],
-        colWidths=[doc.width],
-    )
-
-    section_header_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), PDF_COLOR_ACCENT),
-                ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
+    story.append(
+        _pdf_section_header_table(
+            Paragraph("NỘI DUNG BÁO CÁO", section_heading_style),
+            doc.width,
+            PDF_COLOR_ACCENT,
         )
     )
-
-    story.append(section_header_table)
     story.append(Spacer(1, 10))
-
-    # ============================================================
-    # NỘI DUNG CHI TIẾT (đã phân tích Markdown/đánh số)
-    # ============================================================
 
     story.extend(
         _build_pdf_content_flowables(
@@ -3047,35 +3189,112 @@ def create_field_report_pdf(
     )
 
     # ============================================================
-    # GHI CHÚ MIỄN TRỪ TRÁCH NHIỆM CUỐI BÁO CÁO
+    # KHỐI CẢNH BÁO "⚠ LƯU Ý"
     # ============================================================
 
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 10))
+
+    warn_rows = [
+        [Paragraph("⚠ LƯU Ý", warn_header_style)],
+        [
+            Paragraph(
+                "Báo cáo là <b>dự thảo</b> được lập tự động với sự hỗ "
+                f"trợ của {esc_pdf(PDF_APP_NAME)}, dựa trên hình ảnh và "
+                "dữ liệu hồ sơ hiện có. Báo cáo không thay thế kết luận "
+                "kỹ thuật hoặc pháp lý chính thức; mọi kết luận cuối "
+                "cùng cần được cán bộ kỹ thuật hoặc người có thẩm quyền "
+                "xác nhận.",
+                warn_body_style,
+            )
+        ],
+    ]
+
+    warn_table = Table(
+        warn_rows,
+        colWidths=[doc.width],
+    )
+
+    warn_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 0), PDF_COLOR_WARN_HEADER_BG),
+                ("BACKGROUND", (0, 1), (0, 1), PDF_COLOR_WARN_BODY_BG),
+                ("BOX", (0, 0), (-1, -1), 0.7, PDF_COLOR_WARN_BORDER),
+                ("LINEBELOW", (0, 0), (0, 0), 0.7, PDF_COLOR_WARN_BORDER),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (0, 0), 5),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 5),
+                ("TOPPADDING", (0, 1), (0, 1), 7),
+                ("BOTTOMPADDING", (0, 1), (0, 1), 8),
+            ]
+        )
+    )
+
+    story.append(warn_table)
+
+    # ============================================================
+    # KHỐI "XÁC NHẬN HIỆN TRƯỜNG" (chữ ký)
+    # ============================================================
+
+    story.append(Spacer(1, 18))
     story.append(
         HRFlowable(
             width="100%",
             thickness=0.5,
             color=PDF_COLOR_BORDER,
-            spaceBefore=2,
-            spaceAfter=8,
+            spaceBefore=0,
+            spaceAfter=10,
         )
     )
+
     story.append(
-        Paragraph(
-            "Đây là <b>dự thảo</b> được lập tự động với sự hỗ trợ của "
-            f"{esc_pdf(PDF_APP_NAME)}, dựa trên hình ảnh và dữ liệu hồ sơ "
-            "hiện có. Báo cáo không thay thế kết luận kỹ thuật hoặc "
-            "pháp lý chính thức; mọi kết luận cuối cùng cần được cán bộ "
-            "kỹ thuật hoặc người có thẩm quyền xác nhận.",
-            note_style,
+        Paragraph("XÁC NHẬN HIỆN TRƯỜNG", signature_title_style)
+    )
+
+    signature_cell_left = [
+        Paragraph("Người lập", signature_label_style),
+        Spacer(1, 20 * mm),
+        Paragraph("(Ký, họ tên)", signature_caption_style),
+    ]
+
+    signature_cell_right = [
+        Paragraph("Người kiểm tra", signature_label_style),
+        Spacer(1, 20 * mm),
+        Paragraph("(Ký, họ tên)", signature_caption_style),
+    ]
+
+    signature_table = Table(
+        [[signature_cell_left, signature_cell_right]],
+        colWidths=[doc.width / 2, doc.width / 2],
+    )
+
+    signature_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
         )
     )
+
+    story.append(signature_table)
 
     # ============================================================
     # DỰNG PDF (đúng một lần, ở cấp thân hàm)
+    # Dùng NumberedCanvas để chân trang hiển thị đúng "Trang X/Y".
     # ============================================================
 
-    doc.build(story)
+    numbered_canvas_cls = make_numbered_canvas(
+        font_regular,
+        PDF_COLOR_MUTED,
+    )
+
+    doc.build(story, canvasmaker=numbered_canvas_cls)
 
     buffer.seek(0)
 
