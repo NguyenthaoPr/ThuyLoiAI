@@ -2538,7 +2538,9 @@ def create_field_report_pdf(
     for line in lines:
 
         line = line.strip()
-
+        # Không đưa lại tiêu đề chính vào nội dung PDF
+        if line.upper() == "BÁO CÁO NHANH HIỆN TRƯỜNG":
+           continue
         if not line:
             story.append(
                 Spacer(1, 5)
