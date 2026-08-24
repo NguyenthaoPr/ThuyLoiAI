@@ -2693,11 +2693,15 @@ def create_field_report_pdf(
         fontName=font_name,
         fontSize=12,
         leading=17,
-        spaceBefore=8,
+        spaceBefore=10,
         spaceAfter=8,
     )
 
     story = []
+
+    # =========================================================
+    # TIÊU ĐỀ
+    # =========================================================
 
     story.append(
         Paragraph(
@@ -2705,6 +2709,10 @@ def create_field_report_pdf(
             title_style,
         )
     )
+
+    # =========================================================
+    # LOẠI BÁO CÁO
+    # =========================================================
 
     story.append(
         Paragraph(
@@ -2715,63 +2723,100 @@ def create_field_report_pdf(
 
     story.append(Spacer(1, 8))
 
+    # =========================================================
+    # NỘI DUNG BÁO CÁO
+    # =========================================================
+
     lines = (answer or "").splitlines()
 
     for line in lines:
+
+        # Giữ nguyên dòng gốc để kiểm tra Markdown
         line = line.strip()
 
         if not line:
             story.append(Spacer(1, 5))
             continue
 
-        safe_line = esc_pdf(line)
+        # -----------------------------------------------------
+        # KIỂM TRA MARKDOWN TRƯỚC KHI ESCAPE
+        # -----------------------------------------------------
 
-        if safe_line.startswith("### "):
+        if line.startswith("### "):
+
+            text = esc_pdf(line[4:])
+
             story.append(
                 Paragraph(
-                    safe_line[4:],
+                    text,
                     heading_style,
                 )
             )
 
-        elif safe_line.startswith("## "):
+        elif line.startswith("## "):
+
+            text = esc_pdf(line[3:])
+
             story.append(
                 Paragraph(
-                    safe_line[3:],
+                    text,
                     heading_style,
                 )
             )
 
-        elif safe_line.startswith("# "):
+        elif line.startswith("# "):
+
+            text = esc_pdf(line[2:])
+
             story.append(
                 Paragraph(
-                    safe_line[2:],
+                    text,
                     heading_style,
                 )
             )
 
-        elif safe_line.startswith("- "):
+        elif line.startswith("- "):
+
+            text = esc_pdf(line[2:])
+
             story.append(
                 Paragraph(
-                    "• " + safe_line[2:],
+                    "• " + text,
+                    body_style,
+                )
+            )
+
+        elif line.startswith("* "):
+
+            text = esc_pdf(line[2:])
+
+            story.append(
+                Paragraph(
+                    "• " + text,
                     body_style,
                 )
             )
 
         else:
+
+            text = esc_pdf(line)
+
             story.append(
                 Paragraph(
-                    safe_line,
+                    text,
                     body_style,
                 )
             )
+
+    # =========================================================
+    # TẠO PDF
+    # =========================================================
 
     doc.build(story)
 
     buffer.seek(0)
 
     return buffer
-
 
 def esc_pdf(text):
     """
