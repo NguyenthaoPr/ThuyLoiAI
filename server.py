@@ -15,8 +15,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from google import genai
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # ============================================================
 # THỦY LỢI AI - SERVER.PY
@@ -2597,6 +2604,220 @@ YÊU CẦU TRÌNH BÀY:
             "status": "error",
             "error": str(e),
         }   
+        # ============================================================
+# FIELD REPORT PDF
+# Dự thảo báo cáo → PDF
+# ============================================================
+
+def register_pdf_font():
+    """
+    Tìm font Unicode để PDF hiển thị tiếng Việt.
+    """
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    ]
+
+    for font_path in font_paths:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(
+                    TTFont("ThuyLoiUnicode", font_path)
+                )
+                return "ThuyLoiUnicode"
+            except Exception:
+                pass
+
+    return "Helvetica"
+
+
+def create_field_report_pdf(
+    report_title: str,
+    answer: str,
+):
+    """
+    Tạo PDF báo cáo hiện trường từ nội dung AI.
+    """
+
+    buffer = BytesIO()
+
+    font_name = register_pdf_font()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=45,
+        leftMargin=45,
+        topMargin=45,
+        bottomMargin=45,
+        title="Báo cáo nhanh hiện trường - THỦY LỢI AI",
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "ThuyLoiTitle",
+        parent=styles["Title"],
+        fontName=font_name,
+        fontSize=16,
+        leading=21,
+        alignment=TA_CENTER,
+        spaceAfter=18,
+    )
+
+    body_style = ParagraphStyle(
+        "ThuyLoiBody",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=10.5,
+        leading=16,
+        spaceAfter=7,
+    )
+
+    heading_style = ParagraphStyle(
+        "ThuyLoiHeading",
+        parent=body_style,
+        fontName=font_name,
+        fontSize=12,
+        leading=17,
+        spaceBefore=8,
+        spaceAfter=8,
+    )
+
+    story = []
+
+    story.append(
+        Paragraph(
+            "BÁO CÁO NHANH HIỆN TRƯỜNG",
+            title_style,
+        )
+    )
+
+    story.append(
+        Paragraph(
+            f"<b>Loại báo cáo:</b> {esc_pdf(report_title)}",
+            body_style,
+        )
+    )
+
+    story.append(Spacer(1, 8))
+
+    lines = (answer or "").splitlines()
+
+    for line in lines:
+        line = line.strip()
+
+        if not line:
+            story.append(Spacer(1, 5))
+            continue
+
+        safe_line = esc_pdf(line)
+
+        if safe_line.startswith("### "):
+            story.append(
+                Paragraph(
+                    safe_line[4:],
+                    heading_style,
+                )
+            )
+
+        elif safe_line.startswith("## "):
+            story.append(
+                Paragraph(
+                    safe_line[3:],
+                    heading_style,
+                )
+            )
+
+        elif safe_line.startswith("# "):
+            story.append(
+                Paragraph(
+                    safe_line[2:],
+                    heading_style,
+                )
+            )
+
+        elif safe_line.startswith("- "):
+            story.append(
+                Paragraph(
+                    "• " + safe_line[2:],
+                    body_style,
+                )
+            )
+
+        else:
+            story.append(
+                Paragraph(
+                    safe_line,
+                    body_style,
+                )
+            )
+
+    doc.build(story)
+
+    buffer.seek(0)
+
+    return buffer
+
+
+def esc_pdf(text):
+    """
+    Escape ký tự HTML trước khi đưa vào ReportLab Paragraph.
+    """
+    text = str(text or "")
+
+    return (
+        text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+@app.post("/field-report-pdf")
+async def field_report_pdf(
+    report_title: str = Form("BÁO CÁO NHANH HIỆN TRƯỜNG"),
+    answer: str = Form(""),
+):
+    """
+    Chuyển dự thảo báo cáo hiện trường thành PDF.
+    """
+
+    if not answer.strip():
+        return {
+            "success": False,
+            "error": "Không có nội dung báo cáo để tạo PDF.",
+        }
+
+    try:
+        pdf_buffer = create_field_report_pdf(
+            report_title=report_title,
+            answer=answer,
+        )
+
+        filename = "bao-cao-hien-truong.pdf"
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{filename}"'
+                )
+            },
+        )
+
+    except Exception as e:
+        print(
+            "FIELD REPORT PDF ERROR:",
+            repr(e),
+        )
+
+        return {
+            "success": False,
+            "error": str(e),
+        }
 # ============================================================
 # MAIN
 # ============================================================
