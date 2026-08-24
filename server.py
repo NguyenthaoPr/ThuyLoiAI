@@ -13,12 +13,11 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from google import genai
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
@@ -29,13 +28,14 @@ from reportlab.platypus import (
     KeepTogether,
 )
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import (
     getSampleStyleSheet,
     ParagraphStyle,
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
+from datetime import datetime
 
 # ============================================================
 # THỦY LỢI AI - SERVER.PY
@@ -65,6 +65,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 #    về None và /field-report-pdf sẽ crash. Đã đưa toàn bộ khối xử
 #    lý về đúng cấp thụt lề của hàm, và doc.build()/return buffer
 #    được đặt sau vòng lặp, ở cấp hàm.
+# 6. (MỚI) NÂNG CẤP PDF: thiết kế chuyên nghiệp, header/footer,
+#    bảng, màu sắc, font Unicode, phân cấp rõ ràng.
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -2357,8 +2359,7 @@ GHI CHÚ CỦA NGƯỜI DÙNG:
 
 
 # ============================================================
-# FIELD REPORT PDF
-# Dự thảo báo cáo → PDF
+# FIELD REPORT PDF - NÂNG CẤP CHUYÊN NGHIỆP
 # ============================================================
 
 def esc_pdf(text):
@@ -2366,7 +2367,6 @@ def esc_pdf(text):
     Escape ký tự HTML trước khi đưa vào ReportLab Paragraph.
     """
     text = str(text or "")
-
     return (
         text
         .replace("&", "&amp;")
@@ -2383,284 +2383,288 @@ def register_pdf_font():
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
         "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "C:/Windows/Fonts/arial.ttf",
     ]
-
     for font_path in font_paths:
         if os.path.exists(font_path):
             try:
-                pdfmetrics.registerFont(
-                    TTFont("ThuyLoiUnicode", font_path)
-                )
+                pdfmetrics.registerFont(TTFont("ThuyLoiUnicode", font_path))
                 return "ThuyLoiUnicode"
             except Exception:
                 pass
-
     return "Helvetica"
 
 
-def create_field_report_pdf(
-    report_title: str,
-    answer: str,
-):
+def create_field_report_pdf(report_title: str, answer: str):
     """
-    Tạo PDF báo cáo hiện trường từ nội dung AI.
-
-    LƯU Ý SỬA LỖI: bản trước bị lỗi thụt lề khiến phần xử lý
-    nội dung "thoát" ra khỏi thân hàm, và doc.build()/return
-    buffer bị đặt lồng sai bên trong vòng lặp "for line in
-    lines" (chỉ chạy ở lần lặp cuối, không phải return hợp lệ
-    của hàm) -> hàm trả về None -> /field-report-pdf crash khi
-    đưa None vào StreamingResponse. Đã sửa lại toàn bộ về đúng
-    cấp thụt lề của hàm, doc.build()/return buffer đặt sau
-    vòng lặp for.
+    Tạo PDF báo cáo hiện trường với bố cục chuyên nghiệp, có header/footer,
+    bảng, màu sắc, và phân cấp rõ ràng.
     """
-
     buffer = BytesIO()
-
     font_name = register_pdf_font()
+    pagesize = A4
+    width, height = pagesize
 
+    left_margin = 45
+    right_margin = 45
+    top_margin = 60
+    bottom_margin = 50
+
+    # Tạo document với callback cho header/footer
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
-        rightMargin=45,
-        leftMargin=45,
-        topMargin=45,
-        bottomMargin=45,
+        pagesize=pagesize,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
         title="Báo cáo nhanh hiện trường - THỦY LỢI AI",
     )
 
+    # =========================================================
+    # STYLES
+    # =========================================================
     styles = getSampleStyleSheet()
 
+    # Tiêu đề chính
     title_style = ParagraphStyle(
         "ThuyLoiTitle",
         parent=styles["Title"],
         fontName=font_name,
-        fontSize=16,
-        leading=21,
+        fontSize=18,
+        leading=22,
         alignment=TA_CENTER,
-        spaceAfter=18,
+        spaceAfter=12,
+        textColor=colors.HexColor('#0B3B5C'),
+        fontWeight='bold',
     )
 
+    # Loại báo cáo (dưới tiêu đề)
+    subtitle_style = ParagraphStyle(
+        "ThuyLoiSubtitle",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=12,
+        leading=16,
+        alignment=TA_CENTER,
+        spaceAfter=18,
+        textColor=colors.HexColor('#2E5A88'),
+    )
+
+    # Các mục chính (1., 2., 3.)
+    heading_style = ParagraphStyle(
+        "ThuyLoiHeading",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=13,
+        leading=18,
+        spaceBefore=12,
+        spaceAfter=6,
+        textColor=colors.HexColor('#004080'),
+        fontWeight='bold',
+    )
+
+    # Tiêu đề phụ
+    subheading_style = ParagraphStyle(
+        "ThuyLoiSubHeading",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=11,
+        leading=16,
+        spaceBefore=8,
+        spaceAfter=4,
+        textColor=colors.HexColor('#1F4E79'),
+        fontWeight='bold',
+    )
+
+    # Nội dung thường
     body_style = ParagraphStyle(
         "ThuyLoiBody",
         parent=styles["BodyText"],
         fontName=font_name,
         fontSize=10.5,
         leading=16,
-        spaceAfter=7,
+        spaceAfter=6,
     )
 
-    heading_style = ParagraphStyle(
-        "ThuyLoiHeading",
+    # Danh sách có bullet
+    bullet_style = ParagraphStyle(
+        "ThuyLoiBullet",
         parent=body_style,
         fontName=font_name,
-        fontSize=12,
-        leading=17,
-        spaceBefore=10,
-        spaceAfter=8,
+        fontSize=10.5,
+        leading=16,
+        leftIndent=20,
+        bulletIndent=10,
+        spaceAfter=4,
     )
 
+    # Nội dung trong bảng
+    table_cell_style = ParagraphStyle(
+        "ThuyLoiTableCell",
+        parent=body_style,
+        fontName=font_name,
+        fontSize=9,
+        leading=12,
+    )
+
+    # =========================================================
+    # HÀM VẼ HEADER / FOOTER
+    # =========================================================
+    def draw_header_footer(canvas, doc, page_number):
+        canvas.saveState()
+        # ----- HEADER -----
+        # Vẽ logo nếu có
+        try:
+            logo_path = BASE_DIR / "static" / "logo.png"
+            if logo_path.exists():
+                img = ImageReader(str(logo_path))
+                canvas.drawImage(img, left_margin, height - top_margin - 50, width=50, height=50, preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
+
+        # Tên đơn vị
+        canvas.setFont(font_name, 10)
+        canvas.drawString(left_margin + 60, height - top_margin - 20, "CHI NHÁNH THỦY LỢI VU GIA - THU BỒN")
+        # Tiêu đề báo cáo (in nhỏ hơn trên header)
+        canvas.setFont(font_name, 9)
+        canvas.drawString(left_margin + 60, height - top_margin - 35, "BÁO CÁO NHANH HIỆN TRƯỜNG")
+        # Đường kẻ ngang dưới header
+        canvas.setStrokeColor(colors.HexColor('#004080'))
+        canvas.setLineWidth(1.5)
+        canvas.line(left_margin, height - top_margin - 60, width - right_margin, height - top_margin - 60)
+
+        # ----- FOOTER -----
+        # Đường kẻ ngang trên footer
+        canvas.setStrokeColor(colors.HexColor('#004080'))
+        canvas.setLineWidth(1)
+        canvas.line(left_margin, bottom_margin + 15, width - right_margin, bottom_margin + 15)
+
+        # Số trang bên trái, ngày bên phải
+        canvas.setFont(font_name, 9)
+        canvas.drawString(left_margin, bottom_margin, f"Trang {page_number}")
+        now = datetime.now().strftime("%d/%m/%Y %H:%M")
+        canvas.drawRightString(width - right_margin, bottom_margin, f"Tạo lúc: {now}")
+
+        canvas.restoreState()
+
+    def onFirstPage(canvas, doc):
+        draw_header_footer(canvas, doc, 1)
+
+    def onLaterPage(canvas, doc):
+        draw_header_footer(canvas, doc, doc.page)
+
+    # =========================================================
+    # XÂY DỰNG NỘI DUNG STORY
+    # =========================================================
     story = []
 
-    # =========================================================
-    # TIÊU ĐỀ
-    # =========================================================
+    # Tiêu đề chính
+    story.append(Paragraph("BÁO CÁO NHANH HIỆN TRƯỜNG", title_style))
+    # Loại báo cáo
+    story.append(Paragraph(f"<b>Loại báo cáo:</b> {esc_pdf(report_title)}", subtitle_style))
+    story.append(Spacer(1, 6))
 
-    story.append(
-        Paragraph(
-            "BÁO CÁO NHANH HIỆN TRƯỜNG",
-            title_style,
-        )
-    )
-
-    # =========================================================
-    # LOẠI BÁO CÁO
-    # =========================================================
-
-    story.append(
-        Paragraph(
-            f"<b>Loại báo cáo:</b> {esc_pdf(report_title)}",
-            body_style,
-        )
-    )
-
-    story.append(Spacer(1, 8))
-
-    # =========================================================
-    # CHUẨN HÓA NỘI DUNG BÁO CÁO
-    # =========================================================
-
+    # Xử lý nội dung answer
     text = (answer or "").strip()
-
-    # ---------------------------------------------------------
-    # 1. Tách các mục đánh số nếu AI trả về trên cùng một dòng
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)",
-        "\n",
-        text,
-    )
-
-    # ---------------------------------------------------------
-    # 2. Tách tiêu đề Markdown nếu AI dùng ### / ## / #
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"\s+(?=###\s+\d+\.)",
-        "\n",
-        text,
-    )
-
-    text = re.sub(
-        r"\s+(?=##\s+\d+\.)",
-        "\n",
-        text,
-    )
-
-    # ---------------------------------------------------------
-    # 3. Tách nội dung ngay sau tiêu đề
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+",
-        r"\1\n",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # ---------------------------------------------------------
-    # 4. Chuyển thành từng dòng
-    # ---------------------------------------------------------
+    # Chuẩn hóa xuống dòng để dễ xử lý
+    text = re.sub(r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+(?=###\s+\d+\.)", "\n", text)
+    text = re.sub(r"\s+(?=##\s+\d+\.)", "\n", text)
+    text = re.sub(r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+", r"\1\n", text, flags=re.IGNORECASE)
 
     lines = text.splitlines()
-
-    for line in lines:
-
-        line = line.strip()
-
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
         if not line:
-            story.append(
-                Spacer(1, 5)
-            )
+            story.append(Spacer(1, 4))
+            i += 1
             continue
 
-        # =====================================================
-        # TIÊU ĐỀ MARKDOWN
-        # =====================================================
+        # Kiểm tra nếu dòng là tiêu đề mục (bắt đầu bằng số và từ khóa)
+        match_heading = re.match(r'^(\d+)\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ|ĐÁNH GIÁ|KẾT LUẬN|KIẾN NGHỊ|THÔNG TIN CHUNG|MÔ TẢ|PHÂN TÍCH)\b', line, re.IGNORECASE)
+        if match_heading:
+            # Thêm đường kẻ mỏng phía trên tiêu đề mục
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#B0C4DE'), spaceBefore=6, spaceAfter=6))
+            story.append(Paragraph(esc_pdf(line), heading_style))
+            i += 1
+            continue
 
-        if line.startswith("### "):
+        # Kiểm tra tiêu đề phụ (bắt đầu bằng ###, ##, #)
+        if line.startswith("### ") or line.startswith("## ") or line.startswith("# "):
+            content = line.lstrip("# ").strip()
+            story.append(Paragraph(esc_pdf(content), subheading_style))
+            i += 1
+            continue
 
-            text_line = esc_pdf(
-                line[4:].strip()
-            )
+        # Kiểm tra danh sách (bắt đầu bằng - hoặc *)
+        if line.startswith("- ") or line.startswith("* "):
+            content = line[2:].strip()
+            story.append(Paragraph(f"• {esc_pdf(content)}", bullet_style))
+            i += 1
+            continue
 
-            story.append(
-                Paragraph(
-                    text_line,
-                    heading_style,
-                )
-            )
+        # Kiểm tra nếu dòng có dấu "|" - có thể là bảng
+        if "|" in line and len(line.split("|")) >= 3:
+            # Thu thập tất cả các dòng tiếp theo cũng có "|" để tạo bảng
+            table_lines = [line]
+            j = i + 1
+            while j < len(lines) and "|" in lines[j]:
+                table_lines.append(lines[j].strip())
+                j += 1
+            # Xây dựng bảng
+            try:
+                rows = []
+                for row_text in table_lines:
+                    # Loại bỏ dòng ngăn cách kiểu "|---|---|"
+                    if re.match(r'^\s*[\|\-]+\s*$', row_text.replace(' ', '')):
+                        continue
+                    cells = [cell.strip() for cell in row_text.split('|') if cell.strip() != '']
+                    if cells:
+                        rows.append(cells)
+                if rows:
+                    max_cols = max(len(row) for row in rows)
+                    for row in rows:
+                        while len(row) < max_cols:
+                            row.append("")
+                    table_data = []
+                    for row in rows:
+                        table_data.append([Paragraph(esc_pdf(cell), table_cell_style) for cell in row])
+                    col_width = (width - left_margin - right_margin) / max_cols
+                    table = Table(table_data, colWidths=[col_width] * max_cols)
+                    table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#D9E1F2')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#004080')),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('FONTNAME', (0, 0), (-1, -1), font_name),
+                        ('FONTSIZE', (0, 0), (-1, -1), 9),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#999999')),
+                        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#004080')),
+                    ]))
+                    story.append(Spacer(1, 6))
+                    story.append(table)
+                    story.append(Spacer(1, 6))
+                    i = j  # Bỏ qua các dòng đã xử lý
+                    continue
+            except Exception as e:
+                print("Lỗi tạo bảng PDF:", e)
+                # Nếu lỗi, xử lý như dòng thường
 
-        elif line.startswith("## "):
-
-            text_line = esc_pdf(
-                line[3:].strip()
-            )
-
-            story.append(
-                Paragraph(
-                    text_line,
-                    heading_style,
-                )
-            )
-
-        elif line.startswith("# "):
-
-            text_line = esc_pdf(
-                line[2:].strip()
-            )
-
-            story.append(
-                Paragraph(
-                    text_line,
-                    heading_style,
-                )
-            )
-
-        # =====================================================
-        # TIÊU ĐỀ ĐÁNH SỐ
-        # =====================================================
-
-        elif re.match(
-            r"^\d+\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b",
-            line,
-            re.IGNORECASE,
-        ):
-
-            text_line = esc_pdf(line)
-
-            story.append(
-                Paragraph(
-                    text_line,
-                    heading_style,
-                )
-            )
-
-        # =====================================================
-        # DANH SÁCH
-        # =====================================================
-
-        elif line.startswith("- "):
-
-            text_line = esc_pdf(
-                line[2:].strip()
-            )
-
-            story.append(
-                Paragraph(
-                    "• " + text_line,
-                    body_style,
-                )
-            )
-
-        elif line.startswith("* "):
-
-            text_line = esc_pdf(
-                line[2:].strip()
-            )
-
-            story.append(
-                Paragraph(
-                    "• " + text_line,
-                    body_style,
-                )
-            )
-
-        # =====================================================
-        # NỘI DUNG THƯỜNG
-        # =====================================================
-
-        else:
-
-            text_line = esc_pdf(line)
-
-            story.append(
-                Paragraph(
-                    text_line,
-                    body_style,
-                )
-            )
+        # Nội dung thường
+        story.append(Paragraph(esc_pdf(line), body_style))
+        i += 1
 
     # =========================================================
-    # TẠO PDF (đặt sau vòng lặp, ở cấp thân hàm - KHÔNG lồng
-    # trong "for line in lines" như bản trước)
+    # XÂY DỰNG PDF
     # =========================================================
-
-    doc.build(story)
-
+    doc.build(story, onFirstPage=onFirstPage, onLaterPage=onLaterPage)
     buffer.seek(0)
-
     return buffer
 
 
@@ -2672,7 +2676,6 @@ async def field_report_pdf(
     """
     Chuyển dự thảo báo cáo hiện trường thành PDF.
     """
-
     if not answer.strip():
         return {
             "success": False,
