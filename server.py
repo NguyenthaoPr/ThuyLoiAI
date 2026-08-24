@@ -52,6 +52,19 @@ from reportlab.pdfbase.ttfonts import TTFont
 #    hề được .format() ở bất kỳ đâu -> trước đây Gemini nhận
 #    nguyên văn chữ "{question}" thay vì câu hỏi thật. Câu hỏi
 #    thật vẫn luôn được gửi riêng qua input/gemini_input.
+# 4. (MỚI) Bỏ định nghĩa TRÙNG LẶP của "/field-report": trước đây
+#    có 2 hàm cùng gắn @app.post("/field-report"). FastAPI chỉ
+#    dùng route đăng ký đầu tiên nên hàm thứ hai không bao giờ
+#    chạy -> đã gộp lại thành một hàm duy nhất, giữ bản có
+#    report_title/report_type dạng Form (khớp với /field-report-pdf).
+# 5. (MỚI) Sửa lỗi thụt lề nghiêm trọng trong
+#    create_field_report_pdf(): phần xử lý nội dung từng bị dedent
+#    ra khỏi thân hàm, và doc.build()/return buffer từng nằm lồng
+#    sai bên trong vòng lặp "for line in lines" (chỉ chạy ở lần
+#    lặp cuối, không phải return hợp lệ của hàm) -> khiến hàm trả
+#    về None và /field-report-pdf sẽ crash. Đã đưa toàn bộ khối xử
+#    lý về đúng cấp thụt lề của hàm, và doc.build()/return buffer
+#    được đặt sau vòng lặp, ở cấp hàm.
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -361,7 +374,7 @@ async def lifespan(app: FastAPI):
     global gemini_client
 
     print("=" * 60)
-    print("KHỞI ĐỘNG THỦY LỢI AI - BẢN 5.1 STABLE")
+    print("KHỞI ĐỘNG THỦY LỢI AI - BẢN 5.2 STABLE")
     print("=" * 60)
     print("KIỂM TRA GEMINI...")
 
@@ -399,7 +412,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="THỦY LỢI AI",
     description="Trợ lý AI chuyên ngành Thủy lợi",
-    version="5.1",
+    version="5.2",
     lifespan=lifespan,
 )
 
@@ -550,7 +563,7 @@ async def home():
         "service": "THỦY LỢI AI",
         "engine": "Gemini File Search",
         "model": GEMINI_MODEL,
-        "version": "5.1",
+        "version": "5.2",
     }
 
 
@@ -645,7 +658,7 @@ async def api_info():
         "service": "THỦY LỢI AI",
         "engine": "Gemini File Search",
         "model": GEMINI_MODEL,
-        "version": "5.1",
+        "version": "5.2",
         "endpoints": {
             "home": "/",
             "health": "/health",
@@ -658,6 +671,8 @@ async def api_info():
             "upload": "/upload",
             "image_upload": "/image-upload",
             "image_analyze": "/image-analyze",
+            "field_report": "/field-report",
+            "field_report_pdf": "/field-report-pdf",
             "cache": "/cache",
             "clear_cache": "/cache",
         },
@@ -1968,9 +1983,17 @@ async def image_analyze(
             "error": str(e),
         }
 
+
 # ============================================================
-# FIELD REPORT - BƯỚC 1
-# LẬP BÁO CÁO HIỆN TRƯỜNG TỪ HÌNH ẢNH
+# FIELD REPORT
+# LẬP DỰ THẢO BÁO CÁO HIỆN TRƯỜNG TỪ HÌNH ẢNH
+#
+# GHI CHÚ: Trước đây file có 2 hàm cùng gắn route
+# "/field-report" (trùng lặp) - FastAPI chỉ dùng route đăng ký
+# đầu tiên, khiến hàm thứ hai không bao giờ chạy. Đã gộp lại
+# thành một hàm duy nhất bên dưới, dùng report_type dạng Form
+# với danh sách loại báo cáo cố định + report_title tương ứng,
+# để khớp với /field-report-pdf (nhận report_title, answer).
 # ============================================================
 
 @app.post("/field-report")
@@ -1988,8 +2011,9 @@ async def field_report(
     - dry_area     : Diện tích khô / thiếu nước
     - water_level  : Mực nước hồ / kênh
 
-    Bước này CHỈ tạo dự thảo.
-    Chưa tạo PDF và chưa gửi Zalo.
+    Bước này CHỈ tạo dự thảo (chưa gửi Zalo).
+    Có thể chuyển tiếp answer/report_title sang /field-report-pdf
+    để xuất PDF.
     """
 
     # --------------------------------------------------------
@@ -2085,6 +2109,8 @@ async def field_report(
         image = Image.open(
             BytesIO(content)
         )
+
+        image = ImageOps.exif_transpose(image)
 
         # Giữ tỷ lệ
         image.thumbnail(
@@ -2328,298 +2354,26 @@ GHI CHÚ CỦA NGƯỜI DÙNG:
         ),
         "next_step": "review",
     }
- # ============================================================
-# BÁO CÁO HIỆN TRƯỜNG
-# Ảnh → Gemini Vision → Báo cáo chuyên ngành
+
+
 # ============================================================
-
-@app.post("/field-report")
-async def field_report(
-    file: UploadFile = File(...),
-    report_type: str = "Sự cố công trình",
-):
-    """
-    Phân tích ảnh hiện trường bằng Gemini Vision.
-    Có thể kết hợp File Search của THỦY LỢI AI.
-    """
-
-    # --------------------------------------------------------
-    # KIỂM TRA GEMINI
-    # --------------------------------------------------------
-
-    if not GEMINI_API_KEY:
-        return {
-            "success": False,
-            "error": "THỦY LỢI AI chưa được cấu hình Gemini API.",
-        }
-
-    if gemini_client is None:
-        return {
-            "success": False,
-            "error": "Gemini API chưa được kết nối.",
-        }
-
-    # --------------------------------------------------------
-    # KIỂM TRA FILE
-    # --------------------------------------------------------
-
-    if not file.filename:
-        return {
-            "success": False,
-            "error": "Chưa chọn ảnh.",
-        }
-
-    allowed_types = {
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-    }
-
-    content_type = (
-        file.content_type or ""
-    ).lower().strip()
-
-    if content_type not in allowed_types:
-        return {
-            "success": False,
-            "error": "Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.",
-        }
-
-    # --------------------------------------------------------
-    # ĐỌC ẢNH
-    # --------------------------------------------------------
-
-    try:
-
-        content = await file.read()
-
-        if not content:
-            return {
-                "success": False,
-                "error": "Ảnh rỗng.",
-            }
-
-        # Giới hạn ảnh gốc 10 MB
-        if len(content) > 10 * 1024 * 1024:
-            return {
-                "success": False,
-                "error": "Ảnh vượt quá giới hạn 10 MB.",
-            }
-
-        # ----------------------------------------------------
-        # RESIZE + NÉN
-        # ----------------------------------------------------
-
-        image = Image.open(
-            BytesIO(content)
-        )
-
-        image.thumbnail(
-            (1600, 1600),
-            Image.Resampling.LANCZOS
-        )
-
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-
-        output = BytesIO()
-
-        image.save(
-            output,
-            format="JPEG",
-            quality=75,
-            optimize=True,
-        )
-
-        content = output.getvalue()
-
-        image_b64 = base64.b64encode(
-            content
-        ).decode("utf-8")
-
-        # ----------------------------------------------------
-        # LOẠI BÁO CÁO
-        # ----------------------------------------------------
-
-        report_type = (
-            report_type or "Sự cố công trình"
-        ).strip()
-
-        # ----------------------------------------------------
-        # PROMPT CHUYÊN DỤNG
-        # ----------------------------------------------------
-
-        report_prompt = f"""
-Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi
-của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
-
-Hãy lập BÁO CÁO NHANH HIỆN TRƯỜNG
-dựa trên hình ảnh được cung cấp.
-
-LOẠI BÁO CÁO:
-{report_type}
-
-NHIỆM VỤ:
-
-1. Quan sát chính xác hình ảnh.
-
-2. Nhận diện những gì thực sự nhìn thấy:
-- công trình;
-- thiết bị;
-- kênh mương;
-- hồ chứa;
-- mực nước;
-- dòng chảy;
-- diện tích khô;
-- hư hỏng;
-- dấu hiệu vi phạm hành lang;
-- biển báo;
-- chữ, số liệu hoặc thước đo nếu có.
-
-3. Nếu hình ảnh có chữ hoặc số:
-hãy đọc lại chính xác.
-Không tự đoán số bị mờ hoặc không nhìn thấy rõ.
-
-4. Nếu vấn đề liên quan đến quy định,
-quy trình, tiêu chuẩn hoặc hồ sơ thủy lợi,
-hãy sử dụng File Search để đối chiếu
-với kho tài liệu THỦY LỢI AI.
-
-5. Phân biệt rõ:
-- thông tin quan sát từ hình ảnh;
-- thông tin lấy từ hồ sơ;
-- nhận định chuyên môn;
-- kiến nghị.
-
-6. Tuyệt đối không tự bịa:
-- số liệu;
-- cao trình;
-- lưu lượng;
-- mực nước;
-- khoảng cách;
-- điều khoản pháp luật;
-- quy trình;
-- tên công trình.
-
-7. Nếu chưa đủ căn cứ xác định một thông tin,
-hãy ghi rõ:
-"Chưa đủ căn cứ xác định."
-
-CẤU TRÚC BÁO CÁO:
-
-### 1. Thời gian và hiện trường
-
-### 2. Hiện trạng quan sát được
-
-### 3. Phân tích chuyên ngành
-
-### 4. Đối chiếu hồ sơ, quy định
-
-### 5. Đánh giá mức độ ảnh hưởng
-
-### 6. Kiến nghị xử lý
-
-### 7. Thông tin cần kiểm tra bổ sung
-
-YÊU CẦU TRÌNH BÀY:
-
-- Viết bằng tiếng Việt.
-- Ngắn gọn nhưng đầy đủ.
-- Phù hợp với công tác quản lý,
-  vận hành công trình thủy lợi.
-- Không kết luận vượt quá những gì
-  hình ảnh và hồ sơ cho phép.
-"""
-
-        # ----------------------------------------------------
-        # INPUT GEMINI
-        # ----------------------------------------------------
-
-        gemini_input = [
-            {
-                "type": "text",
-                "text": report_prompt,
-            },
-            {
-                "type": "image",
-                "data": image_b64,
-                "mime_type": "image/jpeg",
-            },
-        ]
-
-        # ----------------------------------------------------
-        # FILE SEARCH
-        # ----------------------------------------------------
-
-        tools = []
-
-        if GEMINI_FILE_SEARCH_STORE:
-            tools.append(
-                {
-                    "type": "file_search",
-                    "file_search_store_names": [
-                        store_name()
-                    ],
-                }
-            )
-
-        # ----------------------------------------------------
-        # GỌI GEMINI
-        # ----------------------------------------------------
-
-        result = await asyncio.to_thread(
-            lambda: gemini_client.interactions.create(
-                model=GEMINI_MODEL,
-                system_instruction=SYSTEM_PROMPT,
-                input=gemini_input,
-                tools=tools if tools else None,
-            )
-        )
-
-        # ----------------------------------------------------
-        # LẤY CÂU TRẢ LỜI
-        # ----------------------------------------------------
-
-        answer, sources = (
-            extract_answer_and_sources(result)
-        )
-
-        # ----------------------------------------------------
-        # TRẢ KẾT QUẢ
-        # ----------------------------------------------------
-
-        return {
-            "success": True,
-            "status": "analyzed",
-            "report_type": report_type,
-            "filename": file.filename,
-            "mime_type": content_type,
-            "size_bytes": len(content),
-            "answer": answer,
-            "sources": sources,
-            "engine": "Gemini Vision",
-            "model": GEMINI_MODEL,
-            "file_search": bool(
-                GEMINI_FILE_SEARCH_STORE
-            ),
-        }
-
-    except Exception as e:
-
-        print(
-            "FIELD REPORT ERROR:",
-            repr(e)
-        )
-
-        return {
-            "success": False,
-            "status": "error",
-            "error": str(e),
-        }   
-        # ============================================================
 # FIELD REPORT PDF
 # Dự thảo báo cáo → PDF
 # ============================================================
+
+def esc_pdf(text):
+    """
+    Escape ký tự HTML trước khi đưa vào ReportLab Paragraph.
+    """
+    text = str(text or "")
+
+    return (
+        text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
 
 def register_pdf_font():
     """
@@ -2650,6 +2404,15 @@ def create_field_report_pdf(
 ):
     """
     Tạo PDF báo cáo hiện trường từ nội dung AI.
+
+    LƯU Ý SỬA LỖI: bản trước bị lỗi thụt lề khiến phần xử lý
+    nội dung "thoát" ra khỏi thân hàm, và doc.build()/return
+    buffer bị đặt lồng sai bên trong vòng lặp "for line in
+    lines" (chỉ chạy ở lần lặp cuối, không phải return hợp lệ
+    của hàm) -> hàm trả về None -> /field-report-pdf crash khi
+    đưa None vào StreamingResponse. Đã sửa lại toàn bộ về đúng
+    cấp thụt lề của hàm, doc.build()/return buffer đặt sau
+    vòng lặp for.
     """
 
     buffer = BytesIO()
@@ -2724,195 +2487,181 @@ def create_field_report_pdf(
     story.append(Spacer(1, 8))
 
     # =========================================================
-    # NỘI DUNG BÁO CÁO
+    # CHUẨN HÓA NỘI DUNG BÁO CÁO
     # =========================================================
 
-# =========================================================
-# CHUẨN HÓA NỘI DUNG BÁO CÁO
-# =========================================================
+    text = (answer or "").strip()
 
-text = (answer or "").strip()
+    # ---------------------------------------------------------
+    # 1. Tách các mục đánh số nếu AI trả về trên cùng một dòng
+    # ---------------------------------------------------------
 
-# ---------------------------------------------------------
-# 1. Tách các mục đánh số nếu AI trả về trên cùng một dòng
-# ---------------------------------------------------------
-
-text = re.sub(
-    r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)",
-    "\n",
-    text,
-)
-
-# ---------------------------------------------------------
-# 2. Tách tiêu đề Markdown nếu AI dùng ### / ## / #
-# ---------------------------------------------------------
-
-text = re.sub(
-    r"\s+(?=###\s+\d+\.)",
-    "\n",
-    text,
-)
-
-text = re.sub(
-    r"\s+(?=##\s+\d+\.)",
-    "\n",
-    text,
-)
-
-# ---------------------------------------------------------
-# 3. Tách nội dung ngay sau tiêu đề
-# ---------------------------------------------------------
-
-text = re.sub(
-    r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+",
-    r"\1\n",
-    text,
-    flags=re.IGNORECASE,
-)
-
-# ---------------------------------------------------------
-# 4. Chuyển thành từng dòng
-# ---------------------------------------------------------
-
-lines = text.splitlines()
-
-for line in lines:
-
-    line = line.strip()
-
-    if not line:
-        story.append(
-            Spacer(1, 5)
-        )
-        continue
-
-    # =====================================================
-    # TIÊU ĐỀ MARKDOWN
-    # =====================================================
-
-    if line.startswith("### "):
-
-        text_line = esc_pdf(
-            line[4:].strip()
-        )
-
-        story.append(
-            Paragraph(
-                text_line,
-                heading_style,
-            )
-        )
-
-    elif line.startswith("## "):
-
-        text_line = esc_pdf(
-            line[3:].strip()
-        )
-
-        story.append(
-            Paragraph(
-                text_line,
-                heading_style,
-            )
-        )
-
-    elif line.startswith("# "):
-
-        text_line = esc_pdf(
-            line[2:].strip()
-        )
-
-        story.append(
-            Paragraph(
-                text_line,
-                heading_style,
-            )
-        )
-
-    # =====================================================
-    # TIÊU ĐỀ ĐÁNH SỐ
-    # =====================================================
-
-    elif re.match(
-        r"^\d+\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b",
-        line,
-        re.IGNORECASE,
-    ):
-
-        text_line = esc_pdf(line)
-
-        story.append(
-            Paragraph(
-                text_line,
-                heading_style,
-            )
-        )
-
-    # =====================================================
-    # DANH SÁCH
-    # =====================================================
-
-    elif line.startswith("- "):
-
-        text_line = esc_pdf(
-            line[2:].strip()
-        )
-
-        story.append(
-            Paragraph(
-                "• " + text_line,
-                body_style,
-            )
-        )
-
-    elif line.startswith("* "):
-
-        text_line = esc_pdf(
-            line[2:].strip()
-        )
-
-        story.append(
-            Paragraph(
-                "• " + text_line,
-                body_style,
-            )
-        )
-
-    # =====================================================
-    # NỘI DUNG THƯỜNG
-    # =====================================================
-
-    else:
-
-        text_line = esc_pdf(line)
-
-        story.append(
-            Paragraph(
-                text_line,
-                body_style,
-            )
-        )
-    # =========================================================
-    # TẠO PDF
-    # =========================================================
-
-        doc.build(story)
-
-        buffer.seek(0)
-
-        return buffer
-def esc_pdf(text):
-    """
-    Escape ký tự HTML trước khi đưa vào ReportLab Paragraph.
-    """
-    text = str(text or "")
-
-    return (
-        text
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
+    text = re.sub(
+        r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)",
+        "\n",
+        text,
     )
+
+    # ---------------------------------------------------------
+    # 2. Tách tiêu đề Markdown nếu AI dùng ### / ## / #
+    # ---------------------------------------------------------
+
+    text = re.sub(
+        r"\s+(?=###\s+\d+\.)",
+        "\n",
+        text,
+    )
+
+    text = re.sub(
+        r"\s+(?=##\s+\d+\.)",
+        "\n",
+        text,
+    )
+
+    # ---------------------------------------------------------
+    # 3. Tách nội dung ngay sau tiêu đề
+    # ---------------------------------------------------------
+
+    text = re.sub(
+        r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+",
+        r"\1\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # ---------------------------------------------------------
+    # 4. Chuyển thành từng dòng
+    # ---------------------------------------------------------
+
+    lines = text.splitlines()
+
+    for line in lines:
+
+        line = line.strip()
+
+        if not line:
+            story.append(
+                Spacer(1, 5)
+            )
+            continue
+
+        # =====================================================
+        # TIÊU ĐỀ MARKDOWN
+        # =====================================================
+
+        if line.startswith("### "):
+
+            text_line = esc_pdf(
+                line[4:].strip()
+            )
+
+            story.append(
+                Paragraph(
+                    text_line,
+                    heading_style,
+                )
+            )
+
+        elif line.startswith("## "):
+
+            text_line = esc_pdf(
+                line[3:].strip()
+            )
+
+            story.append(
+                Paragraph(
+                    text_line,
+                    heading_style,
+                )
+            )
+
+        elif line.startswith("# "):
+
+            text_line = esc_pdf(
+                line[2:].strip()
+            )
+
+            story.append(
+                Paragraph(
+                    text_line,
+                    heading_style,
+                )
+            )
+
+        # =====================================================
+        # TIÊU ĐỀ ĐÁNH SỐ
+        # =====================================================
+
+        elif re.match(
+            r"^\d+\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b",
+            line,
+            re.IGNORECASE,
+        ):
+
+            text_line = esc_pdf(line)
+
+            story.append(
+                Paragraph(
+                    text_line,
+                    heading_style,
+                )
+            )
+
+        # =====================================================
+        # DANH SÁCH
+        # =====================================================
+
+        elif line.startswith("- "):
+
+            text_line = esc_pdf(
+                line[2:].strip()
+            )
+
+            story.append(
+                Paragraph(
+                    "• " + text_line,
+                    body_style,
+                )
+            )
+
+        elif line.startswith("* "):
+
+            text_line = esc_pdf(
+                line[2:].strip()
+            )
+
+            story.append(
+                Paragraph(
+                    "• " + text_line,
+                    body_style,
+                )
+            )
+
+        # =====================================================
+        # NỘI DUNG THƯỜNG
+        # =====================================================
+
+        else:
+
+            text_line = esc_pdf(line)
+
+            story.append(
+                Paragraph(
+                    text_line,
+                    body_style,
+                )
+            )
+
+    # =========================================================
+    # TẠO PDF (đặt sau vòng lặp, ở cấp thân hàm - KHÔNG lồng
+    # trong "for line in lines" như bản trước)
+    # =========================================================
+
+    doc.build(story)
+
+    buffer.seek(0)
+
+    return buffer
 
 
 @app.post("/field-report-pdf")
@@ -2931,9 +2680,10 @@ async def field_report_pdf(
         }
 
     try:
-        pdf_buffer = create_field_report_pdf(
-            report_title=report_title,
-            answer=answer,
+        pdf_buffer = await asyncio.to_thread(
+            create_field_report_pdf,
+            report_title,
+            answer,
         )
 
         filename = "bao-cao-hien-truong.pdf"
@@ -2958,6 +2708,8 @@ async def field_report_pdf(
             "success": False,
             "error": str(e),
         }
+
+
 # ============================================================
 # MAIN
 # ============================================================
