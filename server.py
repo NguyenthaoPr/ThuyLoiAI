@@ -2896,12 +2896,11 @@ for line in lines:
     # TẠO PDF
     # =========================================================
 
-    doc.build(story)
+        doc.build(story)
 
-    buffer.seek(0)
+        buffer.seek(0)
 
-    return buffer
-
+        return buffer
 def esc_pdf(text):
     """
     Escape ký tự HTML trước khi đưa vào ReportLab Paragraph.
