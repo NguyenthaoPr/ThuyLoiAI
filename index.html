@@ -1279,5 +1279,519 @@
 
     })();
   </script>
+  <script>
+/* ============================================================
+   THỦY LỢI AI
+   XUẤT - XEM - LƯU - CHIA SẺ PDF TRÊN ĐIỆN THOẠI
+   ============================================================ */
+
+(function () {
+
+    "use strict";
+
+    let pdfBlob = null;
+    let pdfUrl = null;
+
+
+    /* ---------------------------------------------------------
+       XÁC ĐỊNH LOẠI BÁO CÁO
+       --------------------------------------------------------- */
+
+    function getReportTitle() {
+
+        const selected =
+            document.querySelector(
+                ".field-report-types button.selected"
+            );
+
+        if (selected) {
+
+            const type =
+                selected.dataset.reportType;
+
+            const titles = {
+
+                incident:
+                    "Sự cố công trình",
+
+                corridor:
+                    "Hành lang thủy lợi",
+
+                dry_area:
+                    "Diện tích khô",
+
+                water_level:
+                    "Mực nước hồ / kênh"
+
+            };
+
+            if (titles[type]) {
+
+                return titles[type];
+
+            }
+
+            return selected.innerText
+                .replace(/\s+/g, " ")
+                .trim();
+        }
+
+
+        return "BÁO CÁO NHANH HIỆN TRƯỜNG";
+    }
+
+
+    /* ---------------------------------------------------------
+       LẤY NỘI DUNG BÁO CÁO
+       --------------------------------------------------------- */
+
+    function getReportAnswer() {
+
+        const preview =
+            document.getElementById(
+                "fieldReportPreview"
+            );
+
+        if (!preview) {
+
+            return "";
+        }
+
+
+        return preview.innerText
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+    }
+
+
+    /* ---------------------------------------------------------
+       HIỂN THỊ KHU VỰC PDF
+       --------------------------------------------------------- */
+
+    function updatePDFButton() {
+
+        const preview =
+            document.getElementById(
+                "fieldReportPreview"
+            );
+
+        const pdfActions =
+            document.getElementById(
+                "pdfActions"
+            );
+
+        if (!preview || !pdfActions) {
+
+            return;
+        }
+
+
+        const answer =
+            getReportAnswer();
+
+
+        if (answer.length > 20) {
+
+            pdfActions.hidden = false;
+
+        } else {
+
+            pdfActions.hidden = true;
+
+        }
+    }
+
+
+    /* ---------------------------------------------------------
+       XUẤT PDF
+       --------------------------------------------------------- */
+
+    async function exportPDF() {
+
+        const button =
+            document.getElementById(
+                "exportFieldReportPDF"
+            );
+
+        const status =
+            document.getElementById(
+                "pdfStatus"
+            );
+
+        const result =
+            document.getElementById(
+                "pdfResult"
+            );
+
+
+        const answer =
+            getReportAnswer();
+
+
+        if (!answer) {
+
+            alert(
+                "Chưa có nội dung báo cáo để xuất PDF."
+            );
+
+            return;
+        }
+
+
+        button.disabled = true;
+
+        status.hidden = false;
+
+        result.hidden = true;
+
+        status.innerText =
+            "⏳ Đang tạo báo cáo PDF...";
+
+
+        try {
+
+            const formData =
+                new FormData();
+
+
+            formData.append(
+                "report_title",
+                getReportTitle()
+            );
+
+
+            formData.append(
+                "answer",
+                answer
+            );
+
+
+            const response =
+                await fetch(
+                    "/field-report-pdf",
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    "Máy chủ không tạo được PDF."
+                );
+            }
+
+
+            const blob =
+                await response.blob();
+
+
+            if (!blob ||
+                blob.size === 0) {
+
+                throw new Error(
+                    "File PDF rỗng."
+                );
+            }
+
+
+            if (pdfUrl) {
+
+                URL.revokeObjectURL(
+                    pdfUrl
+                );
+            }
+
+
+            pdfBlob = blob;
+
+            pdfUrl =
+                URL.createObjectURL(
+                    blob
+                );
+
+
+            status.innerText =
+                "✅ PDF đã sẵn sàng.";
+
+            result.hidden = false;
+
+
+        } catch (error) {
+
+            console.error(
+                "PDF ERROR:",
+                error
+            );
+
+
+            status.innerText =
+                "❌ Không thể tạo PDF. Vui lòng thử lại.";
+
+
+        } finally {
+
+            button.disabled = false;
+
+        }
+    }
+
+
+    /* ---------------------------------------------------------
+       XEM PDF
+       --------------------------------------------------------- */
+
+    function openPDF() {
+
+        if (!pdfUrl) {
+
+            alert(
+                "Chưa có file PDF."
+            );
+
+            return;
+        }
+
+
+        window.open(
+            pdfUrl,
+            "_blank"
+        );
+    }
+
+
+    /* ---------------------------------------------------------
+       LƯU PDF
+       --------------------------------------------------------- */
+
+    function downloadPDF() {
+
+        if (!pdfUrl) {
+
+            alert(
+                "Chưa có file PDF."
+            );
+
+            return;
+        }
+
+
+        const link =
+            document.createElement(
+                "a"
+            );
+
+
+        link.href =
+            pdfUrl;
+
+
+        link.download =
+            "bao-cao-hien-truong.pdf";
+
+
+        document.body.appendChild(
+            link
+        );
+
+
+        link.click();
+
+
+        link.remove();
+    }
+
+
+    /* ---------------------------------------------------------
+       CHIA SẺ PDF TRÊN ĐIỆN THOẠI
+       --------------------------------------------------------- */
+
+    async function sharePDF() {
+
+        if (!pdfBlob || !pdfUrl) {
+
+            alert(
+                "Chưa có file PDF."
+            );
+
+            return;
+        }
+
+
+        const file =
+            new File(
+                [
+                    pdfBlob
+                ],
+                "bao-cao-hien-truong.pdf",
+                {
+                    type:
+                        "application/pdf"
+                }
+            );
+
+
+        if (
+            navigator.share &&
+            navigator.canShare &&
+            navigator.canShare({
+                files: [file]
+            })
+        ) {
+
+            try {
+
+                await navigator.share({
+
+                    title:
+                        "Báo cáo nhanh hiện trường",
+
+                    text:
+                        "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+
+                    files: [file]
+
+                });
+
+
+            } catch (error) {
+
+                if (
+                    error.name !==
+                    "AbortError"
+                ) {
+
+                    console.error(
+                        "SHARE ERROR:",
+                        error
+                    );
+
+                }
+
+            }
+
+            return;
+        }
+
+
+        // Trình duyệt không hỗ trợ chia sẻ file
+        downloadPDF();
+    }
+
+
+    /* ---------------------------------------------------------
+       THEO DÕI KHU VỰC BÁO CÁO
+       --------------------------------------------------------- */
+
+    function watchReportPreview() {
+
+        const preview =
+            document.getElementById(
+                "fieldReportPreview"
+            );
+
+        if (!preview) {
+
+            return;
+        }
+
+
+        const observer =
+            new MutationObserver(
+                function () {
+
+                    updatePDFButton();
+
+                }
+            );
+
+
+        observer.observe(
+            preview,
+            {
+                childList: true,
+                subtree: true,
+                characterData: true
+            }
+        );
+
+
+        updatePDFButton();
+    }
+
+
+    /* ---------------------------------------------------------
+       KHỞI TẠO
+       --------------------------------------------------------- */
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        function () {
+
+            const exportButton =
+                document.getElementById(
+                    "exportFieldReportPDF"
+                );
+
+            const openButton =
+                document.getElementById(
+                    "openPDF"
+                );
+
+            const downloadButton =
+                document.getElementById(
+                    "downloadPDF"
+                );
+
+            const shareButton =
+                document.getElementById(
+                    "sharePDF"
+                );
+
+
+            if (exportButton) {
+
+                exportButton.addEventListener(
+                    "click",
+                    exportPDF
+                );
+            }
+
+
+            if (openButton) {
+
+                openButton.addEventListener(
+                    "click",
+                    openPDF
+                );
+            }
+
+
+            if (downloadButton) {
+
+                downloadButton.addEventListener(
+                    "click",
+                    downloadPDF
+                );
+            }
+
+
+            if (shareButton) {
+
+                shareButton.addEventListener(
+                    "click",
+                    sharePDF
+                );
+            }
+
+
+            watchReportPreview();
+
+        });
+
+})();
+</script>
 </body>
 </html>
