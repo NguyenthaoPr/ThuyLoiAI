@@ -2817,6 +2817,59 @@ async def field_report_pdf(
             "success": False,
             "error": str(e),
         }
+        # ============================================================
+# FIELD REPORT PDF
+# BƯỚC 2: CHUYỂN BÁO CÁO NHÁP THÀNH PDF
+# ============================================================
+
+@app.post("/field-report-pdf")
+async def field_report_pdf(
+    report_title: str = Form("BÁO CÁO NHANH HIỆN TRƯỜNG"),
+    answer: str = Form(""),
+):
+    """
+    Chuyển nội dung báo cáo hiện trường đã được duyệt
+    thành file PDF.
+
+    Không gọi Gemini.
+    Không phân tích ảnh.
+    Chỉ thực hiện chuyển nội dung -> PDF.
+    """
+
+    if not answer.strip():
+        return {
+            "success": False,
+            "error": "Không có nội dung báo cáo để tạo PDF.",
+        }
+
+    try:
+        pdf_buffer = create_field_report_pdf(
+            report_title=report_title,
+            answer=answer,
+        )
+
+        filename = "bao-cao-hien-truong.pdf"
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{filename}"'
+                )
+            },
+        )
+
+    except Exception as e:
+        print(
+            "FIELD REPORT PDF ERROR:",
+            repr(e),
+        )
+
+        return {
+            "success": False,
+            "error": str(e),
+        }
 # ============================================================
 # MAIN
 # ============================================================
