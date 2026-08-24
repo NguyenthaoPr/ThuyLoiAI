@@ -2603,94 +2603,232 @@ def create_field_report_pdf(
         # Chuẩn hóa xuống dòng
         answer_text = answer_text.replace("\r\n", "\n").replace("\r", "\n")
 
-        # Tách từng dòng để không làm mất cấu trúc AI đã tạo.
-        lines = answer_text.split("\n")
+        # ============================================================
+# NỘI DUNG BÁO CÁO — THAY TOÀN BỘ PHẦN PARSE answer HIỆN TẠI
+# ============================================================
 
-        for raw_line in lines:
-            line = raw_line.strip()
+story.append(
+    Paragraph(
+        "NỘI DUNG BÁO CÁO",
+        heading_style,
+    )
+)
 
-            # Dòng trống
-            if not line:
-                continue
+answer_text = str(answer or "").strip()
 
-            # ----------------------------------------------------
-            # Heading markdown: # / ## / ###
-            # ----------------------------------------------------
-            m = re.match(r"^#{1,3}\s+(.+)$", line)
+if not answer_text:
+    story.append(
+        Paragraph(
+            "Chưa có nội dung báo cáo.",
+            note_style,
+        )
+    )
+else:
+    # ------------------------------------------------------------
+    # 1. Chuẩn hóa nội dung AI
+    # ------------------------------------------------------------
+    answer_text = answer_text.replace("\r\n", "\n").replace("\r", "\n")
 
-            if m:
-                heading_text = pdf_inline(m.group(1))
+    # AI đôi khi trả toàn bộ báo cáo trên MỘT DÒNG:
+    # "1. THÔNG TIN CHUNG... 2. HIỆN TRẠNG... 3. KIẾN NGHỊ..."
+    #
+    # ReportLab không tự hiểu đây là 3 mục.
+    # Vì vậy phải tách các mục trước khi đưa vào story.
+    answer_text = re.sub(
+        r"\s+(?=(?:\d+)[.)]\s+)",
+        "\n",
+        answer_text,
+    )
 
-                if line.startswith("###"):
-                    story.append(
-                        Paragraph(
-                            heading_text,
-                            subheading_style,
-                        )
-                    )
-                else:
-                    story.append(
-                        Paragraph(
-                            heading_text,
-                            heading_style,
-                        )
-                    )
+    # Tách thêm các heading kiểu:
+    # I. THÔNG TIN CHUNG
+    # II. HIỆN TRẠNG
+    # III. KIẾN NGHỊ
+    answer_text = re.sub(
+        r"\s+(?=(?:I|II|III|IV|V|VI|VII|VIII|IX|X)[.)]\s+)",
+        "\n",
+        answer_text,
+    )
 
-                continue
+    # ------------------------------------------------------------
+    # 2. Xóa tiêu đề báo cáo bị AI lặp lại
+    # ------------------------------------------------------------
+    answer_text = re.sub(
+        r"^\s*BÁO CÁO NHANH HIỆN TRƯỜNG\s*[:\-]?\s*",
+        "",
+        answer_text,
+        flags=re.IGNORECASE,
+    )
 
-            # ----------------------------------------------------
-            # Bullet: -, *, •
-            # ----------------------------------------------------
-            m = re.match(r"^[-*•]\s+(.+)$", line)
+    # ------------------------------------------------------------
+    # 3. Tách từng dòng / từng mục
+    # ------------------------------------------------------------
+    lines = answer_text.split("\n")
 
-            if m:
+    for raw_line in lines:
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        # --------------------------------------------------------
+        # Heading Markdown
+        # --------------------------------------------------------
+        m = re.match(
+            r"^#{1,3}\s+(.+)$",
+            line,
+        )
+
+        if m:
+            heading_text = pdf_inline(m.group(1))
+
+            if line.startswith("###"):
                 story.append(
                     Paragraph(
-                        "• " + pdf_inline(m.group(1)),
-                        bullet_style,
+                        heading_text,
+                        subheading_style,
+                    )
+                )
+            else:
+                story.append(
+                    Paragraph(
+                        heading_text,
+                        heading_style,
+                    )
+                )
+
+            continue
+
+        # --------------------------------------------------------
+        # Heading số:
+        # 1. THÔNG TIN CHUNG
+        # 2. HIỆN TRẠNG
+        # 3. KIẾN NGHỊ
+        #
+        # Quan trọng:
+        # Nếu sau số là một câu dài có dấu ":" thì vẫn cho phép
+        # coi đó là tiêu đề nếu toàn bộ phần trước ":" ngắn.
+        # --------------------------------------------------------
+        m = re.match(
+            r"^(\d+)[.)]\s+(.+)$",
+            line,
+        )
+
+        if m:
+            number = m.group(1)
+            content = m.group(2).strip()
+
+            # Một số trường hợp AI trả:
+            # 1. THÔNG TIN CHUNG
+            # 2. HIỆN TRẠNG
+            # 3. KIẾN NGHỊ
+            #
+            # Nhận diện các heading thường dùng.
+            heading_keywords = (
+                "THÔNG TIN",
+                "HIỆN TRẠNG",
+                "KIẾN NGHỊ",
+                "ĐỀ XUẤT",
+                "NHẬN XÉT",
+                "KẾT LUẬN",
+                "NGUYÊN NHÂN",
+                "GIẢI PHÁP",
+                "TÌNH HÌNH",
+                "ĐÁNH GIÁ",
+            )
+
+            upper_content = content.upper()
+
+            is_heading = (
+                upper_content.startswith(heading_keywords)
+                or len(content) <= 70
+            )
+
+            if is_heading:
+                story.append(
+                    Paragraph(
+                        f"<b>{number}. {pdf_inline(content)}</b>",
+                        heading_style,
                     )
                 )
                 continue
 
-            # ----------------------------------------------------
-            # Danh sách số: 1. / 2. / 3.
-            # ----------------------------------------------------
-            m = re.match(r"^(\d+)[.)]\s+(.+)$", line)
-
-            if m:
-                story.append(
-                    Paragraph(
-                        f"{m.group(1)}. {pdf_inline(m.group(2))}",
-                        number_style,
-                    )
+            # Nếu không phải heading mà là danh sách đánh số,
+            # giữ nguyên như một đoạn nội dung.
+            story.append(
+                Paragraph(
+                    f"<b>{number}.</b> {pdf_inline(content)}",
+                    number_style,
                 )
-                continue
+            )
+            continue
 
-            # ----------------------------------------------------
-            # Dòng "Ghi chú:" / "Lưu ý:" / "Kiến nghị:"
-            # ----------------------------------------------------
-            if re.match(
-                r"^(ghi chú|lưu ý|kiến nghị|đề xuất)\s*:",
-                line,
-                flags=re.IGNORECASE,
-            ):
-                story.append(
-                    Paragraph(
-                        pdf_inline(line),
-                        note_style,
-                    )
+        # --------------------------------------------------------
+        # Bullet
+        # --------------------------------------------------------
+        m = re.match(
+            r"^[-*•]\s+(.+)$",
+            line,
+        )
+
+        if m:
+            story.append(
+                Paragraph(
+                    "• " + pdf_inline(m.group(1)),
+                    bullet_style,
                 )
-                continue
+            )
+            continue
 
-            # ----------------------------------------------------
-            # Paragraph bình thường
-            # ----------------------------------------------------
+        # --------------------------------------------------------
+        # Ghi chú / Lưu ý / Kiến nghị / Đề xuất
+        # --------------------------------------------------------
+        if re.match(
+            r"^(ghi chú|lưu ý|kiến nghị|đề xuất)\s*:",
+            line,
+            flags=re.IGNORECASE,
+        ):
             story.append(
                 Paragraph(
                     pdf_inline(line),
-                    body_style,
+                    note_style,
                 )
             )
+            continue
+
+        # --------------------------------------------------------
+        # Đoạn văn bình thường
+        # --------------------------------------------------------
+        story.append(
+            Paragraph(
+                pdf_inline(line),
+                body_style,
+            )
+        )
+
+# ============================================================
+# CHÂN BÁO CÁO
+# ============================================================
+
+story.append(Spacer(1, 10))
+
+story.append(
+    HRFlowable(
+        width="100%",
+        thickness=0.5,
+        color=colors.HexColor("#D7E0E7"),
+        spaceBefore=2,
+        spaceAfter=7,
+    )
+)
+
+story.append(
+    Paragraph(
+        "Báo cáo được lập với sự hỗ trợ của THỦY LỢI AI.",
+        note_style,
+    )
+)
+
 
     # ============================================================
     # CHÂN BÁO CÁO
