@@ -18,9 +18,22 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from google import genai
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+    KeepTogether,
+)
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.styles import (
+    getSampleStyleSheet,
+    ParagraphStyle,
+)
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
