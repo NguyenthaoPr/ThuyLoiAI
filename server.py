@@ -12,7 +12,7 @@ from collections import OrderedDict
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -1957,8 +1957,8 @@ async def image_analyze(
 @app.post("/field-report")
 async def field_report(
     file: UploadFile = File(...),
-    report_type: str = "incident",
-    question: str = "",
+    report_type: str = Form("incident"),
+    question: str = Form(""),
 ):
     """
     Tạo DỰ THẢO báo cáo hiện trường từ ảnh.
