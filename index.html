@@ -753,9 +753,56 @@
 
         <textarea id="fieldReportQuestion" class="field-report-question" placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"></textarea>
 
-        <button id="createFieldReport" class="create-field-report" type="button" disabled>🤖 Phân tích và lập báo cáo</button>
+       <button id="createFieldReport" class="create-field-report" type="button" disabled>
+    📄 Phân tích và lập báo cáo
+</button>
 
-        <div id="fieldReportStatus" class="field-report-status" hidden></div>
+<div id="fieldReportStatus" class="field-report-status" hidden></div>
+
+<div id="pdfActions" class="pdf-actions" hidden>
+
+    <button
+        id="exportFieldReportPDF"
+        class="pdf-main-button"
+        type="button"
+    >
+        📄 XUẤT BÁO CÁO PDF
+    </button>
+
+    <div
+        id="pdfStatus"
+        class="pdf-status"
+        hidden
+    ></div>
+
+    <div
+        id="pdfResult"
+        class="pdf-result"
+        hidden
+    >
+        <button
+            id="openPDF"
+            type="button"
+        >
+            👁️ Xem PDF
+        </button>
+
+        <button
+            id="downloadPDF"
+            type="button"
+        >
+            ⬇️ Lưu PDF
+        </button>
+
+        <button
+            id="sharePDF"
+            type="button"
+        >
+            📤 Chia sẻ PDF
+        </button>
+    </div>
+
+</div>
       </div>
 
       <div class="compose">
