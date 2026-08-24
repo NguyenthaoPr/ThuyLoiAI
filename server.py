@@ -2398,27 +2398,25 @@ def register_pdf_font():
     return "Helvetica"
 
 
-# ============================================================
-# THAY TOÀN BỘ HÀM create_field_report_pdf() HIỆN TẠI
-# Từ: def create_field_report_pdf(
-# Đến: return buffer
-# ============================================================
-
 def create_field_report_pdf(
     report_title: str,
     answer: str,
 ):
     """
-    Tạo PDF báo cáo nhanh hiện trường từ nội dung AI.
+    Tạo PDF báo cáo hiện trường từ nội dung AI.
 
-    Lưu ý:
-    - Không thay đổi nội dung 4 loại báo cáo.
-    - Nội dung AI được chuyển thành các Paragraph/Heading/Bullet
-      để ReportLab thực sự vẽ lên PDF.
-    - Có xử lý markdown cơ bản: #, ##, **đậm**, -, *, 1.
+    LƯU Ý SỬA LỖI: bản trước bị lỗi thụt lề khiến phần xử lý
+    nội dung "thoát" ra khỏi thân hàm, và doc.build()/return
+    buffer bị đặt lồng sai bên trong vòng lặp "for line in
+    lines" (chỉ chạy ở lần lặp cuối, không phải return hợp lệ
+    của hàm) -> hàm trả về None -> /field-report-pdf crash khi
+    đưa None vào StreamingResponse. Đã sửa lại toàn bộ về đúng
+    cấp thụt lề của hàm, doc.build()/return buffer đặt sau
+    vòng lặp for.
     """
 
     buffer = BytesIO()
+
     font_name = register_pdf_font()
 
     doc = SimpleDocTemplate(
@@ -2429,54 +2427,18 @@ def create_field_report_pdf(
         topMargin=45,
         bottomMargin=45,
         title="Báo cáo nhanh hiện trường - THỦY LỢI AI",
-        author="THỦY LỢI AI",
     )
 
     styles = getSampleStyleSheet()
-
-    # ============================================================
-    # STYLE
-    # ============================================================
 
     title_style = ParagraphStyle(
         "ThuyLoiTitle",
         parent=styles["Title"],
         fontName=font_name,
-        fontSize=17,
-        leading=22,
+        fontSize=16,
+        leading=21,
         alignment=TA_CENTER,
-        textColor=colors.HexColor("#123B5D"),
-        spaceAfter=10,
-    )
-
-    report_type_style = ParagraphStyle(
-        "ThuyLoiReportType",
-        parent=styles["BodyText"],
-        fontName=font_name,
-        fontSize=10.5,
-        leading=15,
-        textColor=colors.HexColor("#333333"),
-        spaceAfter=9,
-    )
-
-    heading_style = ParagraphStyle(
-        "ThuyLoiHeading",
-        parent=styles["BodyText"],
-        fontName=font_name,
-        fontSize=12,
-        leading=17,
-        textColor=colors.HexColor("#123B5D"),
-        spaceBefore=10,
-        spaceAfter=6,
-    )
-
-    subheading_style = ParagraphStyle(
-        "ThuyLoiSubHeading",
-        parent=heading_style,
-        fontSize=11,
-        leading=15,
-        spaceBefore=7,
-        spaceAfter=5,
+        spaceAfter=18,
     )
 
     body_style = ParagraphStyle(
@@ -2485,75 +2447,24 @@ def create_field_report_pdf(
         fontName=font_name,
         fontSize=10.5,
         leading=16,
-        textColor=colors.HexColor("#222222"),
-        spaceAfter=6,
-    )
-
-    bullet_style = ParagraphStyle(
-        "ThuyLoiBullet",
-        parent=body_style,
-        leftIndent=14,
-        firstLineIndent=-8,
-        spaceAfter=4,
-    )
-
-    number_style = ParagraphStyle(
-        "ThuyLoiNumber",
-        parent=body_style,
-        leftIndent=18,
-        firstLineIndent=-18,
-        spaceAfter=4,
-    )
-
-    note_style = ParagraphStyle(
-        "ThuyLoiNote",
-        parent=body_style,
-        fontSize=9.5,
-        leading=14,
-        textColor=colors.HexColor("#536878"),
-        leftIndent=8,
-        borderColor=colors.HexColor("#D7E2EA"),
-        borderWidth=0.5,
-        borderPadding=7,
-        spaceBefore=5,
         spaceAfter=7,
+    )
+
+    heading_style = ParagraphStyle(
+        "ThuyLoiHeading",
+        parent=body_style,
+        fontName=font_name,
+        fontSize=12,
+        leading=17,
+        spaceBefore=10,
+        spaceAfter=8,
     )
 
     story = []
 
-    # ============================================================
-    # HÀM CHUYỂN MARKDOWN CƠ BẢN -> REPORTLAB
-    # ============================================================
-
-    def pdf_inline(text):
-        text = esc_pdf(str(text or ""))
-
-        # **đậm**
-        text = re.sub(
-            r"\*\*(.+?)\*\*",
-            r"<b>\1</b>",
-            text,
-        )
-
-        # __đậm__
-        text = re.sub(
-            r"__(.+?)__",
-            r"<b>\1</b>",
-            text,
-        )
-
-        # *nghiêng*
-        text = re.sub(
-            r"(?<!\*)\*([^*]+)\*(?!\*)",
-            r"<i>\1</i>",
-            text,
-        )
-
-        return text
-
-    # ============================================================
+    # =========================================================
     # TIÊU ĐỀ
-    # ============================================================
+    # =========================================================
 
     story.append(
         Paragraph(
@@ -2562,302 +2473,189 @@ def create_field_report_pdf(
         )
     )
 
+    # =========================================================
+    # LOẠI BÁO CÁO
+    # =========================================================
+
     story.append(
         Paragraph(
             f"<b>Loại báo cáo:</b> {esc_pdf(report_title)}",
-            report_type_style,
+            body_style,
         )
     )
 
-    story.append(
-        HRFlowable(
-            width="100%",
-            thickness=0.7,
-            color=colors.HexColor("#B8C7D1"),
-            spaceBefore=1,
-            spaceAfter=12,
-        )
-    )
+    story.append(Spacer(1, 8))
 
-    # ============================================================
-    # NỘI DUNG BÁO CÁO
-    # ============================================================
+    # =========================================================
+    # CHUẨN HÓA NỘI DUNG BÁO CÁO
+    # =========================================================
 
-    story.append(
-        Paragraph(
-            "NỘI DUNG BÁO CÁO",
-            heading_style,
-        )
-    )
+    text = (answer or "").strip()
 
-    answer_text = str(answer or "").strip()
+    # ---------------------------------------------------------
+    # 1. Tách các mục đánh số nếu AI trả về trên cùng một dòng
+    # ---------------------------------------------------------
 
-    if not answer_text:
-        story.append(
-            Paragraph(
-                "Chưa có nội dung báo cáo.",
-                note_style,
-            )
-        )
-    else:
-        # Chuẩn hóa xuống dòng
-        answer_text = answer_text.replace("\r\n", "\n").replace("\r", "\n")
-
-        # ============================================================
-# NỘI DUNG BÁO CÁO — THAY TOÀN BỘ PHẦN PARSE answer HIỆN TẠI
-# ============================================================
-
-story.append(
-    Paragraph(
-        "NỘI DUNG BÁO CÁO",
-        heading_style,
-    )
-)
-
-answer_text = str(answer or "").strip()
-
-if not answer_text:
-    story.append(
-        Paragraph(
-            "Chưa có nội dung báo cáo.",
-            note_style,
-        )
-    )
-else:
-    # ------------------------------------------------------------
-    # 1. Chuẩn hóa nội dung AI
-    # ------------------------------------------------------------
-    answer_text = answer_text.replace("\r\n", "\n").replace("\r", "\n")
-
-    # AI đôi khi trả toàn bộ báo cáo trên MỘT DÒNG:
-    # "1. THÔNG TIN CHUNG... 2. HIỆN TRẠNG... 3. KIẾN NGHỊ..."
-    #
-    # ReportLab không tự hiểu đây là 3 mục.
-    # Vì vậy phải tách các mục trước khi đưa vào story.
-    answer_text = re.sub(
-        r"\s+(?=(?:\d+)[.)]\s+)",
+    text = re.sub(
+        r"\s+(?=\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b)",
         "\n",
-        answer_text,
+        text,
     )
 
-    # Tách thêm các heading kiểu:
-    # I. THÔNG TIN CHUNG
-    # II. HIỆN TRẠNG
-    # III. KIẾN NGHỊ
-    answer_text = re.sub(
-        r"\s+(?=(?:I|II|III|IV|V|VI|VII|VIII|IX|X)[.)]\s+)",
+    # ---------------------------------------------------------
+    # 2. Tách tiêu đề Markdown nếu AI dùng ### / ## / #
+    # ---------------------------------------------------------
+
+    text = re.sub(
+        r"\s+(?=###\s+\d+\.)",
         "\n",
-        answer_text,
+        text,
     )
 
-    # ------------------------------------------------------------
-    # 2. Xóa tiêu đề báo cáo bị AI lặp lại
-    # ------------------------------------------------------------
-    answer_text = re.sub(
-        r"^\s*BÁO CÁO NHANH HIỆN TRƯỜNG\s*[:\-]?\s*",
-        "",
-        answer_text,
+    text = re.sub(
+        r"\s+(?=##\s+\d+\.)",
+        "\n",
+        text,
+    )
+
+    # ---------------------------------------------------------
+    # 3. Tách nội dung ngay sau tiêu đề
+    # ---------------------------------------------------------
+
+    text = re.sub(
+        r"(\d+\.\s+(?:THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ))\s+",
+        r"\1\n",
+        text,
         flags=re.IGNORECASE,
     )
 
-    # ------------------------------------------------------------
-    # 3. Tách từng dòng / từng mục
-    # ------------------------------------------------------------
-    lines = answer_text.split("\n")
+    # ---------------------------------------------------------
+    # 4. Chuyển thành từng dòng
+    # ---------------------------------------------------------
 
-    for raw_line in lines:
-        line = raw_line.strip()
+    lines = text.splitlines()
+
+    for line in lines:
+
+        line = line.strip()
 
         if not line:
+            story.append(
+                Spacer(1, 5)
+            )
             continue
 
-        # --------------------------------------------------------
-        # Heading Markdown
-        # --------------------------------------------------------
-        m = re.match(
-            r"^#{1,3}\s+(.+)$",
-            line,
-        )
+        # =====================================================
+        # TIÊU ĐỀ MARKDOWN
+        # =====================================================
 
-        if m:
-            heading_text = pdf_inline(m.group(1))
+        if line.startswith("### "):
 
-            if line.startswith("###"):
-                story.append(
-                    Paragraph(
-                        heading_text,
-                        subheading_style,
-                    )
-                )
-            else:
-                story.append(
-                    Paragraph(
-                        heading_text,
-                        heading_style,
-                    )
-                )
-
-            continue
-
-        # --------------------------------------------------------
-        # Heading số:
-        # 1. THÔNG TIN CHUNG
-        # 2. HIỆN TRẠNG
-        # 3. KIẾN NGHỊ
-        #
-        # Quan trọng:
-        # Nếu sau số là một câu dài có dấu ":" thì vẫn cho phép
-        # coi đó là tiêu đề nếu toàn bộ phần trước ":" ngắn.
-        # --------------------------------------------------------
-        m = re.match(
-            r"^(\d+)[.)]\s+(.+)$",
-            line,
-        )
-
-        if m:
-            number = m.group(1)
-            content = m.group(2).strip()
-
-            # Một số trường hợp AI trả:
-            # 1. THÔNG TIN CHUNG
-            # 2. HIỆN TRẠNG
-            # 3. KIẾN NGHỊ
-            #
-            # Nhận diện các heading thường dùng.
-            heading_keywords = (
-                "THÔNG TIN",
-                "HIỆN TRẠNG",
-                "KIẾN NGHỊ",
-                "ĐỀ XUẤT",
-                "NHẬN XÉT",
-                "KẾT LUẬN",
-                "NGUYÊN NHÂN",
-                "GIẢI PHÁP",
-                "TÌNH HÌNH",
-                "ĐÁNH GIÁ",
+            text_line = esc_pdf(
+                line[4:].strip()
             )
 
-            upper_content = content.upper()
-
-            is_heading = (
-                upper_content.startswith(heading_keywords)
-                or len(content) <= 70
-            )
-
-            if is_heading:
-                story.append(
-                    Paragraph(
-                        f"<b>{number}. {pdf_inline(content)}</b>",
-                        heading_style,
-                    )
-                )
-                continue
-
-            # Nếu không phải heading mà là danh sách đánh số,
-            # giữ nguyên như một đoạn nội dung.
             story.append(
                 Paragraph(
-                    f"<b>{number}.</b> {pdf_inline(content)}",
-                    number_style,
+                    text_line,
+                    heading_style,
                 )
             )
-            continue
 
-        # --------------------------------------------------------
-        # Bullet
-        # --------------------------------------------------------
-        m = re.match(
-            r"^[-*•]\s+(.+)$",
-            line,
-        )
+        elif line.startswith("## "):
 
-        if m:
+            text_line = esc_pdf(
+                line[3:].strip()
+            )
+
             story.append(
                 Paragraph(
-                    "• " + pdf_inline(m.group(1)),
-                    bullet_style,
+                    text_line,
+                    heading_style,
                 )
             )
-            continue
 
-        # --------------------------------------------------------
-        # Ghi chú / Lưu ý / Kiến nghị / Đề xuất
-        # --------------------------------------------------------
-        if re.match(
-            r"^(ghi chú|lưu ý|kiến nghị|đề xuất)\s*:",
+        elif line.startswith("# "):
+
+            text_line = esc_pdf(
+                line[2:].strip()
+            )
+
+            story.append(
+                Paragraph(
+                    text_line,
+                    heading_style,
+                )
+            )
+
+        # =====================================================
+        # TIÊU ĐỀ ĐÁNH SỐ
+        # =====================================================
+
+        elif re.match(
+            r"^\d+\.\s+(THÔNG TIN CHUNG|HIỆN TRẠNG|KIẾN NGHỊ)\b",
             line,
-            flags=re.IGNORECASE,
+            re.IGNORECASE,
         ):
+
+            text_line = esc_pdf(line)
+
             story.append(
                 Paragraph(
-                    pdf_inline(line),
-                    note_style,
+                    text_line,
+                    heading_style,
                 )
             )
-            continue
 
-        # --------------------------------------------------------
-        # Đoạn văn bình thường
-        # --------------------------------------------------------
-        story.append(
-            Paragraph(
-                pdf_inline(line),
-                body_style,
+        # =====================================================
+        # DANH SÁCH
+        # =====================================================
+
+        elif line.startswith("- "):
+
+            text_line = esc_pdf(
+                line[2:].strip()
             )
-        )
 
-# ============================================================
-# CHÂN BÁO CÁO
-# ============================================================
+            story.append(
+                Paragraph(
+                    "• " + text_line,
+                    body_style,
+                )
+            )
 
-story.append(Spacer(1, 10))
+        elif line.startswith("* "):
 
-story.append(
-    HRFlowable(
-        width="100%",
-        thickness=0.5,
-        color=colors.HexColor("#D7E0E7"),
-        spaceBefore=2,
-        spaceAfter=7,
-    )
-)
+            text_line = esc_pdf(
+                line[2:].strip()
+            )
 
-story.append(
-    Paragraph(
-        "Báo cáo được lập với sự hỗ trợ của THỦY LỢI AI.",
-        note_style,
-    )
-)
+            story.append(
+                Paragraph(
+                    "• " + text_line,
+                    body_style,
+                )
+            )
 
+        # =====================================================
+        # NỘI DUNG THƯỜNG
+        # =====================================================
 
-    # ============================================================
-    # CHÂN BÁO CÁO
-    # ============================================================
+        else:
 
-    story.append(
-        Spacer(1, 10)
-    )
+            text_line = esc_pdf(line)
 
-    story.append(
-        HRFlowable(
-            width="100%",
-            thickness=0.5,
-            color=colors.HexColor("#D7E0E7"),
-            spaceBefore=2,
-            spaceAfter=7,
-        )
-    )
+            story.append(
+                Paragraph(
+                    text_line,
+                    body_style,
+                )
+            )
 
-    story.append(
-        Paragraph(
-            "Báo cáo được lập với sự hỗ trợ của THỦY LỢI AI.",
-            note_style,
-        )
-    )
-
-    # ============================================================
-    # BUILD PDF
-    # ============================================================
+    # =========================================================
+    # TẠO PDF (đặt sau vòng lặp, ở cấp thân hàm - KHÔNG lồng
+    # trong "for line in lines" như bản trước)
+    # =========================================================
 
     doc.build(story)
 
