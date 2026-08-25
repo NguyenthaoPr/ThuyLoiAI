@@ -813,10 +813,16 @@
 
         <div id="fieldReportStatus" class="field-report-status" hidden></div>
 
+        <!-- ===== KHU VỰC CHỈNH SỬA BÁO CÁO ===== -->
+        <div id="reportEditor" hidden style="margin-top: 12px;">
+          <label for="reportContent" style="font-weight: 600; font-size: 14px;">📝 Chỉnh sửa nội dung báo cáo</label>
+          <textarea id="reportContent" rows="6" style="width:100%; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:14px; margin-top:4px;"></textarea>
+          <label for="reviewerName" style="font-weight: 600; font-size: 14px; margin-top: 8px; display: block;">👤 Người kiểm tra</label>
+          <input id="reviewerName" type="text" placeholder="Nhập họ tên người kiểm tra" style="width:100%; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:14px; margin-top:4px;">
+        </div>
+
         <div id="pdfActions" class="pdf-actions" hidden>
-          <button id="exportFieldReportPDF" class="pdf-main-button" type="button">
-            📄 XUẤT BÁO CÁO PDF
-          </button>
+          <button id="exportFieldReportPDF" class="pdf-main-button" type="button">📄 XUẤT BÁO CÁO PDF</button>
           <div id="pdfStatus" class="pdf-status" hidden></div>
           <div id="pdfResult" class="pdf-result" hidden>
             <button id="openPDF" type="button">👁️ Xem PDF</button>
@@ -840,6 +846,7 @@
     <div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
   </main>
 
+  <!-- ===== SCRIPT CHÍNH ===== -->
   <script>
     (function() {
       'use strict';
@@ -1035,7 +1042,7 @@
         }
       });
 
-      // ===== Field Report logic (encapsulated) =====
+      // ===== Field Report logic =====
       (function() {
         let selectedReportType = '';
         let fieldReportFile = null;
@@ -1060,7 +1067,6 @@
           return names[type] || '📋 Báo cáo hiện trường';
         }
 
-        // Mở panel
         fieldReportBtn.addEventListener('click', function() {
           fieldReportPanel.classList.remove('hidden');
           fieldReportPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1070,7 +1076,6 @@
           fieldReportPanel.classList.add('hidden');
         });
 
-        // Chọn loại báo cáo
         reportTypeButtons.forEach(function(btn) {
           btn.addEventListener('click', function() {
             reportTypeButtons.forEach(function(b) { b.classList.remove('selected'); });
@@ -1081,7 +1086,6 @@
           });
         });
 
-        // Nút chụp ảnh
         fieldReportCamera.addEventListener('click', function() {
           fieldReportImage.click();
         });
@@ -1095,7 +1099,6 @@
           try {
             const result = await resizeImage(file, 1600, 0.82);
             fieldReportFile = new File([result.blob], (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
-            // Lưu vào biến toàn cục để dùng cho PDF
             window.preparedImageBlob = result.blob;
             window.preparedImageName = (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg';
             const url = URL.createObjectURL(result.blob);
@@ -1117,7 +1120,6 @@
 
         fieldReportQuestion.addEventListener('input', updateFieldReportButton);
 
-        // Tạo báo cáo
         createFieldReport.addEventListener('click', async function() {
           if (!selectedReportType) {
             showFieldReportStatus('⚠️ Vui lòng chọn loại báo cáo.', true);
@@ -1146,16 +1148,19 @@
             const reportTitle = result.report_title || getReportTypeName(selectedReportType);
             const answer = result.answer || 'THỦY LỢI AI chưa tạo được nội dung báo cáo.';
 
-            // Lưu vào biến toàn cục để xuất PDF
             window.reportTitle = reportTitle;
             window.reportAnswer = answer;
 
             addUser('📋 ' + reportTitle);
             addAI(answer, result.sources || []);
 
+            // Hiển thị khu vực chỉnh sửa báo cáo và điền nội dung
+            const editor = document.getElementById('reportEditor');
+            editor.hidden = false;
+            document.getElementById('reportContent').value = answer;
+
             showFieldReportStatus('✅ Đã tạo dự thảo báo cáo hiện trường.');
 
-            // Kích hoạt nút xuất PDF (sẽ được script thứ hai phát hiện)
             const pdfActions = document.getElementById('pdfActions');
             if (pdfActions) pdfActions.hidden = false;
 
@@ -1170,7 +1175,6 @@
               messages.scrollTop = messages.scrollHeight;
             }
 
-            // Đóng panel sau khi thành công
             setTimeout(function() {
               fieldReportPanel.classList.add('hidden');
             }, 1200);
@@ -1206,7 +1210,7 @@
         }
       }
 
-      // ===== Cooldown for rate limit =====
+      // ===== Cooldown =====
       function startCooldown(seconds) {
         isCooldown = true;
         sendBtn.disabled = true;
@@ -1252,7 +1256,6 @@
             const url = '/image-analyze?question=' + encodeURIComponent(finalQuestion);
             d = await fetchJSON(url, { method: 'POST', body: formData }, 60000);
             addAI(d.answer || d.message || 'Gemini không trả về nội dung phân tích ảnh.', d.sources || d.citations || []);
-            // Xóa ảnh
             window.preparedImageBlob = null;
             window.preparedImageName = 'image.jpg';
             imageInput.value = '';
@@ -1295,7 +1298,6 @@
         messages.innerHTML = '<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';
       });
 
-      // Quick buttons
       document.querySelectorAll('.quick button').forEach(function(btn) {
         btn.addEventListener('click', function() {
           question.value = btn.getAttribute('data-q') || '';
@@ -1303,59 +1305,53 @@
         });
       });
 
-      // ===== Init =====
       health();
       setInterval(health, 30000);
 
     })();
   </script>
 
+  <!-- ===== SCRIPT XỬ LÝ PDF ===== -->
   <script>
-/* ============================================================
-   THỦY LỢI AI
-   XUẤT - XEM - LƯU - CHIA SẺ PDF TRÊN ĐIỆN THOẠI
-   ============================================================ */
+    (function() {
+      "use strict";
 
-(function () {
+      let pdfBlob = null;
+      let pdfUrl = null;
 
-    "use strict";
-
-    let pdfBlob = null;
-    let pdfUrl = null;
-
-    /* ---------------------------------------------------------
-       LẤY TIÊU ĐỀ VÀ NỘI DUNG TỪ BIẾN TOÀN CỤC
-       --------------------------------------------------------- */
-    function getReportTitle() {
+      function getReportTitle() {
         return window.reportTitle || "BÁO CÁO NHANH HIỆN TRƯỜNG";
-    }
+      }
 
-    function getReportAnswer() {
-        return window.reportAnswer || "";
-    }
+      function getReportAnswer() {
+        const editor = document.getElementById('reportContent');
+        if (editor && !editor.hidden) {
+          return editor.value || window.reportAnswer || '';
+        }
+        return window.reportAnswer || '';
+      }
 
-    /* ---------------------------------------------------------
-       HIỂN THỊ KHU VỰC PDF
-       --------------------------------------------------------- */
-    function updatePDFButton() {
+      function getReviewer() {
+        const inp = document.getElementById('reviewerName');
+        return inp ? inp.value.trim() : '';
+      }
+
+      function updatePDFButton() {
         const answer = getReportAnswer();
-        const pdfActions = document.getElementById("pdfActions");
+        const pdfActions = document.getElementById('pdfActions');
         if (!pdfActions) return;
         pdfActions.hidden = !answer || answer.length < 20;
-    }
+      }
 
-    /* ---------------------------------------------------------
-       XUẤT PDF
-       --------------------------------------------------------- */
-    async function exportPDF() {
-        const button = document.getElementById("exportFieldReportPDF");
-        const status = document.getElementById("pdfStatus");
-        const result = document.getElementById("pdfResult");
+      async function exportPDF() {
+        const button = document.getElementById('exportFieldReportPDF');
+        const status = document.getElementById('pdfStatus');
+        const result = document.getElementById('pdfResult');
 
         const answer = getReportAnswer();
         if (!answer) {
-            alert("Chưa có nội dung báo cáo để xuất PDF.");
-            return;
+          alert("Chưa có nội dung báo cáo để xuất PDF.");
+          return;
         }
 
         button.disabled = true;
@@ -1364,177 +1360,106 @@
         status.innerText = "⏳ Đang tạo báo cáo PDF...";
 
         try {
-            const formData = new FormData();
-            formData.append("report_title", getReportTitle());
-            formData.append("answer", answer);
+          const formData = new FormData();
+          formData.append("report_title", getReportTitle());
+          formData.append("answer", answer);
+          const reviewer = getReviewer();
+          if (reviewer) formData.append("reviewer", reviewer);
 
-            // Gửi kèm ảnh nếu có (từ biến toàn cục)
-            if (window.preparedImageBlob) {
-                formData.append("image", window.preparedImageBlob, window.preparedImageName || "image.jpg");
-            }
+          if (window.preparedImageBlob) {
+            formData.append("image", window.preparedImageBlob, window.preparedImageName || "image.jpg");
+          }
 
-            const response = await fetch("/field-report-pdf", {
-                method: "POST",
-                body: formData
-            });
+          const response = await fetch("/field-report-pdf", {
+            method: "POST",
+            body: formData
+          });
 
-            if (!response.ok) {
-                throw new Error("Máy chủ không tạo được PDF.");
-            }
+          if (!response.ok) throw new Error("Máy chủ không tạo được PDF.");
+          const blob = await response.blob();
+          if (!blob || blob.size === 0) throw new Error("File PDF rỗng.");
 
-            const blob = await response.blob();
-            if (!blob || blob.size === 0) {
-                throw new Error("File PDF rỗng.");
-            }
+          if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+          pdfBlob = blob;
+          pdfUrl = URL.createObjectURL(blob);
 
-            if (pdfUrl) {
-                URL.revokeObjectURL(pdfUrl);
-            }
-
-            pdfBlob = blob;
-            pdfUrl = URL.createObjectURL(blob);
-
-            status.innerText = "✅ PDF đã sẵn sàng.";
-            result.hidden = false;
-
+          status.innerText = "✅ PDF đã sẵn sàng.";
+          result.hidden = false;
         } catch (error) {
-            console.error("PDF ERROR:", error);
-            status.innerText = "❌ Không thể tạo PDF. Vui lòng thử lại.";
+          console.error("PDF ERROR:", error);
+          status.innerText = "❌ Không thể tạo PDF. Vui lòng thử lại.";
         } finally {
-            button.disabled = false;
+          button.disabled = false;
         }
-    }
+      }
 
-    /* ---------------------------------------------------------
-       XEM PDF
-       --------------------------------------------------------- */
-    function openPDF() {
-        if (!pdfBlob || !pdfUrl) {
-            alert("Chưa có file PDF.");
-            return;
-        }
-        // Mở PDF trực tiếp
+      function openPDF() {
+        if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF."); return; }
         const newWindow = window.open(pdfUrl, "_blank");
-        if (!newWindow) {
-            // Trên điện thoại, mở trực tiếp trong tab hiện tại
-            window.location.href = pdfUrl;
-        }
-    }
+        if (!newWindow) window.location.href = pdfUrl;
+      }
 
-    /* ---------------------------------------------------------
-       LƯU PDF
-       --------------------------------------------------------- */
-    async function downloadPDF() {
-        if (!pdfBlob) {
-            alert("Chưa có file PDF.");
-            return;
-        }
-
+      async function downloadPDF() {
+        if (!pdfBlob) { alert("Chưa có file PDF."); return; }
         const fileName = "bao-cao-hien-truong.pdf";
-
-        // Ưu tiên Web Share API
         try {
-            const file = new File([pdfBlob], fileName, { type: "application/pdf" });
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    title: "Báo cáo nhanh hiện trường",
-                    text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-                    files: [file]
-                });
-                return;
-            }
-        } catch (error) {
-            if (error && error.name === "AbortError") return;
-            console.warn("Không thể dùng chia sẻ hệ thống:", error);
-        }
-
-        // Fallback: tải xuống
-        try {
-            const link = document.createElement("a");
-            link.href = pdfUrl;
-            link.download = fileName;
-            link.style.display = "none";
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
-            console.error("DOWNLOAD ERROR:", error);
-            alert("Không thể lưu PDF. Vui lòng thử lại.");
-        }
-    }
-
-    /* ---------------------------------------------------------
-       CHIA SẺ PDF
-       --------------------------------------------------------- */
-    async function sharePDF() {
-        if (!pdfBlob) {
-            alert("Chưa có file PDF.");
+          const file = new File([pdfBlob], fileName, { type: "application/pdf" });
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: "Báo cáo nhanh hiện trường",
+              text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+              files: [file]
+            });
             return;
-        }
+          }
+        } catch (e) { if (e.name === "AbortError") return; }
+        const link = document.createElement("a");
+        link.href = pdfUrl;
+        link.download = fileName;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
 
-        const fileName = "bao-cao-hien-truong.pdf";
-        const file = new File([pdfBlob], fileName, { type: "application/pdf" });
-
+      async function sharePDF() {
+        if (!pdfBlob) { alert("Chưa có file PDF."); return; }
+        const file = new File([pdfBlob], "bao-cao-hien-truong.pdf", { type: "application/pdf" });
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({
-                    title: "Báo cáo nhanh hiện trường",
-                    text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-                    files: [file]
-                });
-                return;
-            } catch (error) {
-                if (error && error.name === "AbortError") return;
-                console.error("SHARE ERROR:", error);
-            }
+          try {
+            await navigator.share({
+              title: "Báo cáo nhanh hiện trường",
+              text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+              files: [file]
+            });
+            return;
+          } catch (e) { if (e.name === "AbortError") return; }
         }
-
-        alert("Thiết bị chưa hỗ trợ chia sẻ trực tiếp file PDF. THỦY LỢI AI sẽ chuyển sang lưu PDF.");
+        alert("Thiết bị chưa hỗ trợ chia sẻ file PDF. Chuyển sang lưu PDF.");
         downloadPDF();
-    }
+      }
 
-    /* ---------------------------------------------------------
-       THEO DÕI SỰ THAY ĐỔI NỘI DUNG BÁO CÁO (từ field report)
-       --------------------------------------------------------- */
-    function watchReportChanges() {
-        // Lắng nghe sự kiện khi nội dung báo cáo được tạo (có thể thông qua MutationObserver trên messages)
-        // Đơn giản hơn: gọi updatePDFButton khi có tin nhắn mới.
-        const messages = document.getElementById('messages');
-        if (!messages) return;
-        const observer = new MutationObserver(function() {
-            updatePDFButton();
-        });
-        observer.observe(messages, { childList: true, subtree: true });
-    }
+      document.addEventListener("DOMContentLoaded", function() {
+        const exportBtn = document.getElementById("exportFieldReportPDF");
+        const openBtn = document.getElementById("openPDF");
+        const downloadBtn = document.getElementById("downloadPDF");
+        const shareBtn = document.getElementById("sharePDF");
 
-    /* ---------------------------------------------------------
-       KHỞI TẠO
-       --------------------------------------------------------- */
-    document.addEventListener("DOMContentLoaded", function () {
-        const exportButton = document.getElementById("exportFieldReportPDF");
-        const openButton = document.getElementById("openPDF");
-        const downloadButton = document.getElementById("downloadPDF");
-        const shareButton = document.getElementById("sharePDF");
+        if (exportBtn) exportBtn.addEventListener("click", exportPDF);
+        if (openBtn) openBtn.addEventListener("click", openPDF);
+        if (downloadBtn) downloadBtn.addEventListener("click", downloadPDF);
+        if (shareBtn) shareBtn.addEventListener("click", sharePDF);
 
-        if (exportButton) {
-            exportButton.addEventListener("click", exportPDF);
-        }
-        if (openButton) {
-            openButton.addEventListener("click", openPDF);
-        }
-        if (downloadButton) {
-            downloadButton.addEventListener("click", downloadPDF);
-        }
-        if (shareButton) {
-            shareButton.addEventListener("click", sharePDF);
-        }
-
-        // Cập nhật trạng thái nút PDF ban đầu
         updatePDFButton();
-        watchReportChanges();
-    });
 
-})();
-</script>
+        const editor = document.getElementById('reportContent');
+        if (editor) {
+          editor.addEventListener('input', updatePDFButton);
+        }
+        const rev = document.getElementById('reviewerName');
+        if (rev) rev.addEventListener('input', updatePDFButton);
+      });
+    })();
+  </script>
 </body>
 </html>
