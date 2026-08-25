@@ -600,6 +600,60 @@
       color: #991B1B;
     }
 
+    /* pdf actions */
+    .pdf-actions {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .pdf-actions.hidden {
+      display: none;
+    }
+    .pdf-main-button {
+      background: var(--success);
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      flex: 1 1 auto;
+    }
+    .pdf-main-button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .pdf-status {
+      width: 100%;
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 6px 0;
+    }
+    .pdf-status.hidden {
+      display: none;
+    }
+    .pdf-result {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .pdf-result.hidden {
+      display: none;
+    }
+    .pdf-result button {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    .pdf-result button:hover {
+      background: #eef2f6;
+    }
+
     /* responsive */
     @media (max-width: 760px) {
       main {
@@ -753,56 +807,23 @@
 
         <textarea id="fieldReportQuestion" class="field-report-question" placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"></textarea>
 
-       <button id="createFieldReport" class="create-field-report" type="button" disabled>
-    📄 Phân tích và lập báo cáo
-</button>
-
-<div id="fieldReportStatus" class="field-report-status" hidden></div>
-
-<div id="pdfActions" class="pdf-actions" hidden>
-
-    <button
-        id="exportFieldReportPDF"
-        class="pdf-main-button"
-        type="button"
-    >
-        📄 XUẤT BÁO CÁO PDF
-    </button>
-
-    <div
-        id="pdfStatus"
-        class="pdf-status"
-        hidden
-    ></div>
-
-    <div
-        id="pdfResult"
-        class="pdf-result"
-        hidden
-    >
-        <button
-            id="openPDF"
-            type="button"
-        >
-            👁️ Xem PDF
+        <button id="createFieldReport" class="create-field-report" type="button" disabled>
+          📄 Phân tích và lập báo cáo
         </button>
 
-        <button
-            id="downloadPDF"
-            type="button"
-        >
-            ⬇️ Lưu PDF
-        </button>
+        <div id="fieldReportStatus" class="field-report-status" hidden></div>
 
-        <button
-            id="sharePDF"
-            type="button"
-        >
-            📤 Chia sẻ PDF
-        </button>
-    </div>
-
-</div>
+        <div id="pdfActions" class="pdf-actions" hidden>
+          <button id="exportFieldReportPDF" class="pdf-main-button" type="button">
+            📄 XUẤT BÁO CÁO PDF
+          </button>
+          <div id="pdfStatus" class="pdf-status" hidden></div>
+          <div id="pdfResult" class="pdf-result" hidden>
+            <button id="openPDF" type="button">👁️ Xem PDF</button>
+            <button id="downloadPDF" type="button">⬇️ Lưu PDF</button>
+            <button id="sharePDF" type="button">📤 Chia sẻ PDF</button>
+          </div>
+        </div>
       </div>
 
       <div class="compose">
@@ -848,9 +869,12 @@
       const fieldReportStatus = document.getElementById('fieldReportStatus');
       const reportTypeButtons = document.querySelectorAll('[data-report-type]');
 
-      // ===== State =====
-      let preparedImageBlob = null;
-      let preparedImageName = 'image.jpg';
+      // ===== GLOBAL STATE =====
+      window.preparedImageBlob = null;
+      window.preparedImageName = 'image.jpg';
+      window.reportTitle = '';
+      window.reportAnswer = '';
+
       let isCooldown = false;
 
       // ===== Utilities =====
@@ -987,11 +1011,11 @@
         if (!file) return;
         imagePreview.hidden = false;
         imagePreview.innerHTML = '📷 Đang chuẩn bị ảnh...';
-        preparedImageBlob = null;
+        window.preparedImageBlob = null;
         try {
           const result = await resizeImage(file);
-          preparedImageBlob = result.blob;
-          preparedImageName = (file.name || 'image.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+          window.preparedImageBlob = result.blob;
+          window.preparedImageName = (file.name || 'image.jpg').replace(/\.[^.]+$/, '') + '.jpg';
           const hash = await sha256Hex(result.blob);
           const sizeKB = Math.round(result.blob.size / 1024);
           const originalKB = Math.round(file.size / 1024);
@@ -1005,7 +1029,7 @@
             '<br>SHA-256: ' + hash +
             '<br><span>💡 Gửi câu hỏi để THỦY LỢI AI phân tích ảnh.</span>';
         } catch (err) {
-          preparedImageBlob = null;
+          window.preparedImageBlob = null;
           imagePreview.hidden = false;
           imagePreview.textContent = '⚠️ ' + (err.message || 'Không xử lý được ảnh.');
         }
@@ -1071,6 +1095,9 @@
           try {
             const result = await resizeImage(file, 1600, 0.82);
             fieldReportFile = new File([result.blob], (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+            // Lưu vào biến toàn cục để dùng cho PDF
+            window.preparedImageBlob = result.blob;
+            window.preparedImageName = (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg';
             const url = URL.createObjectURL(result.blob);
             const sizeKB = Math.round(result.blob.size / 1024);
             fieldReportPreview.innerHTML =
@@ -1081,6 +1108,7 @@
             updateFieldReportButton();
           } catch (err) {
             fieldReportFile = null;
+            window.preparedImageBlob = null;
             fieldReportPreview.hidden = false;
             fieldReportPreview.textContent = '⚠️ ' + (err.message || 'Không xử lý được ảnh.');
             updateFieldReportButton();
@@ -1118,10 +1146,18 @@
             const reportTitle = result.report_title || getReportTypeName(selectedReportType);
             const answer = result.answer || 'THỦY LỢI AI chưa tạo được nội dung báo cáo.';
 
+            // Lưu vào biến toàn cục để xuất PDF
+            window.reportTitle = reportTitle;
+            window.reportAnswer = answer;
+
             addUser('📋 ' + reportTitle);
             addAI(answer, result.sources || []);
 
             showFieldReportStatus('✅ Đã tạo dự thảo báo cáo hiện trường.');
+
+            // Kích hoạt nút xuất PDF (sẽ được script thứ hai phát hiện)
+            const pdfActions = document.getElementById('pdfActions');
+            if (pdfActions) pdfActions.hidden = false;
 
             if (result.next_step) {
               const nextBox = document.createElement('div');
@@ -1170,11 +1206,6 @@
         }
       }
 
-      // ===== Load documents (optional) =====
-      async function loadDocs() {
-        // Nếu bạn có nút hiển thị tài liệu, có thể gọi ở đây, nhưng hiện tại không dùng
-      }
-
       // ===== Cooldown for rate limit =====
       function startCooldown(seconds) {
         isCooldown = true;
@@ -1202,11 +1233,11 @@
       // ===== Ask =====
       async function ask() {
         const q = question.value.trim();
-        if ((!q && !preparedImageBlob) || sendBtn.disabled || isCooldown) return;
+        if ((!q && !window.preparedImageBlob) || sendBtn.disabled || isCooldown) return;
 
         const finalQuestion = q || 'Hãy phân tích hình ảnh này trong bối cảnh chuyên ngành thủy lợi.';
 
-        addUser(preparedImageBlob ? '📷 ' + finalQuestion : finalQuestion);
+        addUser(window.preparedImageBlob ? '📷 ' + finalQuestion : finalQuestion);
         question.value = '';
         sendBtn.disabled = true;
         question.disabled = true;
@@ -1215,15 +1246,15 @@
 
         try {
           let d;
-          if (preparedImageBlob) {
+          if (window.preparedImageBlob) {
             const formData = new FormData();
-            formData.append('file', preparedImageBlob, preparedImageName);
+            formData.append('file', window.preparedImageBlob, window.preparedImageName);
             const url = '/image-analyze?question=' + encodeURIComponent(finalQuestion);
             d = await fetchJSON(url, { method: 'POST', body: formData }, 60000);
             addAI(d.answer || d.message || 'Gemini không trả về nội dung phân tích ảnh.', d.sources || d.citations || []);
             // Xóa ảnh
-            preparedImageBlob = null;
-            preparedImageName = 'image.jpg';
+            window.preparedImageBlob = null;
+            window.preparedImageName = 'image.jpg';
             imageInput.value = '';
             imagePreview.hidden = true;
             imagePreview.innerHTML = '';
@@ -1275,10 +1306,10 @@
       // ===== Init =====
       health();
       setInterval(health, 30000);
-      loadDocs();
 
     })();
   </script>
+
   <script>
 /* ============================================================
    THỦY LỢI AI
@@ -1292,585 +1323,216 @@
     let pdfBlob = null;
     let pdfUrl = null;
 
-
     /* ---------------------------------------------------------
-       XÁC ĐỊNH LOẠI BÁO CÁO
+       LẤY TIÊU ĐỀ VÀ NỘI DUNG TỪ BIẾN TOÀN CỤC
        --------------------------------------------------------- */
-
     function getReportTitle() {
-
-        const selected =
-            document.querySelector(
-                ".field-report-types button.selected"
-            );
-
-        if (selected) {
-
-            const type =
-                selected.dataset.reportType;
-
-            const titles = {
-
-                incident:
-                    "Sự cố công trình",
-
-                corridor:
-                    "Hành lang thủy lợi",
-
-                dry_area:
-                    "Diện tích khô",
-
-                water_level:
-                    "Mực nước hồ / kênh"
-
-            };
-
-            if (titles[type]) {
-
-                return titles[type];
-
-            }
-
-            return selected.innerText
-                .replace(/\s+/g, " ")
-                .trim();
-        }
-
-
-        return "BÁO CÁO NHANH HIỆN TRƯỜNG";
+        return window.reportTitle || "BÁO CÁO NHANH HIỆN TRƯỜNG";
     }
-
-
-    /* ---------------------------------------------------------
-       LẤY NỘI DUNG BÁO CÁO
-       --------------------------------------------------------- */
 
     function getReportAnswer() {
-
-        const preview =
-            document.getElementById(
-                "fieldReportPreview"
-            );
-
-        if (!preview) {
-
-            return "";
-        }
-
-
-        return preview.innerText
-            .replace(/\n{3,}/g, "\n\n")
-            .trim();
+        return window.reportAnswer || "";
     }
-
 
     /* ---------------------------------------------------------
        HIỂN THỊ KHU VỰC PDF
        --------------------------------------------------------- */
-
     function updatePDFButton() {
-
-        const preview =
-            document.getElementById(
-                "fieldReportPreview"
-            );
-
-        const pdfActions =
-            document.getElementById(
-                "pdfActions"
-            );
-
-        if (!preview || !pdfActions) {
-
-            return;
-        }
-
-
-        const answer =
-            getReportAnswer();
-
-
-        if (answer.length > 20) {
-
-            pdfActions.hidden = false;
-
-        } else {
-
-            pdfActions.hidden = true;
-
-        }
+        const answer = getReportAnswer();
+        const pdfActions = document.getElementById("pdfActions");
+        if (!pdfActions) return;
+        pdfActions.hidden = !answer || answer.length < 20;
     }
-
 
     /* ---------------------------------------------------------
        XUẤT PDF
        --------------------------------------------------------- */
-
     async function exportPDF() {
+        const button = document.getElementById("exportFieldReportPDF");
+        const status = document.getElementById("pdfStatus");
+        const result = document.getElementById("pdfResult");
 
-        const button =
-            document.getElementById(
-                "exportFieldReportPDF"
-            );
-
-        const status =
-            document.getElementById(
-                "pdfStatus"
-            );
-
-        const result =
-            document.getElementById(
-                "pdfResult"
-            );
-
-
-        const answer =
-            getReportAnswer();
-
-
+        const answer = getReportAnswer();
         if (!answer) {
-
-            alert(
-                "Chưa có nội dung báo cáo để xuất PDF."
-            );
-
+            alert("Chưa có nội dung báo cáo để xuất PDF.");
             return;
         }
 
-
         button.disabled = true;
-
         status.hidden = false;
-
         result.hidden = true;
-
-        status.innerText =
-            "⏳ Đang tạo báo cáo PDF...";
-
+        status.innerText = "⏳ Đang tạo báo cáo PDF...";
 
         try {
+            const formData = new FormData();
+            formData.append("report_title", getReportTitle());
+            formData.append("answer", answer);
 
-            const formData =
-                new FormData();
-
-
-            formData.append(
-                "report_title",
-                getReportTitle()
-            );
-
-
-            formData.append(
-                "answer",
-                answer
-            );
-
-            if (preparedImageBlob) {
-                formData.append(
-                    "image",
-                     preparedImageBlob,
-                     preparedImageName || "image.jpg"
-                );
+            // Gửi kèm ảnh nếu có (từ biến toàn cục)
+            if (window.preparedImageBlob) {
+                formData.append("image", window.preparedImageBlob, window.preparedImageName || "image.jpg");
             }
-            const response =
-                await fetch(
-                    "/field-report-pdf",
-                    {
-                        method: "POST",
-                        body: formData
-                    }
-                );
 
+            const response = await fetch("/field-report-pdf", {
+                method: "POST",
+                body: formData
+            });
 
             if (!response.ok) {
-
-                throw new Error(
-                    "Máy chủ không tạo được PDF."
-                );
+                throw new Error("Máy chủ không tạo được PDF.");
             }
 
-
-            const blob =
-                await response.blob();
-
-
-            if (!blob ||
-                blob.size === 0) {
-
-                throw new Error(
-                    "File PDF rỗng."
-                );
+            const blob = await response.blob();
+            if (!blob || blob.size === 0) {
+                throw new Error("File PDF rỗng.");
             }
-
 
             if (pdfUrl) {
-
-                URL.revokeObjectURL(
-                    pdfUrl
-                );
+                URL.revokeObjectURL(pdfUrl);
             }
 
-
             pdfBlob = blob;
+            pdfUrl = URL.createObjectURL(blob);
 
-            pdfUrl =
-                URL.createObjectURL(
-                    blob
-                );
-
-
-            status.innerText =
-                "✅ PDF đã sẵn sàng.";
-
+            status.innerText = "✅ PDF đã sẵn sàng.";
             result.hidden = false;
 
-
         } catch (error) {
-
-            console.error(
-                "PDF ERROR:",
-                error
-            );
-
-
-            status.innerText =
-                "❌ Không thể tạo PDF. Vui lòng thử lại.";
-
-
+            console.error("PDF ERROR:", error);
+            status.innerText = "❌ Không thể tạo PDF. Vui lòng thử lại.";
         } finally {
-
             button.disabled = false;
-
         }
     }
-
 
     /* ---------------------------------------------------------
        XEM PDF
        --------------------------------------------------------- */
-
-/* =========================================================
-   XEM PDF
-   ========================================================= */
-
-function openPDF() {
-
-    if (!pdfBlob || !pdfUrl) {
-        alert("Chưa có file PDF.");
-        return;
-    }
-
-    // Mở PDF trực tiếp
-    const newWindow = window.open(pdfUrl, "_blank");
-
-    // Một số trình duyệt chặn popup
-    if (!newWindow) {
-        // Trên điện thoại, mở trực tiếp trong tab hiện tại
-        window.location.href = pdfUrl;
-    }
-}
-
-
-/* =========================================================
-   LƯU PDF
-   ========================================================= */
-
-async function downloadPDF() {
-
-    if (!pdfBlob) {
-        alert("Chưa có file PDF.");
-        return;
-    }
-
-    const fileName = "bao-cao-hien-truong.pdf";
-
-    /*
-     * Trên điện thoại:
-     * ưu tiên bảng chia sẻ hệ thống để người dùng
-     * có thể chọn "Lưu vào Tệp", Zalo, Mail...
-     */
-    try {
-
-        const file = new File(
-            [pdfBlob],
-            fileName,
-            {
-                type: "application/pdf"
-            }
-        );
-
-        if (
-            navigator.share &&
-            navigator.canShare &&
-            navigator.canShare({
-                files: [file]
-            })
-        ) {
-
-            await navigator.share({
-                title: "Báo cáo nhanh hiện trường",
-                text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-                files: [file]
-            });
-
+    function openPDF() {
+        if (!pdfBlob || !pdfUrl) {
+            alert("Chưa có file PDF.");
             return;
         }
-
-    } catch (error) {
-
-        // Người dùng bấm Hủy chia sẻ
-        if (error && error.name === "AbortError") {
-            return;
-        }
-
-        console.warn(
-            "Không thể dùng chia sẻ hệ thống:",
-            error
-        );
-    }
-
-
-    /*
-     * Máy tính / trình duyệt không hỗ trợ chia sẻ file:
-     * dùng tải xuống thông thường.
-     */
-
-    try {
-
-        const link = document.createElement("a");
-
-        link.href = pdfUrl;
-
-        link.download = fileName;
-
-        link.style.display = "none";
-
-        document.body.appendChild(link);
-
-        link.click();
-
-        link.remove();
-
-    } catch (error) {
-
-        console.error(
-            "DOWNLOAD ERROR:",
-            error
-        );
-
-        alert(
-            "Không thể lưu PDF. Vui lòng thử lại."
-        );
-    }
-}
-
-
-/* =========================================================
-   CHIA SẺ PDF TRÊN ĐIỆN THOẠI
-   ========================================================= */
-
-async function sharePDF() {
-
-    if (!pdfBlob) {
-
-        alert("Chưa có file PDF.");
-
-        return;
-    }
-
-
-    const fileName =
-        "bao-cao-hien-truong.pdf";
-
-
-    /*
-     * Tạo File thực sự từ PDF Blob.
-     * Đây là phần quan trọng để Zalo,
-     * Messenger, Mail... nhận được FILE PDF.
-     */
-
-    const file = new File(
-        [pdfBlob],
-        fileName,
-        {
-            type: "application/pdf"
-        }
-    );
-
-
-    /*
-     * Ưu tiên Web Share API.
-     */
-
-    if (
-        navigator.share &&
-        navigator.canShare &&
-        navigator.canShare({
-            files: [file]
-        })
-    ) {
-
-        try {
-
-            await navigator.share({
-
-                title:
-                    "Báo cáo nhanh hiện trường",
-
-                text:
-                    "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-
-                files: [file]
-
-            });
-
-            return;
-
-        } catch (error) {
-
-            /*
-             * Người dùng bấm Hủy:
-             * không báo lỗi.
-             */
-
-            if (
-                error &&
-                error.name === "AbortError"
-            ) {
-                return;
-            }
-
-            console.error(
-                "SHARE ERROR:",
-                error
-            );
+        // Mở PDF trực tiếp
+        const newWindow = window.open(pdfUrl, "_blank");
+        if (!newWindow) {
+            // Trên điện thoại, mở trực tiếp trong tab hiện tại
+            window.location.href = pdfUrl;
         }
     }
-
-
-    /*
-     * Nếu trình duyệt không hỗ trợ chia sẻ file,
-     * chuyển sang tải PDF.
-     */
-
-    alert(
-        "Thiết bị chưa hỗ trợ chia sẻ trực tiếp file PDF. " +
-        "THỦY LỢI AI sẽ chuyển sang lưu PDF."
-    );
-
-    downloadPDF();
-}
-
 
     /* ---------------------------------------------------------
-       THEO DÕI KHU VỰC BÁO CÁO
+       LƯU PDF
        --------------------------------------------------------- */
-
-    function watchReportPreview() {
-
-        const preview =
-            document.getElementById(
-                "fieldReportPreview"
-            );
-
-        if (!preview) {
-
+    async function downloadPDF() {
+        if (!pdfBlob) {
+            alert("Chưa có file PDF.");
             return;
         }
 
+        const fileName = "bao-cao-hien-truong.pdf";
 
-        const observer =
-            new MutationObserver(
-                function () {
-
-                    updatePDFButton();
-
-                }
-            );
-
-
-        observer.observe(
-            preview,
-            {
-                childList: true,
-                subtree: true,
-                characterData: true
+        // Ưu tiên Web Share API
+        try {
+            const file = new File([pdfBlob], fileName, { type: "application/pdf" });
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: "Báo cáo nhanh hiện trường",
+                    text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+                    files: [file]
+                });
+                return;
             }
-        );
+        } catch (error) {
+            if (error && error.name === "AbortError") return;
+            console.warn("Không thể dùng chia sẻ hệ thống:", error);
+        }
 
-
-        updatePDFButton();
+        // Fallback: tải xuống
+        try {
+            const link = document.createElement("a");
+            link.href = pdfUrl;
+            link.download = fileName;
+            link.style.display = "none";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error("DOWNLOAD ERROR:", error);
+            alert("Không thể lưu PDF. Vui lòng thử lại.");
+        }
     }
 
+    /* ---------------------------------------------------------
+       CHIA SẺ PDF
+       --------------------------------------------------------- */
+    async function sharePDF() {
+        if (!pdfBlob) {
+            alert("Chưa có file PDF.");
+            return;
+        }
+
+        const fileName = "bao-cao-hien-truong.pdf";
+        const file = new File([pdfBlob], fileName, { type: "application/pdf" });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    title: "Báo cáo nhanh hiện trường",
+                    text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+                    files: [file]
+                });
+                return;
+            } catch (error) {
+                if (error && error.name === "AbortError") return;
+                console.error("SHARE ERROR:", error);
+            }
+        }
+
+        alert("Thiết bị chưa hỗ trợ chia sẻ trực tiếp file PDF. THỦY LỢI AI sẽ chuyển sang lưu PDF.");
+        downloadPDF();
+    }
+
+    /* ---------------------------------------------------------
+       THEO DÕI SỰ THAY ĐỔI NỘI DUNG BÁO CÁO (từ field report)
+       --------------------------------------------------------- */
+    function watchReportChanges() {
+        // Lắng nghe sự kiện khi nội dung báo cáo được tạo (có thể thông qua MutationObserver trên messages)
+        // Đơn giản hơn: gọi updatePDFButton khi có tin nhắn mới.
+        const messages = document.getElementById('messages');
+        if (!messages) return;
+        const observer = new MutationObserver(function() {
+            updatePDFButton();
+        });
+        observer.observe(messages, { childList: true, subtree: true });
+    }
 
     /* ---------------------------------------------------------
        KHỞI TẠO
        --------------------------------------------------------- */
+    document.addEventListener("DOMContentLoaded", function () {
+        const exportButton = document.getElementById("exportFieldReportPDF");
+        const openButton = document.getElementById("openPDF");
+        const downloadButton = document.getElementById("downloadPDF");
+        const shareButton = document.getElementById("sharePDF");
 
-    document.addEventListener(
-        "DOMContentLoaded",
-        function () {
+        if (exportButton) {
+            exportButton.addEventListener("click", exportPDF);
+        }
+        if (openButton) {
+            openButton.addEventListener("click", openPDF);
+        }
+        if (downloadButton) {
+            downloadButton.addEventListener("click", downloadPDF);
+        }
+        if (shareButton) {
+            shareButton.addEventListener("click", sharePDF);
+        }
 
-            const exportButton =
-                document.getElementById(
-                    "exportFieldReportPDF"
-                );
-
-            const openButton =
-                document.getElementById(
-                    "openPDF"
-                );
-
-            const downloadButton =
-                document.getElementById(
-                    "downloadPDF"
-                );
-
-            const shareButton =
-                document.getElementById(
-                    "sharePDF"
-                );
-
-
-            if (exportButton) {
-
-                exportButton.addEventListener(
-                    "click",
-                    exportPDF
-                );
-            }
-
-
-            if (openButton) {
-
-                openButton.addEventListener(
-                    "click",
-                    openPDF
-                );
-            }
-
-
-            if (downloadButton) {
-
-                downloadButton.addEventListener(
-                    "click",
-                    downloadPDF
-                );
-            }
-
-
-            if (shareButton) {
-
-                shareButton.addEventListener(
-                    "click",
-                    sharePDF
-                );
-            }
-
-
-            watchReportPreview();
-
-        });
+        // Cập nhật trạng thái nút PDF ban đầu
+        updatePDFButton();
+        watchReportChanges();
+    });
 
 })();
 </script>
