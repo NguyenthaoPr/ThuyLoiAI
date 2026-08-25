@@ -81,6 +81,9 @@ from reportlab.pdfgen import canvas as pdfgen_canvas
 #    - Chân trang hiển thị đúng "Trang X/Y" (tổng số trang thật)
 #      nhờ NumberedCanvas (kỹ thuật 2 lượt vẽ chuẩn của ReportLab),
 #      thay vì chỉ hiển thị số trang hiện tại như bản cũ.
+# 7. Sửa lỗi thụt lề trong /field-report-pdf (khối if image: bị đặt
+#    ngoài hàm) và trong create_field_report_pdf (các khối xử lý ảnh,
+#    nội dung bị đặt sai cấp).
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -3162,59 +3165,61 @@ def create_field_report_pdf(
     )
 
     story.append(meta_table)
+
     # ============================================================
-# ẢNH HIỆN TRƯỜNG
-# ============================================================
-if image_bytes:
-    try:
-        from reportlab.platypus import Image as RLImage
+    # ẢNH HIỆN TRƯỜNG
+    # ============================================================
+    if image_bytes:
+        try:
+            from reportlab.platypus import Image as RLImage
 
-        img_stream = BytesIO(image_bytes)
-        pil_img = Image.open(img_stream)
+            img_stream = BytesIO(image_bytes)
+            pil_img = Image.open(img_stream)
 
-        img_width, img_height = pil_img.size
+            img_width, img_height = pil_img.size
 
-        # Chiều rộng tối đa theo khổ A4 và lề hiện tại
-        max_width = doc.width
-        max_height = 105 * mm
+            # Chiều rộng tối đa theo khổ A4 và lề hiện tại
+            max_width = doc.width
+            max_height = 105 * mm
 
-        scale = min(
-            max_width / img_width,
-            max_height / img_height,
-            1.0,
-        )
-
-        display_width = img_width * scale
-        display_height = img_height * scale
-
-        story.append(Spacer(1, 8))
-
-        story.append(
-            Paragraph(
-                "ẢNH HIỆN TRƯỜNG",
-                subheading_style,
+            scale = min(
+                max_width / img_width,
+                max_height / img_height,
+                1.0,
             )
-        )
 
-        story.append(Spacer(1, 5))
+            display_width = img_width * scale
+            display_height = img_height * scale
 
-        field_image = RLImage(
-            BytesIO(image_bytes),
-            width=display_width,
-            height=display_height,
-        )
+            story.append(Spacer(1, 8))
 
-        field_image.hAlign = "CENTER"
+            story.append(
+                Paragraph(
+                    "ẢNH HIỆN TRƯỜNG",
+                    subheading_style,
+                )
+            )
 
-        story.append(field_image)
+            story.append(Spacer(1, 5))
 
-        story.append(Spacer(1, 10))
+            field_image = RLImage(
+                BytesIO(image_bytes),
+                width=display_width,
+                height=display_height,
+            )
 
-    except Exception as image_error:
-        print(
-            "FIELD REPORT IMAGE ERROR:",
-            repr(image_error),
-        )
+            field_image.hAlign = "CENTER"
+
+            story.append(field_image)
+
+            story.append(Spacer(1, 10))
+
+        except Exception as image_error:
+            print(
+                "FIELD REPORT IMAGE ERROR:",
+                repr(image_error),
+            )
+
     story.append(Spacer(1, 14))
 
     # ============================================================
@@ -3364,16 +3369,16 @@ async def field_report_pdf(
     """
     Chuyển dự thảo báo cáo hiện trường thành PDF.
     """
-
     if not answer.strip():
         return {
             "success": False,
             "error": "Không có nội dung báo cáo để tạo PDF.",
         }
-    image_bytes = None
 
-if image:
-    image_bytes = await image.read()
+    image_bytes = None
+    if image:
+        image_bytes = await image.read()
+
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
@@ -3388,18 +3393,11 @@ if image:
             pdf_buffer,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{filename}"'
-                )
+                "Content-Disposition": f'attachment; filename="{filename}"'
             },
         )
-
     except Exception as e:
-        print(
-            "FIELD REPORT PDF ERROR:",
-            repr(e),
-        )
-
+        print("FIELD REPORT PDF ERROR:", repr(e))
         return {
             "success": False,
             "error": str(e),
