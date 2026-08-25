@@ -2869,6 +2869,7 @@ def _pdf_section_header_table(text, doc_width, bg_color):
 def create_field_report_pdf(
     report_title: str,
     answer: str,
+    image_bytes=None,
 ):
     """
     Tạo PDF báo cáo nhanh hiện trường - phiên bản chuyên nghiệp.
@@ -3161,6 +3162,59 @@ def create_field_report_pdf(
     )
 
     story.append(meta_table)
+    # ============================================================
+# ẢNH HIỆN TRƯỜNG
+# ============================================================
+if image_bytes:
+    try:
+        from reportlab.platypus import Image as RLImage
+
+        img_stream = BytesIO(image_bytes)
+        pil_img = Image.open(img_stream)
+
+        img_width, img_height = pil_img.size
+
+        # Chiều rộng tối đa theo khổ A4 và lề hiện tại
+        max_width = doc.width
+        max_height = 105 * mm
+
+        scale = min(
+            max_width / img_width,
+            max_height / img_height,
+            1.0,
+        )
+
+        display_width = img_width * scale
+        display_height = img_height * scale
+
+        story.append(Spacer(1, 8))
+
+        story.append(
+            Paragraph(
+                "ẢNH HIỆN TRƯỜNG",
+                subheading_style,
+            )
+        )
+
+        story.append(Spacer(1, 5))
+
+        field_image = RLImage(
+            BytesIO(image_bytes),
+            width=display_width,
+            height=display_height,
+        )
+
+        field_image.hAlign = "CENTER"
+
+        story.append(field_image)
+
+        story.append(Spacer(1, 10))
+
+    except Exception as image_error:
+        print(
+            "FIELD REPORT IMAGE ERROR:",
+            repr(image_error),
+        )
     story.append(Spacer(1, 14))
 
     # ============================================================
@@ -3305,6 +3359,7 @@ def create_field_report_pdf(
 async def field_report_pdf(
     report_title: str = Form("BÁO CÁO NHANH HIỆN TRƯỜNG"),
     answer: str = Form(""),
+    image: UploadFile | None = File(None),
 ):
     """
     Chuyển dự thảo báo cáo hiện trường thành PDF.
@@ -3315,12 +3370,16 @@ async def field_report_pdf(
             "success": False,
             "error": "Không có nội dung báo cáo để tạo PDF.",
         }
+    image_bytes = None
 
+if image:
+    image_bytes = await image.read()
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
             report_title,
             answer,
+            image_bytes,
         )
 
         filename = "bao-cao-hien-truong.pdf"
