@@ -48,7 +48,16 @@
       outline: 3px solid var(--focus-ring);
       outline-offset: 1px;
     }
-
+    /* Ô chỉnh sửa báo cáo tự động tăng chiều cao */
+    textarea.auto-grow {
+      width: 100%;
+      min-height: 260px;
+      height: auto;
+      overflow-y: hidden;
+      resize: none;
+      line-height: 1.6;
+      box-sizing: border-box;
+    }
     .header {
       background: var(--deep-navy);
       color: #fff;
@@ -816,7 +825,7 @@
         <!-- ===== KHU VỰC CHỈNH SỬA BÁO CÁO ===== -->
         <div id="reportEditor" hidden style="margin-top: 12px;">
           <label for="reportContent" style="font-weight: 600; font-size: 14px;">📝 Chỉnh sửa nội dung báo cáo</label>
-          <textarea id="reportContent" rows="6" style="width:100%; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:14px; margin-top:4px;"></textarea>
+          <textarea id="reportContent" class="auto-grow" rows="6" placeholder="Bạn có thể chỉnh sửa toàn bộ nội dung dự thảo báo cáo tại đây..."></textarea>
           <label for="reviewerName" style="font-weight: 600; font-size: 14px; margin-top: 8px; display: block;">👤 Người kiểm tra</label>
           <input id="reviewerName" type="text" placeholder="Nhập họ tên người kiểm tra" style="width:100%; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:14px; margin-top:4px;">
         </div>
@@ -1354,6 +1363,11 @@
 
       function updatePDFButton() {
         const answer = getReportAnswer();
+        const editor = document.getElementById('reportContent');
+        if (editor) {
+            editor.style.height = 'auto';
+            editor.style.height = editor.scrollHeight + 'px';
+      }
         const pdfActions = document.getElementById('pdfActions');
         if (!pdfActions) return;
         pdfActions.hidden = !answer || answer.length < 20;
@@ -1469,9 +1483,22 @@
         updatePDFButton();
 
         const editor = document.getElementById('reportContent');
-        if (editor) {
-          editor.addEventListener('input', updatePDFButton);
-        }
+
+if (editor) {
+    function autoGrowTextarea(el) {
+        el.style.height = 'auto';
+        el.style.height = el.scrollHeight + 'px';
+    }
+
+    // Tự tăng chiều cao khi người dùng chỉnh sửa
+    editor.addEventListener('input', function () {
+        autoGrowTextarea(this);
+        updatePDFButton();
+    });
+
+    // Tự tăng chiều cao ngay khi dự thảo được nạp
+    autoGrowTextarea(editor);
+}
         const rev = document.getElementById('reviewerName');
         if (rev) rev.addEventListener('input', updatePDFButton);
       });
