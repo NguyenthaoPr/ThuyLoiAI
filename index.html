@@ -1543,95 +1543,55 @@
        XEM PDF
        --------------------------------------------------------- */
 
-    function openPDF() {
+/* =========================================================
+   XEM PDF
+   ========================================================= */
 
-        if (!pdfUrl) {
+function openPDF() {
 
-            alert(
-                "Chưa có file PDF."
-            );
-
-            return;
-        }
-
-
-        window.open(
-            pdfUrl,
-            "_blank"
-        );
+    if (!pdfBlob || !pdfUrl) {
+        alert("Chưa có file PDF.");
+        return;
     }
 
+    // Mở PDF trực tiếp
+    const newWindow = window.open(pdfUrl, "_blank");
 
-    /* ---------------------------------------------------------
-       LƯU PDF
-       --------------------------------------------------------- */
-
-    function downloadPDF() {
-
-        if (!pdfUrl) {
-
-            alert(
-                "Chưa có file PDF."
-            );
-
-            return;
-        }
+    // Một số trình duyệt chặn popup
+    if (!newWindow) {
+        // Trên điện thoại, mở trực tiếp trong tab hiện tại
+        window.location.href = pdfUrl;
+    }
+}
 
 
-        const link =
-            document.createElement(
-                "a"
-            );
+/* =========================================================
+   LƯU PDF
+   ========================================================= */
 
+async function downloadPDF() {
 
-        link.href =
-            pdfUrl;
-
-
-        link.download =
-            "bao-cao-hien-truong.pdf";
-
-
-        document.body.appendChild(
-            link
-        );
-
-
-        link.click();
-
-
-        link.remove();
+    if (!pdfBlob) {
+        alert("Chưa có file PDF.");
+        return;
     }
 
+    const fileName = "bao-cao-hien-truong.pdf";
 
-    /* ---------------------------------------------------------
-       CHIA SẺ PDF TRÊN ĐIỆN THOẠI
-       --------------------------------------------------------- */
+    /*
+     * Trên điện thoại:
+     * ưu tiên bảng chia sẻ hệ thống để người dùng
+     * có thể chọn "Lưu vào Tệp", Zalo, Mail...
+     */
+    try {
 
-    async function sharePDF() {
-
-        if (!pdfBlob || !pdfUrl) {
-
-            alert(
-                "Chưa có file PDF."
-            );
-
-            return;
-        }
-
-
-        const file =
-            new File(
-                [
-                    pdfBlob
-                ],
-                "bao-cao-hien-truong.pdf",
-                {
-                    type:
-                        "application/pdf"
-                }
-            );
-
+        const file = new File(
+            [pdfBlob],
+            fileName,
+            {
+                type: "application/pdf"
+            }
+        );
 
         if (
             navigator.share &&
@@ -1641,44 +1601,159 @@
             })
         ) {
 
-            try {
-
-                await navigator.share({
-
-                    title:
-                        "Báo cáo nhanh hiện trường",
-
-                    text:
-                        "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-
-                    files: [file]
-
-                });
-
-
-            } catch (error) {
-
-                if (
-                    error.name !==
-                    "AbortError"
-                ) {
-
-                    console.error(
-                        "SHARE ERROR:",
-                        error
-                    );
-
-                }
-
-            }
+            await navigator.share({
+                title: "Báo cáo nhanh hiện trường",
+                text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+                files: [file]
+            });
 
             return;
         }
 
+    } catch (error) {
 
-        // Trình duyệt không hỗ trợ chia sẻ file
-        downloadPDF();
+        // Người dùng bấm Hủy chia sẻ
+        if (error && error.name === "AbortError") {
+            return;
+        }
+
+        console.warn(
+            "Không thể dùng chia sẻ hệ thống:",
+            error
+        );
     }
+
+
+    /*
+     * Máy tính / trình duyệt không hỗ trợ chia sẻ file:
+     * dùng tải xuống thông thường.
+     */
+
+    try {
+
+        const link = document.createElement("a");
+
+        link.href = pdfUrl;
+
+        link.download = fileName;
+
+        link.style.display = "none";
+
+        document.body.appendChild(link);
+
+        link.click();
+
+        link.remove();
+
+    } catch (error) {
+
+        console.error(
+            "DOWNLOAD ERROR:",
+            error
+        );
+
+        alert(
+            "Không thể lưu PDF. Vui lòng thử lại."
+        );
+    }
+}
+
+
+/* =========================================================
+   CHIA SẺ PDF TRÊN ĐIỆN THOẠI
+   ========================================================= */
+
+async function sharePDF() {
+
+    if (!pdfBlob) {
+
+        alert("Chưa có file PDF.");
+
+        return;
+    }
+
+
+    const fileName =
+        "bao-cao-hien-truong.pdf";
+
+
+    /*
+     * Tạo File thực sự từ PDF Blob.
+     * Đây là phần quan trọng để Zalo,
+     * Messenger, Mail... nhận được FILE PDF.
+     */
+
+    const file = new File(
+        [pdfBlob],
+        fileName,
+        {
+            type: "application/pdf"
+        }
+    );
+
+
+    /*
+     * Ưu tiên Web Share API.
+     */
+
+    if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({
+            files: [file]
+        })
+    ) {
+
+        try {
+
+            await navigator.share({
+
+                title:
+                    "Báo cáo nhanh hiện trường",
+
+                text:
+                    "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+
+                files: [file]
+
+            });
+
+            return;
+
+        } catch (error) {
+
+            /*
+             * Người dùng bấm Hủy:
+             * không báo lỗi.
+             */
+
+            if (
+                error &&
+                error.name === "AbortError"
+            ) {
+                return;
+            }
+
+            console.error(
+                "SHARE ERROR:",
+                error
+            );
+        }
+    }
+
+
+    /*
+     * Nếu trình duyệt không hỗ trợ chia sẻ file,
+     * chuyển sang tải PDF.
+     */
+
+    alert(
+        "Thiết bị chưa hỗ trợ chia sẻ trực tiếp file PDF. " +
+        "THỦY LỢI AI sẽ chuyển sang lưu PDF."
+    );
+
+    downloadPDF();
+}
 
 
     /* ---------------------------------------------------------
