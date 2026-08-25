@@ -1148,6 +1148,22 @@
             const reportTitle = result.report_title || getReportTypeName(selectedReportType);
             const answer = result.answer || 'THỦY LỢI AI chưa tạo được nội dung báo cáo.';
 
+            // === KIỂM TRA ẢNH KHÔNG HỢP LỆ ===
+            const irrelevantKeywords = ['không liên quan', 'không phải công trình', 'không thể hiện', 'ảnh không chứa'];
+            const isIrrelevant = irrelevantKeywords.some(kw => answer.toLowerCase().includes(kw));
+            if (isIrrelevant) {
+              const userConfirm = confirm(
+                '⚠️ Ảnh bạn gửi có thể không liên quan đến công trình thủy lợi.\n\n' +
+                'THỦY LỢI AI vẫn có thể tạo báo cáo dựa trên ảnh này.\n' +
+                'Bạn có muốn tiếp tục không?'
+              );
+              if (!userConfirm) {
+                showFieldReportStatus('Đã hủy tạo báo cáo.', true);
+                createFieldReport.disabled = false;
+                return;
+              }
+            }
+
             window.reportTitle = reportTitle;
             window.reportAnswer = answer;
 
