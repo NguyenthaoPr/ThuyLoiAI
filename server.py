@@ -37,10 +37,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as pdfgen_canvas
 
-# ============================================================
-# THỦY LỢI AI - SERVER.PY (BẢN HOÀN CHỈNH)
-# ============================================================
-
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 
@@ -70,7 +66,7 @@ gemini_client = None
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 # ============================================================
-# SYSTEM PROMPT (giữ nguyên)
+# SYSTEM PROMPT (giữ nguyên toàn bộ)
 # ============================================================
 SYSTEM_PROMPT = """
 Bạn là THỦY LỢI AI, trợ lý chuyên ngành Thủy lợi của
@@ -393,7 +389,7 @@ def normalize_question(text: str) -> str:
     return value
 
 # ============================================================
-# CACHE (giữ nguyên)
+# CACHE
 # ============================================================
 async def get_cached_answer(question: str):
     if not CACHE_ENABLED:
@@ -1398,7 +1394,9 @@ def _build_pdf_content_flowables(answer_text, heading_style, subheading_style, b
         return flowables
 
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    # Gộp dòng heading bị tách ra (vd "## 1\nThông tin chung" -> "## 1 Thông tin chung")
+    # Xóa các dòng chỉ toàn ký tự # (ví dụ "##", "###")
+    text = re.sub(r"(?m)^\s*#{1,4}\s*$", "", text)
+    # Gộp heading bị tách dòng
     text = re.sub(r"(##?\s*\d+\.?\s*)\n\s*([^\n#]+)", r"\1\2", text)
     # Tách các mục nếu AI viết liền
     text = re.sub(r"\s+(?=\d+[.)]\s+)", "\n", text)
@@ -1411,7 +1409,7 @@ def _build_pdf_content_flowables(answer_text, heading_style, subheading_style, b
         raw_line = lines[i]
         line = raw_line.strip()
         if not line:
-            flowables.append(Spacer(1, 4))
+            flowables.append(Spacer(1, 3))
             i += 1
             continue
 
@@ -1532,21 +1530,20 @@ def create_field_report_pdf(
     label_style = ParagraphStyle("ThuyLoiLabel", parent=styles["BodyText"], fontName=font_bold, fontSize=9.5, leading=13, textColor=PDF_COLOR_MUTED)
     value_style = ParagraphStyle("ThuyLoiValue", parent=styles["BodyText"], fontName=font_regular, fontSize=10, leading=14, textColor=PDF_COLOR_TEXT)
     section_heading_style = ParagraphStyle("ThuyLoiSectionHeading", parent=styles["BodyText"], fontName=font_bold, fontSize=12.5, leading=16, textColor=colors.white, spaceBefore=0, spaceAfter=0)
-    heading_style = ParagraphStyle("ThuyLoiHeading", parent=styles["BodyText"], fontName=font_bold, fontSize=11.5, leading=16, textColor=PDF_COLOR_ACCENT, spaceBefore=11, spaceAfter=5)
-    subheading_style = ParagraphStyle("ThuyLoiSubHeading", parent=heading_style, fontSize=10.5, leading=14, spaceBefore=7, spaceAfter=4)
-    body_style = ParagraphStyle("ThuyLoiBody", parent=styles["BodyText"], fontName=font_regular, fontSize=10.3, leading=15.5, textColor=PDF_COLOR_TEXT, alignment=TA_LEFT, spaceAfter=5)
-    bullet_style = ParagraphStyle("ThuyLoiBullet", parent=body_style, leftIndent=12, spaceAfter=3)
-    number_style = ParagraphStyle("ThuyLoiNumber", parent=body_style, leftIndent=16, firstLineIndent=-16, spaceAfter=3)
-    note_style = ParagraphStyle("ThuyLoiNote", parent=body_style, fontSize=9.3, leading=13.5, textColor=PDF_COLOR_MUTED, backColor=PDF_COLOR_LABEL_BG, borderColor=PDF_COLOR_BORDER, borderWidth=0.6, borderPadding=8, spaceBefore=6, spaceAfter=8)
+    heading_style = ParagraphStyle("ThuyLoiHeading", parent=styles["BodyText"], fontName=font_bold, fontSize=11.5, leading=16, textColor=PDF_COLOR_ACCENT, spaceBefore=8, spaceAfter=4)
+    subheading_style = ParagraphStyle("ThuyLoiSubHeading", parent=heading_style, fontSize=10.5, leading=14, spaceBefore=6, spaceAfter=3)
+    body_style = ParagraphStyle("ThuyLoiBody", parent=styles["BodyText"], fontName=font_regular, fontSize=10.3, leading=15.5, textColor=PDF_COLOR_TEXT, alignment=TA_LEFT, spaceAfter=4)
+    bullet_style = ParagraphStyle("ThuyLoiBullet", parent=body_style, leftIndent=12, spaceAfter=2)
+    number_style = ParagraphStyle("ThuyLoiNumber", parent=body_style, leftIndent=16, firstLineIndent=-16, spaceAfter=2)
+    note_style = ParagraphStyle("ThuyLoiNote", parent=body_style, fontSize=9.3, leading=13.5, textColor=PDF_COLOR_MUTED, backColor=PDF_COLOR_LABEL_BG, borderColor=PDF_COLOR_BORDER, borderWidth=0.6, borderPadding=8, spaceBefore=4, spaceAfter=6)
     warn_header_style = ParagraphStyle("ThuyLoiWarnHeader", parent=styles["BodyText"], fontName=font_bold, fontSize=10.5, leading=14, textColor=PDF_COLOR_WARN_TEXT)
     warn_body_style = ParagraphStyle("ThuyLoiWarnBody", parent=styles["BodyText"], fontName=font_regular, fontSize=9.5, leading=14, textColor=PDF_COLOR_WARN_TEXT)
-    signature_title_style = ParagraphStyle("ThuyLoiSignatureTitle", parent=styles["BodyText"], fontName=font_bold, fontSize=11.5, leading=15, alignment=TA_CENTER, textColor=PDF_COLOR_PRIMARY, spaceBefore=4, spaceAfter=10)
+    signature_title_style = ParagraphStyle("ThuyLoiSignatureTitle", parent=styles["BodyText"], fontName=font_bold, fontSize=11.5, leading=15, alignment=TA_CENTER, textColor=PDF_COLOR_PRIMARY, spaceBefore=2, spaceAfter=6)
     signature_label_style = ParagraphStyle("ThuyLoiSignatureLabel", parent=styles["BodyText"], fontName=font_bold, fontSize=10, leading=13, alignment=TA_CENTER, textColor=PDF_COLOR_TEXT)
-    signature_caption_style = ParagraphStyle("ThuyLoiSignatureCaption", parent=styles["BodyText"], fontName=font_regular, fontSize=8.5, leading=12, alignment=TA_CENTER, textColor=PDF_COLOR_MUTED)
 
     story = []
     story.append(Paragraph(PDF_DOC_LABEL, title_style))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # THÔNG TIN BÁO CÁO
     story.append(_pdf_section_header_table(Paragraph("THÔNG TIN BÁO CÁO", section_heading_style), doc.width, PDF_COLOR_PRIMARY))
@@ -1560,15 +1557,15 @@ def create_field_report_pdf(
     meta_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), PDF_COLOR_LABEL_BG),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("GRID", (0, 0), (-1, -1), 0.5, PDF_COLOR_BORDER),
         ("LINEABOVE", (0, 0), (-1, 0), 0, colors.white),
     ]))
     story.append(KeepTogether(meta_table))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # ẢNH
     if image_bytes:
@@ -1578,25 +1575,25 @@ def create_field_report_pdf(
             pil_img = Image.open(img_stream)
             img_width, img_height = pil_img.size
             max_width = doc.width
-            max_height = 105 * mm
+            max_height = 90 * mm
             scale = min(max_width / img_width, max_height / img_height, 1.0)
             display_width = img_width * scale
             display_height = img_height * scale
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 6))
             story.append(Paragraph("ẢNH HIỆN TRƯỜNG", subheading_style))
-            story.append(Spacer(1, 5))
+            story.append(Spacer(1, 4))
             field_image = RLImage(BytesIO(image_bytes), width=display_width, height=display_height)
             field_image.hAlign = "CENTER"
             story.append(field_image)
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
         except Exception as image_error:
             print("FIELD REPORT IMAGE ERROR:", repr(image_error))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # NỘI DUNG BÁO CÁO
     story.append(_pdf_section_header_table(Paragraph("NỘI DUNG BÁO CÁO", section_heading_style), doc.width, PDF_COLOR_ACCENT))
-    story.append(Spacer(1, 10))
-    story.extend(_build_pdf_content_flowables(
+    story.append(Spacer(1, 6))
+    content_flowables = _build_pdf_content_flowables(
         answer,
         heading_style=heading_style,
         subheading_style=subheading_style,
@@ -1604,10 +1601,11 @@ def create_field_report_pdf(
         bullet_style=bullet_style,
         number_style=number_style,
         note_style=note_style,
-    ))
+    )
+    story.extend(content_flowables)
 
     # CẢNH BÁO
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 6))
     warn_rows = [
         [Paragraph("⚠ LƯU Ý", warn_header_style)],
         [Paragraph(
@@ -1626,24 +1624,23 @@ def create_field_report_pdf(
         ("BACKGROUND", (0, 1), (0, 1), PDF_COLOR_WARN_BODY_BG),
         ("BOX", (0, 0), (-1, -1), 0.7, PDF_COLOR_WARN_BORDER),
         ("LINEBELOW", (0, 0), (0, 0), 0.7, PDF_COLOR_WARN_BORDER),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (0, 0), 5),
-        ("BOTTOMPADDING", (0, 0), (0, 0), 5),
-        ("TOPPADDING", (0, 1), (0, 1), 7),
-        ("BOTTOMPADDING", (0, 1), (0, 1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (0, 0), 4),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+        ("TOPPADDING", (0, 1), (0, 1), 6),
+        ("BOTTOMPADDING", (0, 1), (0, 1), 6),
     ]))
     story.append(KeepTogether(warn_table))
 
     # CHỮ KÝ - CHỈ CÓ NGƯỜI KIỂM TRA
-    story.append(Spacer(1, 18))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=PDF_COLOR_BORDER, spaceBefore=0, spaceAfter=10))
+    story.append(Spacer(1, 12))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=PDF_COLOR_BORDER, spaceBefore=0, spaceAfter=8))
     story.append(Paragraph("XÁC NHẬN HIỆN TRƯỜNG", signature_title_style))
     reviewer_name = reviewer.strip() or "........................."
     signature_cell = [
         Paragraph(f"Người kiểm tra: {esc_pdf(reviewer_name)}", signature_label_style),
-        Spacer(1, 20 * mm),
-        Paragraph("(Ký, họ tên)", signature_caption_style),
+        Spacer(1, 18 * mm),
     ]
     signature_table = Table([[signature_cell]], colWidths=[doc.width])
     signature_table.setStyle(TableStyle([
