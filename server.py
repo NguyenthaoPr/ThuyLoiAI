@@ -1501,7 +1501,12 @@ def create_field_report_pdf(
                 skip_intro = False
         cleaned.append(line)
     answer = '\n'.join(cleaned)
+    
+# Xóa ký hiệu Markdown # ở đầu dòng
+    answer = re.sub(r'(?m)^\s*#{1,6}\s*', '', answer)
 
+# Xóa các dòng trống dư thừa
+    answer = re.sub(r'\n{3,}', '\n\n', answer)
     buffer = BytesIO()
     font_regular, font_bold = register_pdf_fonts()
     generated_at = time.strftime("%H:%M %d/%m/%Y")
