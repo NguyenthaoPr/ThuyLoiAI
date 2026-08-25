@@ -1465,7 +1465,13 @@
                 answer
             );
 
-
+            if (preparedImageBlob) {
+                formData.append(
+                    "image",
+                     preparedImageBlob,
+                     preparedImageName || "image.jpg"
+                );
+            }
             const response =
                 await fetch(
                     "/field-report-pdf",
