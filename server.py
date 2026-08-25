@@ -38,8 +38,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as pdfgen_canvas
 
 # ============================================================
-# THỦY LỢI AI - SERVER.PY
-# BẢN NÂNG CẤP HOÀN CHỈNH
+# THỦY LỢI AI - SERVER.PY (BẢN HOÀN CHỈNH)
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,9 +48,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
 
-# ----------------------------
-# BẢO VỆ HỆ THỐNG
-# ----------------------------
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
 REQUEST_TIMEOUT = max(15, int(os.getenv("REQUEST_TIMEOUT", "45")))
 QUEUE_TIMEOUT = max(5, int(os.getenv("QUEUE_TIMEOUT", "20")))
@@ -61,9 +57,6 @@ MAX_UPLOAD_MB = max(1, int(os.getenv("MAX_UPLOAD_MB", "25")))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 UPLOAD_OPERATION_TIMEOUT = max(30, int(os.getenv("UPLOAD_OPERATION_TIMEOUT", "300")))
 
-# ----------------------------
-# CACHE
-# ----------------------------
 CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
@@ -1403,46 +1396,73 @@ def _build_pdf_content_flowables(answer_text, heading_style, subheading_style, b
     if not text:
         flowables.append(Paragraph("Chưa có nội dung báo cáo.", note_style))
         return flowables
+
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    # Gộp dòng heading bị tách ra (vd "## 1\nThông tin chung" -> "## 1 Thông tin chung")
+    text = re.sub(r"(##?\s*\d+\.?\s*)\n\s*([^\n#]+)", r"\1\2", text)
+    # Tách các mục nếu AI viết liền
     text = re.sub(r"\s+(?=\d+[.)]\s+)", "\n", text)
-    text = re.sub(r"\s+(?=#{1,4}\s+)", "\n", text)  # SỬA: hỗ trợ ####
+    text = re.sub(r"\s+(?=#{1,4}\s+)", "\n", text)
+
     text = _strip_duplicate_leading_title(text)
-    lines = [l for l in text.split("\n")]
-    for raw_line in lines:
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        raw_line = lines[i]
         line = raw_line.strip()
         if not line:
             flowables.append(Spacer(1, 4))
+            i += 1
             continue
-        # Heading markdown #, ##, ###, ####
-        m = re.match(r"^#{1,4}\s+(.+)$", line)
-        if m:
-            heading_text = _pdf_inline_markup(m.group(1))
-            style = subheading_style if line.startswith("###") else heading_style
-            flowables.append(Paragraph(heading_text, style))
+
+        # Xử lý heading markdown (#, ##, ###, ####)
+        heading_match = re.match(r"^#{1,4}\s*(.+)$", line)
+        if heading_match:
+            heading_text = heading_match.group(1).strip()
+            # Nếu heading chỉ là số (vd "1", "2."), lấy dòng tiếp theo làm nội dung
+            if re.match(r"^\d+\.?\s*$", heading_text):
+                if i + 1 < len(lines):
+                    next_line = lines[i+1].strip()
+                    if next_line and not re.match(r"^#", next_line):
+                        heading_text = heading_text + " " + next_line
+                        i += 1
+            # Tạo heading
+            style = subheading_style if raw_line.startswith("###") else heading_style
+            flowables.append(Paragraph(_pdf_inline_markup(heading_text), style))
+            i += 1
             continue
-        # Số thứ tự
-        m = re.match(r"^(\d+)[.)]\s+(.+)$", line)
-        if m:
-            number = m.group(1)
-            content = m.group(2).strip()
+
+        # Xử lý số thứ tự: "1. Nội dung", "2) Nội dung"
+        num_match = re.match(r"^(\d+)[.)]\s+(.+)$", line)
+        if num_match:
+            number = num_match.group(1)
+            content = num_match.group(2).strip()
             upper_content = content.upper()
             is_heading = upper_content.startswith(_PDF_HEADING_KEYWORDS) or len(content) <= 60
             if is_heading:
                 flowables.append(Paragraph(f"{number}. {_pdf_inline_markup(content)}", heading_style))
             else:
                 flowables.append(Paragraph(f"<b>{number}.</b> {_pdf_inline_markup(content)}", number_style))
+            i += 1
             continue
+
         # Gạch đầu dòng
-        m = re.match(r"^[-*•]\s+(.+)$", line)
-        if m:
-            flowables.append(Paragraph("•&nbsp;&nbsp;" + _pdf_inline_markup(m.group(1)), bullet_style))
+        bullet_match = re.match(r"^[-*•]\s+(.+)$", line)
+        if bullet_match:
+            flowables.append(Paragraph("•&nbsp;&nbsp;" + _pdf_inline_markup(bullet_match.group(1)), bullet_style))
+            i += 1
             continue
-        # Ghi chú
+
+        # Ghi chú / Lưu ý
         if re.match(r"^(ghi ch[uú]|l[uư]u [yý]|ki[eê]́n ngh[iị]|đ[eê]̀ xu[aâ]́t)\s*:", line, flags=re.IGNORECASE):
             flowables.append(Paragraph(_pdf_inline_markup(line), note_style))
+            i += 1
             continue
-        # Đoạn văn thường
+
+        # Đoạn văn thông thường
         flowables.append(Paragraph(_pdf_inline_markup(line), body_style))
+        i += 1
+
     return flowables
 
 def _pdf_section_header_table(text, doc_width, bg_color):
@@ -1456,15 +1476,15 @@ def _pdf_section_header_table(text, doc_width, bg_color):
     return header_table
 
 # ============================================================
-# CREATE FIELD REPORT PDF (ĐÃ SỬA)
+# CREATE FIELD REPORT PDF
 # ============================================================
 def create_field_report_pdf(
     report_title: str,
     answer: str,
     image_bytes=None,
-    reviewer="",  # ĐÃ THÊM
+    reviewer="",
 ):
-    # ----- Lọc bỏ câu mở đầu của AI (BƯỚC 2) -----
+    # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
     cleaned = []
     skip_intro = True
@@ -1615,7 +1635,7 @@ def create_field_report_pdf(
     ]))
     story.append(KeepTogether(warn_table))
 
-    # CHỮ KÝ - CHỈ CÓ NGƯỂU KIỂM TRA (BƯỚC 4)
+    # CHỮ KÝ - CHỈ CÓ NGƯỜI KIỂM TRA
     story.append(Spacer(1, 18))
     story.append(HRFlowable(width="100%", thickness=0.5, color=PDF_COLOR_BORDER, spaceBefore=0, spaceAfter=10))
     story.append(Paragraph("XÁC NHẬN HIỆN TRƯỜNG", signature_title_style))
@@ -1643,14 +1663,14 @@ def create_field_report_pdf(
     return buffer
 
 # ============================================================
-# ENDPOINT FIELD REPORT PDF (ĐÃ SỬA)
+# ENDPOINT FIELD REPORT PDF
 # ============================================================
 @app.post("/field-report-pdf")
 async def field_report_pdf(
     report_title: str = Form("BÁO CÁO NHANH HIỆN TRƯỜNG"),
     answer: str = Form(""),
     image: UploadFile | None = File(None),
-    reviewer: str = Form(""),  # ĐÃ THÊM
+    reviewer: str = Form(""),
 ):
     if not answer.strip():
         return {"success": False, "error": "Không có nội dung báo cáo để tạo PDF."}
@@ -1663,7 +1683,7 @@ async def field_report_pdf(
             report_title,
             answer,
             image_bytes,
-            reviewer,  # ĐÃ THÊM
+            reviewer,
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
