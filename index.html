@@ -825,7 +825,7 @@
         <!-- ===== KHU VỰC CHỈNH SỬA BÁO CÁO ===== -->
         <div id="reportEditor" hidden style="margin-top: 12px;">
           <label for="reportContent" style="font-weight: 600; font-size: 14px;">📝 Chỉnh sửa nội dung báo cáo</label>
-          <textarea id="reportContent" class="auto-grow" rows="6" placeholder="Bạn có thể chỉnh sửa toàn bộ nội dung dự thảo báo cáo tại đây..."></textarea>
+         <textarea id="reportContent" rows="10" placeholder="Bạn có thể chỉnh sửa toàn bộ nội dung dự thảo báo cáo tại đây..." style="width:100%; height:420px; min-height:300px; max-height:520px; overflow-y:auto; overflow-x:hidden; resize:vertical; box-sizing:border-box; border:1px solid var(--border); border-radius:10px; padding:12px; font-size:14px; line-height:1.6; margin-top:4px;"></textarea>
           <label for="reviewerName" style="font-weight: 600; font-size: 14px; margin-top: 8px; display: block;">👤 Người kiểm tra</label>
           <input id="reviewerName" type="text" placeholder="Nhập họ tên người kiểm tra" style="width:100%; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:14px; margin-top:4px;">
         </div>
@@ -1363,11 +1363,6 @@
 
       function updatePDFButton() {
         const answer = getReportAnswer();
-        const editor = document.getElementById('reportContent');
-        if (editor) {
-            editor.style.height = 'auto';
-            editor.style.height = editor.scrollHeight + 'px';
-      }
         const pdfActions = document.getElementById('pdfActions');
         if (!pdfActions) return;
         pdfActions.hidden = !answer || answer.length < 20;
@@ -1481,24 +1476,6 @@
         if (shareBtn) shareBtn.addEventListener("click", sharePDF);
 
         updatePDFButton();
-
-        const editor = document.getElementById('reportContent');
-
-if (editor) {
-    function autoGrowTextarea(el) {
-        el.style.height = 'auto';
-        el.style.height = el.scrollHeight + 'px';
-    }
-
-    // Tự tăng chiều cao khi người dùng chỉnh sửa
-    editor.addEventListener('input', function () {
-        autoGrowTextarea(this);
-        updatePDFButton();
-    });
-
-    // Tự tăng chiều cao ngay khi dự thảo được nạp
-    autoGrowTextarea(editor);
-}
         const rev = document.getElementById('reviewerName');
         if (rev) rev.addEventListener('input', updatePDFButton);
       });
