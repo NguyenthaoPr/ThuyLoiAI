@@ -7,7 +7,7 @@
   <title>THỦY LỢI AI</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    /* ... CSS giữ nguyên như cũ ... */
+    /* ... CSS giữ nguyên như cũ, không thay đổi ... */
     :root {
       --primary: #2563EB;
       --deep-navy: #0F2742;
@@ -288,7 +288,7 @@
   </main>
 
   <!-- ============================================================ -->
-  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH + QR CODE (CẢI TIẾN)          -->
+  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH + QR + GỬI ẢNH RÕ RÀNG       -->
   <!-- ============================================================ -->
   <script>
     (function() {
@@ -328,7 +328,7 @@
       let isCooldown = false;
       let currentLocation = null;
       let currentAddress = '';
-      let qrAvailable = false; // Trạng thái QR
+      let qrAvailable = false;
 
       // ===== HELPERS =====
       function esc(s) {
@@ -466,7 +466,7 @@
         }
       }
 
-      // ===== TẠO QR CODE TRÊN CANVAS (cải tiến) =====
+      // ===== TẠO QR CODE =====
       function generateQRCanvas(text, size) {
         return new Promise((resolve) => {
           const canvas = document.createElement('canvas');
@@ -481,7 +481,6 @@
               colorLight: '#ffffff',
               correctLevel: QRCode.CorrectLevel.H
             });
-            // Đợi 200ms để đảm bảo QR được vẽ hoàn chỉnh
             setTimeout(() => resolve(canvas), 200);
           } catch (e) {
             console.error('QR generation error:', e);
@@ -490,9 +489,8 @@
         });
       }
 
-      // ===== HÀM ĐÓNG DẤU ẢNH PHONG CÁCH SÁNG ĐẸP + QR =====
+      // ===== HÀM ĐÓNG DẤU ẢNH =====
       async function prepareImageWithStamp(file) {
-        // Đọc ảnh
         const img = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => {
@@ -504,7 +502,6 @@
           reader.readAsDataURL(file);
         });
 
-        // Resize
         let width = img.naturalWidth;
         let height = img.naturalHeight;
         const maxSide = 1600;
@@ -520,7 +517,6 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Lấy vị trí & thời gian
         const location = await getLocation();
         let address = '';
         if (location) {
@@ -541,10 +537,8 @@
         const lat = location ? location.lat : null;
         const lng = location ? location.lng : null;
 
-        // Lưu timestamp cho PDF
         window.captureTimestamp = timeStr + ' ' + dateStr;
 
-        // === PHONG CÁCH SÁNG ===
         const baseFontSize = Math.max(14, Math.min(20, width / 40));
         const lineHeight = baseFontSize * 1.5;
         const paddingX = 20;
@@ -562,7 +556,6 @@
           { text: '© THỦY LỢI AI • Xác thực', size: baseFontSize * 0.75, weight: 'normal', color: '#94A3B8' },
         ];
 
-        // Đo chiều rộng
         let maxLineWidth = 0;
         for (const line of stampLines) {
           ctx.font = `${line.weight} ${line.size}px sans-serif`;
@@ -570,7 +563,6 @@
           if (metrics.width > maxLineWidth) maxLineWidth = metrics.width;
         }
 
-        // Dự trù QR
         const qrSize = (location) ? Math.min(80, width * 0.06) : 0;
         const extraWidth = qrSize + 12;
 
@@ -580,7 +572,6 @@
         const posX = width - boxWidth - 20;
         const posY = height - boxHeight - 20;
 
-        // Nền trắng mờ
         ctx.shadowColor = 'rgba(0,0,0,0.15)';
         ctx.shadowBlur = 20;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
@@ -589,20 +580,17 @@
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Viền
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.roundRect(posX, posY, boxWidth, boxHeight, 12);
         ctx.stroke();
 
-        // Thanh màu xanh
         ctx.fillStyle = '#2563EB';
         ctx.beginPath();
         ctx.roundRect(posX + 6, posY + 8, accentWidth, boxHeight - 16, 6);
         ctx.fill();
 
-        // Vẽ chữ (trừ dòng cuối)
         ctx.textBaseline = 'top';
         let textY = posY + paddingY;
         for (let i = 0; i < stampLines.length - 1; i++) {
@@ -614,14 +602,12 @@
           textY += lineHeight;
         }
 
-        // Dòng cuối: text bên trái, QR bên phải
         const lastLine = stampLines[stampLines.length - 1];
         ctx.font = `${lastLine.weight} ${lastLine.size}px sans-serif`;
         ctx.fillStyle = lastLine.color;
         ctx.textAlign = 'left';
         ctx.fillText(lastLine.text, posX + paddingX + 10, textY);
 
-        // Vẽ QR nếu có GPS
         if (location && qrSize > 0) {
           const qrUrl = `https://www.google.com/maps?q=${lat},${lng}`;
           try {
@@ -630,15 +616,11 @@
               const qrX = posX + boxWidth - qrSize - 12;
               const qrY = posY + boxHeight - qrSize - 12;
               ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
-              console.log('✅ QR đã được vẽ tại', qrX, qrY);
-            } else {
-              console.warn('QR canvas null');
+              console.log('✅ QR đã vẽ');
             }
           } catch (e) {
             console.error('QR draw error:', e);
           }
-        } else {
-          console.warn('⚠️ Không có GPS, bỏ qua QR.');
         }
 
         return new Promise((resolve) => {
@@ -648,7 +630,6 @@
         });
       }
 
-      // Polyfill roundRect
       CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
@@ -702,7 +683,7 @@
         }
       });
 
-      // ===== FIELD REPORT (giữ nguyên nhưng dùng prepareImageWithStamp mới) =====
+      // ===== FIELD REPORT =====
       (function() {
         let selectedReportType = '';
         let fieldReportFile = null;
@@ -758,9 +739,11 @@
           fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy GPS & đóng dấu + QR)...';
           try {
             const result = await prepareImageWithStamp(file);
-            fieldReportFile = new File([result.blob], (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+            // Tạo File object có type
+            const filename = (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+            fieldReportFile = new File([result.blob], filename, { type: 'image/jpeg' });
             window.preparedImageBlob = result.blob;
-            window.preparedImageName = (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+            window.preparedImageName = filename;
             const url = URL.createObjectURL(result.blob);
             const sizeKB = Math.round(result.blob.size / 1024);
             fieldReportPreview.innerHTML =
@@ -989,7 +972,7 @@
     })();
   </script>
 
-  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI CAPTURE_TIMESTAMP VÀ ẢNH ===== -->
+  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI ẢNH DẠNG FILE CÓ TYPE ===== -->
   <script>
     (function() {
       "use strict";
@@ -1044,17 +1027,22 @@
           const reviewer = getReviewer();
           if (reviewer) formData.append("reviewer", reviewer);
 
-          // Gửi thời gian chụp ảnh
           if (window.captureTimestamp) {
             formData.append("capture_time", window.captureTimestamp);
           }
 
-          // Gửi ảnh đã đóng dấu
+          // Gửi ảnh dưới dạng File với type rõ ràng
           if (window.preparedImageBlob) {
-            formData.append("image", window.preparedImageBlob, window.preparedImageName || "image.jpg");
-            console.log('📤 Gửi ảnh đã đóng dấu kích thước:', window.preparedImageBlob.size);
+            const filename = window.preparedImageName || "image.jpg";
+            const file = new File([window.preparedImageBlob], filename, { type: 'image/jpeg' });
+            formData.append("image", file);
+            console.log('📤 Gửi ảnh kích thước:', file.size, 'tên:', filename);
           } else {
             console.warn('⚠️ Không có ảnh để gửi.');
+            // Có thể thông báo cho người dùng biết
+            status.innerText = "⚠️ Không có ảnh để đưa vào PDF. Vui lòng chọn ảnh trước.";
+            button.disabled = false;
+            return;
           }
 
           const response = await fetch("/field-report-pdf", {
