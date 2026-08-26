@@ -1474,13 +1474,14 @@ def _pdf_section_header_table(text, doc_width, bg_color):
     return header_table
 
 # ============================================================
-# CREATE FIELD REPORT PDF
+# CREATE FIELD REPORT PDF (đã sửa để nhận capture_time)
 # ============================================================
 def create_field_report_pdf(
     report_title: str,
     answer: str,
     image_bytes=None,
     reviewer="",
+    capture_time=None,  # Thêm tham số
 ):
     # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
@@ -1502,14 +1503,15 @@ def create_field_report_pdf(
         cleaned.append(line)
     answer = '\n'.join(cleaned)
     
-# Xóa ký hiệu Markdown # ở đầu dòng
+    # Xóa ký hiệu Markdown # ở đầu dòng
     answer = re.sub(r'(?m)^\s*#{1,6}\s*', '', answer)
 
-# Xóa các dòng trống dư thừa
+    # Xóa các dòng trống dư thừa
     answer = re.sub(r'\n{3,}', '\n\n', answer)
     buffer = BytesIO()
     font_regular, font_bold = register_pdf_fonts()
-    generated_at = time.strftime("%H:%M %d/%m/%Y")
+    # Sử dụng capture_time nếu có, nếu không thì lấy thời gian hiện tại
+    generated_at = capture_time or time.strftime("%H:%M %d/%m/%Y")
     report_title = (report_title or PDF_DOC_LABEL).strip()
 
     doc = BaseDocTemplate(
@@ -1572,18 +1574,22 @@ def create_field_report_pdf(
     story.append(KeepTogether(meta_table))
     story.append(Spacer(1, 6))
 
-    # ẢNH
+    # ẢNH – Xử lý cẩn thận và log lỗi
     if image_bytes:
         try:
             from reportlab.platypus import Image as RLImage
+            # Kiểm tra kích thước ảnh trước khi chèn
             img_stream = BytesIO(image_bytes)
             pil_img = Image.open(img_stream)
             img_width, img_height = pil_img.size
+            print(f"📸 Chèn ảnh vào PDF: {img_width}x{img_height}, {len(image_bytes)} bytes")
+
             max_width = doc.width
             max_height = 90 * mm
             scale = min(max_width / img_width, max_height / img_height, 1.0)
             display_width = img_width * scale
             display_height = img_height * scale
+
             story.append(Spacer(1, 6))
             story.append(Paragraph("ẢNH HIỆN TRƯỜNG", subheading_style))
             story.append(Spacer(1, 4))
@@ -1591,8 +1597,13 @@ def create_field_report_pdf(
             field_image.hAlign = "CENTER"
             story.append(field_image)
             story.append(Spacer(1, 8))
+            print("✅ Ảnh đã được chèn thành công.")
         except Exception as image_error:
-            print("FIELD REPORT IMAGE ERROR:", repr(image_error))
+            print("❌ FIELD REPORT IMAGE ERROR:", repr(image_error))
+            # Vẫn tiếp tục tạo PDF mà không có ảnh
+    else:
+        print("⚠️ Không có ảnh để chèn vào PDF.")
+
     story.append(Spacer(1, 4))
 
     # NỘI DUNG BÁO CÁO
@@ -1665,7 +1676,7 @@ def create_field_report_pdf(
     return buffer
 
 # ============================================================
-# ENDPOINT FIELD REPORT PDF
+# ENDPOINT FIELD REPORT PDF (đã sửa để nhận capture_time)
 # ============================================================
 @app.post("/field-report-pdf")
 async def field_report_pdf(
@@ -1673,12 +1684,16 @@ async def field_report_pdf(
     answer: str = Form(""),
     image: UploadFile | None = File(None),
     reviewer: str = Form(""),
+    capture_time: str = Form(None),  # Thêm tham số
 ):
     if not answer.strip():
         return {"success": False, "error": "Không có nội dung báo cáo để tạo PDF."}
     image_bytes = None
     if image:
         image_bytes = await image.read()
+        print(f"📸 Nhận ảnh từ client: {image.filename}, kích thước: {len(image_bytes)} bytes")
+    else:
+        print("⚠️ Không nhận được ảnh từ client.")
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
@@ -1686,6 +1701,7 @@ async def field_report_pdf(
             answer,
             image_bytes,
             reviewer,
+            capture_time,  # Truyền tham số
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
@@ -1694,7 +1710,7 @@ async def field_report_pdf(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     except Exception as e:
-        print("FIELD REPORT PDF ERROR:", repr(e))
+        print("❌ FIELD REPORT PDF ERROR:", repr(e))
         return {"success": False, "error": str(e)}
 
 # ============================================================
