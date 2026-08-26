@@ -1334,7 +1334,109 @@ async def kml_diagnostic():
         raise HTTPException(
             status_code=500,
             detail=f"Lỗi kiểm tra KML/KMZ: {str(e)}"
-        )       
+        ) 
+   # ============================================================
+# KML GIS INDEX - BƯỚC THỬ NGHIỆM
+# Chỉ tạo Index trong RAM, chưa lưu hệ thống
+# Không thay đổi parser KML/KMZ hiện tại
+# ============================================================
+
+@app.get("/kml-index-preview")
+async def kml_index_preview():
+    """
+    Tạo GIS Index thử nghiệm từ file KML/KMZ hiện tại.
+
+    Mục đích:
+    - Tạo ID nội bộ cho từng đối tượng
+    - Giữ nguyên tên
+    - Giữ nguyên Folder path
+    - Chuẩn hóa latitude / longitude
+    - Không ghi đè dữ liệu KML/KMZ hiện tại
+    - Không thay đổi parser hiện tại
+    """
+
+    files = sorted(
+        KML_DATA_DIR.glob("*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    kml_files = [
+        p for p in files
+        if p.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not kml_files:
+        return {
+            "success": False,
+            "message": "Chưa có file KML/KMZ trong hệ thống."
+        }
+
+    file_path = kml_files[0]
+
+    try:
+        diagnostic = inspect_kml_structure(
+            file_path,
+            sample_limit=100
+        )
+
+        if not diagnostic.get("success"):
+            return diagnostic
+
+        gis_index = []
+
+        for index, item in enumerate(
+            diagnostic.get("object_samples", []),
+            start=1
+        ):
+
+            coordinate = item.get("first_coordinate")
+
+            latitude = None
+            longitude = None
+            altitude = None
+
+            if coordinate:
+                latitude = coordinate.get("lat")
+                longitude = coordinate.get("lng")
+                altitude = coordinate.get("alt")
+
+            gis_index.append({
+                "id": f"GIS-{index:06d}",
+                "name": item.get("name", ""),
+                "geometry_type": item.get("geometry_type"),
+                "folder_path": item.get("folder_path", []),
+                "coordinate_count": item.get(
+                    "coordinate_count",
+                    0
+                ),
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude
+            })
+
+        return {
+            "success": True,
+            "file": file_path.name,
+            "index_count": len(gis_index),
+            "samples": gis_index[:20],
+            "message": (
+                "Đã tạo GIS Index thử nghiệm trong RAM. "
+                "Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+
+        print(
+            "[KML INDEX PREVIEW ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi tạo GIS Index thử nghiệm: {str(e)}"
+        )     
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
