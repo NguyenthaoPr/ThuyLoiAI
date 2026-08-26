@@ -1991,6 +1991,29 @@ async def kml_gps_test(
         results.sort(
             key=lambda x: x["distance_m"]
         )
+                # ============================================================
+        # ĐÁNH GIÁ KHOẢNG CÁCH GPS ĐẾN TUYẾN
+        # ============================================================
+
+        for item in results:
+            distance = item.get("distance_m", 999999)
+
+            if distance <= 20:
+                item["status"] = "RẤT GẦN"
+                item["status_code"] = "GREEN"
+                item["assessment"] = "Có thể xác nhận vị trí trên tuyến."
+            elif distance <= 50:
+                item["status"] = "GẦN"
+                item["status_code"] = "YELLOW"
+                item["assessment"] = "Gần tuyến, cần kiểm tra thực tế."
+            elif distance <= 100:
+                item["status"] = "XA"
+                item["status_code"] = "ORANGE"
+                item["assessment"] = "Khoảng cách lớn, cần kiểm tra lại GPS."
+            else:
+                item["status"] = "NGOÀI PHẠM VI"
+                item["status_code"] = "RED"
+                item["assessment"] = "Không đủ cơ sở xác nhận vị trí trên tuyến."
 
         return {
             "success": True,
