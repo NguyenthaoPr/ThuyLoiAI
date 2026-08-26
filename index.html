@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
   <style>
+    /* ... toàn bộ CSS giữ nguyên như cũ ... */
     :root {
       --primary: #2563EB;
       --deep-navy: #0F2742;
@@ -286,7 +287,7 @@
   </main>
 
   <!-- ============================================================ -->
-  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH + CAPTURE TIMESTAMP             -->
+  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH PHONG CÁCH SÁNG ĐẸP            -->
   <!-- ============================================================ -->
   <script>
     (function() {
@@ -463,7 +464,7 @@
         }
       }
 
-      // ===== HÀM ĐÓNG DẤU ẢNH PHONG CÁCH TIMEMARK =====
+      // ===== HÀM ĐÓNG DẤU ẢNH PHONG CÁCH SÁNG ĐẸP =====
       async function prepareImageWithStamp(file) {
         // Đọc ảnh
         const img = await new Promise((resolve, reject) => {
@@ -515,23 +516,23 @@
         // Lưu timestamp để dùng khi xuất PDF
         window.captureTimestamp = timeStr + ' ' + dateStr; // VD: "14:35 26/08/2026"
 
-        // Cấu hình font & khoảng cách
+        // === PHONG CÁCH MỚI: SÁNG, DỄ ĐỌC ===
         const baseFontSize = Math.max(14, Math.min(20, width / 40));
         const lineHeight = baseFontSize * 1.5;
         const paddingX = 20;
         const paddingY = 16;
         const accentWidth = 6;
 
-        // Các dòng thông tin (8 dòng giống ảnh mẫu)
+        // Các dòng thông tin (8 dòng, giữ nguyên nội dung)
         const stampLines = [
-          { text: '📍 THỦY LỢI AI • 100% Chân thực', size: baseFontSize * 1.1, weight: 'bold', color: '#FFFFFF' },
-          { text: timeStr, size: baseFontSize, weight: 'bold', color: '#FFFFFF' },
-          { text: dateStr, size: baseFontSize, weight: 'bold', color: '#FFFFFF' },
-          { text: dayOfWeek, size: baseFontSize * 0.9, weight: 'normal', color: '#DDDDDD' },
-          { text: address || 'Đang cập nhật địa điểm', size: baseFontSize * 0.9, weight: 'normal', color: '#FFFFFF' },
-          { text: 'THỦY LỢI AI', size: baseFontSize * 0.9, weight: 'bold', color: '#FFFFFF' },
-          { text: (lat && lng) ? `Tọa độ: ${lat.toFixed(6)}°N, ${lng.toFixed(6)}°E` : 'Tọa độ: Chưa xác định', size: baseFontSize * 0.85, weight: 'normal', color: '#BBBBBB' },
-          { text: '© THỦY LỢI AI • Xác thực hiện trường', size: baseFontSize * 0.75, weight: 'normal', color: '#888888' },
+          { text: '📍 THỦY LỢI AI • 100% Chân thực', size: baseFontSize * 1.1, weight: 'bold', color: '#0F2742' },
+          { text: timeStr, size: baseFontSize, weight: 'bold', color: '#1E293B' },
+          { text: dateStr, size: baseFontSize, weight: 'bold', color: '#1E293B' },
+          { text: dayOfWeek, size: baseFontSize * 0.9, weight: 'normal', color: '#475569' },
+          { text: address || 'Đang cập nhật địa điểm', size: baseFontSize * 0.9, weight: 'normal', color: '#1E293B' },
+          { text: 'THỦY LỢI AI', size: baseFontSize * 0.9, weight: 'bold', color: '#0F2742' },
+          { text: (lat && lng) ? `Tọa độ: ${lat.toFixed(6)}°N, ${lng.toFixed(6)}°E` : 'Tọa độ: Chưa xác định', size: baseFontSize * 0.85, weight: 'normal', color: '#64748B' },
+          { text: '© THỦY LỢI AI • Xác thực hiện trường', size: baseFontSize * 0.75, weight: 'normal', color: '#94A3B8' },
         ];
 
         // Đo chiều rộng tối đa
@@ -549,26 +550,26 @@
         const posX = width - boxWidth - 20;
         const posY = height - boxHeight - 20;
 
-        // Vẽ nền đen mờ + bo góc
-        ctx.shadowColor = 'rgba(0,0,0,0.4)';
-        ctx.shadowBlur = 15;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        // Vẽ nền trắng mờ (trong suốt 90%)
+        ctx.shadowColor = 'rgba(0,0,0,0.15)';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
         ctx.beginPath();
-        ctx.roundRect(posX, posY, boxWidth, boxHeight, 10);
+        ctx.roundRect(posX, posY, boxWidth, boxHeight, 12);
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Vẽ viền trắng mờ
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx.lineWidth = 1;
+        // Viền mảnh sáng
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.roundRect(posX, posY, boxWidth, boxHeight, 10);
+        ctx.roundRect(posX, posY, boxWidth, boxHeight, 12);
         ctx.stroke();
 
-        // Vẽ thanh màu xanh dương bên trái (accent)
-        ctx.fillStyle = '#00BCD4';
+        // Thanh màu xanh dương đậm bên trái (accent)
+        ctx.fillStyle = '#2563EB';
         ctx.beginPath();
-        ctx.roundRect(posX + 4, posY + 6, accentWidth, boxHeight - 12, 4);
+        ctx.roundRect(posX + 6, posY + 8, accentWidth, boxHeight - 16, 6);
         ctx.fill();
 
         // Vẽ từng dòng chữ
@@ -578,7 +579,7 @@
           ctx.font = `${line.weight} ${line.size}px sans-serif`;
           ctx.fillStyle = line.color;
           ctx.textAlign = 'left';
-          ctx.fillText(line.text, posX + paddingX + 8, textY);
+          ctx.fillText(line.text, posX + paddingX + 10, textY);
           textY += lineHeight;
         }
 
@@ -616,7 +617,7 @@
         const file = imageInput.files?.[0];
         if (!file) return;
         imagePreview.hidden = false;
-        imagePreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy vị trí & đóng dấu Timemark)...';
+        imagePreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy vị trí & đóng dấu)...';
         window.preparedImageBlob = null;
         try {
           const result = await prepareImageWithStamp(file);
@@ -628,7 +629,7 @@
           const thumbUrl = URL.createObjectURL(result.blob);
           imagePreview.innerHTML =
             '<img class="thumb" src="' + thumbUrl + '" alt="Ảnh đã đóng dấu">' +
-            '<strong>✅ Ảnh xác thực hiện trường (Timemark)</strong><br>' +
+            '<strong>✅ Ảnh xác thực hiện trường</strong><br>' +
             'JPEG · ' + result.w + '×' + result.h +
             ' · ' + sizeKB + ' KB' +
             ' · gốc ' + originalKB + ' KB' +
@@ -696,7 +697,7 @@
           if (!file) return;
           fieldReportFile = null;
           fieldReportPreview.hidden = false;
-          fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy vị trí & đóng dấu Timemark)...';
+          fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy vị trí & đóng dấu)...';
           try {
             const result = await prepareImageWithStamp(file);
             fieldReportFile = new File([result.blob], (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
@@ -707,7 +708,7 @@
             fieldReportPreview.innerHTML =
               '<div class="field-report-preview-inner">' +
               '<img src="' + url + '" class="thumb" alt="Ảnh hiện trường">' +
-              '<div><strong>✅ Ảnh xác thực hiện trường (Timemark)</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB + ' KB<br>' +
+              '<div><strong>✅ Ảnh xác thực hiện trường</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB + ' KB<br>' +
               '🕐 ' + new Date().toLocaleString('vi-VN') +
               (currentLocation ? ' · 📍 ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6) : '') +
               (currentAddress ? ' · 📌 ' + currentAddress.substring(0, 60) : '') +
