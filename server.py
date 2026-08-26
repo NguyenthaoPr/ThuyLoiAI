@@ -1109,6 +1109,232 @@ async def kml_upload(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Không thể nạp KML/KMZ: {str(e)}"
         )
+ # ============================================================
+# KML / KMZ DIAGNOSTIC - KIỂM TRA CẤU TRÚC ĐỘC LẬP
+# Không thay đổi parser KML/KMZ hiện tại
+# ============================================================
+
+def inspect_kml_structure(file_path, sample_limit=20):
+    """
+    Kiểm tra độc lập cấu trúc KML/KMZ.
+
+    Mục đích:
+    - Xác định Folder
+    - Xác định đường dẫn Folder cha/con
+    - Đếm Placemark
+    - Đếm Point / LineString / Polygon
+    - Kiểm tra tên đối tượng
+    - Kiểm tra tọa độ
+
+    Không thay đổi dữ liệu của parser hiện tại.
+    """
+
+    file_path = Path(file_path)
+
+    if file_path.suffix.lower() == ".kml":
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+
+    elif file_path.suffix.lower() == ".kmz":
+        with zipfile.ZipFile(file_path, "r") as archive:
+            kml_names = [
+                name for name in archive.namelist()
+                if name.lower().endswith(".kml")
+            ]
+
+            if not kml_names:
+                raise ValueError("KMZ không chứa file KML.")
+
+            kml_data = archive.read(kml_names[0])
+            root = ET.fromstring(kml_data)
+
+    else:
+        raise ValueError("Chỉ hỗ trợ KML hoặc KMZ.")
+
+    namespace = {
+        "kml": "http://www.opengis.net/kml/2.2"
+    }
+
+    stats = {
+        "folders": 0,
+        "placemarks": 0,
+        "points": 0,
+        "linestrings": 0,
+        "polygons": 0,
+        "coordinates": 0,
+        "named_placemarks": 0,
+        "unnamed_placemarks": 0
+    }
+
+    folder_samples = []
+    object_samples = []
+
+    def read_coordinates(element):
+        if element is None:
+            return []
+
+        return parse_kml_coordinates(element.text)
+
+    def process_element(element, folder_path):
+        tag = element.tag.split("}")[-1]
+
+        if tag == "Folder":
+
+            name_element = element.find("kml:name", namespace)
+
+            folder_name = (
+                name_element.text.strip()
+                if name_element is not None and name_element.text
+                else ""
+            )
+
+            stats["folders"] += 1
+
+            new_path = list(folder_path)
+
+            if folder_name:
+                new_path.append(folder_name)
+
+                if len(folder_samples) < sample_limit:
+                    folder_samples.append({
+                        "name": folder_name,
+                        "path": new_path
+                    })
+
+            for child in list(element):
+                process_element(child, new_path)
+
+        elif tag == "Placemark":
+
+            stats["placemarks"] += 1
+
+            name_element = element.find("kml:name", namespace)
+
+            name = (
+                name_element.text.strip()
+                if name_element is not None and name_element.text
+                else ""
+            )
+
+            if name:
+                stats["named_placemarks"] += 1
+            else:
+                stats["unnamed_placemarks"] += 1
+
+            geometry_type = None
+            coordinates = []
+
+            point = element.find(
+                ".//kml:Point/kml:coordinates",
+                namespace
+            )
+
+            line = element.find(
+                ".//kml:LineString/kml:coordinates",
+                namespace
+            )
+
+            polygon = element.find(
+                ".//kml:Polygon//kml:coordinates",
+                namespace
+            )
+
+            if point is not None:
+                geometry_type = "Point"
+                coordinates = read_coordinates(point)
+
+                stats["points"] += 1
+
+            elif line is not None:
+                geometry_type = "LineString"
+                coordinates = read_coordinates(line)
+
+                stats["linestrings"] += 1
+
+            elif polygon is not None:
+                geometry_type = "Polygon"
+                coordinates = read_coordinates(polygon)
+
+                stats["polygons"] += 1
+
+            stats["coordinates"] += len(coordinates)
+
+            if len(object_samples) < sample_limit:
+                object_samples.append({
+                    "name": name,
+                    "geometry_type": geometry_type,
+                    "folder_path": folder_path,
+                    "coordinate_count": len(coordinates),
+                    "first_coordinate": (
+                        coordinates[0]
+                        if coordinates
+                        else None
+                    )
+                })
+
+        else:
+
+            for child in list(element):
+                process_element(child, folder_path)
+
+    process_element(root, [])
+
+    return {
+        "success": True,
+        "file": file_path.name,
+        "stats": stats,
+        "folder_samples": folder_samples,
+        "object_samples": object_samples
+    }
+
+
+@app.get("/kml-diagnostic")
+async def kml_diagnostic():
+    """
+    API chẩn đoán độc lập cấu trúc KML/KMZ.
+
+    Không thay đổi dữ liệu hệ thống hiện tại.
+    """
+
+    files = sorted(
+        KML_DATA_DIR.glob("*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    kml_files = [
+        p for p in files
+        if p.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not kml_files:
+        return {
+            "success": False,
+            "message": "Chưa có file KML/KMZ trong hệ thống."
+        }
+
+    file_path = kml_files[0]
+
+    try:
+        result = inspect_kml_structure(file_path)
+
+        result["message"] = (
+            "Đã kiểm tra cấu trúc KML/KMZ độc lập."
+        )
+
+        return result
+
+    except Exception as e:
+
+        print(
+            "[KML DIAGNOSTIC ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi kiểm tra KML/KMZ: {str(e)}"
+        )       
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
