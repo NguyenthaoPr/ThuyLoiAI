@@ -1438,6 +1438,190 @@ async def kml_index_preview():
             detail=f"Lỗi tạo GIS Index thử nghiệm: {str(e)}"
         )     
 # ============================================================
+# KML GIS INDEX - BUILD TOÀN BỘ
+# BƯỚC 3C - CHỈ KIỂM TRA, CHƯA GHI ĐÈ DỮ LIỆU CŨ
+# ============================================================
+
+@app.get("/kml-index-build")
+async def kml_index_build():
+    """
+    Xây GIS Index đầy đủ từ dữ liệu KML/KMZ hiện tại.
+
+    Nguyên tắc:
+    - Không thay đổi parser hiện tại.
+    - Không thay đổi dữ liệu KML/KMZ gốc.
+    - Không thay đổi hệ thống AI hiện tại.
+    - Chỉ đọc và chuẩn hóa dữ liệu GIS trong RAM.
+    """
+
+    files = sorted(
+        KML_DATA_DIR.glob("*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    kml_files = [
+        p for p in files
+        if p.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not kml_files:
+        return {
+            "success": False,
+            "message": "Chưa có file KML/KMZ trong hệ thống."
+        }
+
+    file_path = kml_files[0]
+
+    try:
+        # =====================================================
+        # ĐỌC TOÀN BỘ BẰNG PARSER HIỆN TẠI
+        # =====================================================
+
+        kml_items = parse_kml_kmz(file_path)
+
+        if not kml_items:
+            return {
+                "success": False,
+                "message": "Không đọc được đối tượng từ KML/KMZ."
+            }
+
+        # =====================================================
+        # THỐNG KÊ
+        # =====================================================
+
+        total_coordinates = sum(
+            len(item.get("coordinates", []))
+            for item in kml_items
+        )
+
+        point_count = sum(
+            1
+            for item in kml_items
+            if item.get("geometry_type") == "Point"
+        )
+
+        linestring_count = sum(
+            1
+            for item in kml_items
+            if item.get("geometry_type") == "LineString"
+        )
+
+        polygon_count = sum(
+            1
+            for item in kml_items
+            if item.get("geometry_type") == "Polygon"
+        )
+
+        named_count = sum(
+            1
+            for item in kml_items
+            if str(item.get("name", "")).strip()
+        )
+
+        unnamed_count = len(kml_items) - named_count
+
+        # =====================================================
+        # TẠO GIS INDEX TRONG RAM
+        # =====================================================
+
+        gis_index = []
+
+        for index, item in enumerate(kml_items, start=1):
+
+            coordinates = item.get("coordinates", [])
+
+            first_coordinate = (
+                coordinates[0]
+                if coordinates
+                else None
+            )
+
+            latitude = None
+            longitude = None
+            altitude = None
+
+            if first_coordinate:
+
+                if isinstance(first_coordinate, dict):
+
+                    latitude = first_coordinate.get("lat")
+                    longitude = first_coordinate.get("lng")
+                    altitude = first_coordinate.get("alt")
+
+                elif isinstance(first_coordinate, (list, tuple)):
+
+                    if len(first_coordinate) >= 2:
+                        longitude = first_coordinate[0]
+                        latitude = first_coordinate[1]
+
+                    if len(first_coordinate) >= 3:
+                        altitude = first_coordinate[2]
+
+            gis_index.append({
+                "id": f"GIS-{index:06d}",
+                "name": item.get("name", ""),
+                "description": item.get("description", ""),
+                "geometry_type": item.get("geometry_type"),
+                "coordinate_count": len(coordinates),
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude
+            })
+
+        # =====================================================
+        # KIỂM TRA TOÀN BỘ INDEX
+        # =====================================================
+
+        invalid_index = [
+            item
+            for item in gis_index
+            if item.get("latitude") is None
+            or item.get("longitude") is None
+        ]
+
+        return {
+            "success": True,
+            "file": file_path.name,
+
+            "source": {
+                "objects": len(kml_items),
+                "coordinates": total_coordinates,
+                "points": point_count,
+                "linestrings": linestring_count,
+                "polygons": polygon_count,
+                "named": named_count,
+                "unnamed": unnamed_count
+            },
+
+            "gis_index": {
+                "count": len(gis_index),
+                "valid_coordinates": (
+                    len(gis_index) - len(invalid_index)
+                ),
+                "invalid_coordinates": len(invalid_index)
+            },
+
+            "samples": gis_index[:20],
+
+            "message": (
+                "Đã xây dựng GIS Index toàn bộ trong RAM. "
+                "Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+
+        print(
+            "[KML GIS INDEX BUILD ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi xây dựng GIS Index: {str(e)}"
+        )
+# ============================================================
 # IMAGE UPLOAD
 # ============================================================
 @app.post("/image-upload")
