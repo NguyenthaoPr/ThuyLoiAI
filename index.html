@@ -739,7 +739,6 @@
           fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy GPS & đóng dấu + QR)...';
           try {
             const result = await prepareImageWithStamp(file);
-            // Tạo File object có type
             const filename = (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg';
             fieldReportFile = new File([result.blob], filename, { type: 'image/jpeg' });
             window.preparedImageBlob = result.blob;
@@ -972,7 +971,7 @@
     })();
   </script>
 
-  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI ẢNH DẠNG FILE CÓ TYPE ===== -->
+  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI ẢNH RÕ RÀNG VÀ LOG ===== -->
   <script>
     (function() {
       "use strict";
@@ -1015,6 +1014,12 @@
           return;
         }
 
+        // Kiểm tra ảnh
+        if (!window.preparedImageBlob) {
+          alert("⚠️ Chưa có ảnh hiện trường. Vui lòng chụp hoặc tải ảnh trước khi xuất PDF.");
+          return;
+        }
+
         button.disabled = true;
         status.hidden = false;
         result.hidden = true;
@@ -1031,19 +1036,15 @@
             formData.append("capture_time", window.captureTimestamp);
           }
 
-          // Gửi ảnh dưới dạng File với type rõ ràng
-          if (window.preparedImageBlob) {
-            const filename = window.preparedImageName || "image.jpg";
-            const file = new File([window.preparedImageBlob], filename, { type: 'image/jpeg' });
-            formData.append("image", file);
-            console.log('📤 Gửi ảnh kích thước:', file.size, 'tên:', filename);
-          } else {
-            console.warn('⚠️ Không có ảnh để gửi.');
-            // Có thể thông báo cho người dùng biết
-            status.innerText = "⚠️ Không có ảnh để đưa vào PDF. Vui lòng chọn ảnh trước.";
-            button.disabled = false;
-            return;
-          }
+          // Tạo File object với type rõ ràng
+          const filename = window.preparedImageName || "image.jpg";
+          const file = new File([window.preparedImageBlob], filename, { type: 'image/jpeg' });
+          formData.append("image", file);
+          console.log('📤 Gửi ảnh lên server:', {
+            name: file.name,
+            size: file.size + ' bytes',
+            type: file.type
+          });
 
           const response = await fetch("/field-report-pdf", {
             method: "POST",
@@ -1051,15 +1052,23 @@
           });
 
           if (!response.ok) throw new Error("Máy chủ không tạo được PDF.");
+
           const blob = await response.blob();
           if (!blob || blob.size === 0) throw new Error("File PDF rỗng.");
 
+          // Lưu blob và tạo URL
           if (pdfUrl) URL.revokeObjectURL(pdfUrl);
           pdfBlob = blob;
           pdfUrl = URL.createObjectURL(blob);
 
           status.innerText = "✅ PDF đã sẵn sàng.";
           result.hidden = false;
+
+          // Kiểm tra nếu dung lượng PDF quá nhỏ so với ảnh (có thể server đã bỏ ảnh)
+          if (blob.size < 10000 && window.preparedImageBlob.size > 50000) {
+            status.innerText = "⚠️ PDF có dung lượng nhỏ. Có thể ảnh không được chèn. Hãy kiểm tra server log.";
+          }
+
         } catch (error) {
           console.error("PDF ERROR:", error);
           status.innerText = "❌ Không thể tạo PDF. Vui lòng thử lại.";
@@ -1070,27 +1079,14 @@
 
       function openPDF() {
         if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF."); return; }
-        const newWindow = window.open(pdfUrl, "_blank");
-        if (!newWindow) window.location.href = pdfUrl;
+        window.open(pdfUrl, "_blank");
       }
 
       async function downloadPDF() {
-        if (!pdfBlob) { alert("Chưa có file PDF."); return; }
-        const fileName = "bao-cao-hien-truong.pdf";
-        try {
-          const file = new File([pdfBlob], fileName, { type: "application/pdf" });
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              title: "Báo cáo nhanh hiện trường",
-              text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-              files: [file]
-            });
-            return;
-          }
-        } catch (e) { if (e.name === "AbortError") return; }
+        if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF."); return; }
         const link = document.createElement("a");
         link.href = pdfUrl;
-        link.download = fileName;
+        link.download = "bao-cao-hien-truong.pdf";
         link.style.display = "none";
         document.body.appendChild(link);
         link.click();
@@ -1099,9 +1095,9 @@
 
       async function sharePDF() {
         if (!pdfBlob) { alert("Chưa có file PDF."); return; }
-        const file = new File([pdfBlob], "bao-cao-hien-truong.pdf", { type: "application/pdf" });
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        if (navigator.share && navigator.canShare) {
           try {
+            const file = new File([pdfBlob], "bao-cao-hien-truong.pdf", { type: "application/pdf" });
             await navigator.share({
               title: "Báo cáo nhanh hiện trường",
               text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
@@ -1110,7 +1106,7 @@
             return;
           } catch (e) { if (e.name === "AbortError") return; }
         }
-        alert("Thiết bị chưa hỗ trợ chia sẻ file PDF. Chuyển sang lưu PDF.");
+        alert("Chia sẻ không khả dụng. Bạn có thể tải file về.");
         downloadPDF();
       }
 
