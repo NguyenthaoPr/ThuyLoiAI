@@ -10,6 +10,8 @@ from PIL import Image, ImageOps
 from io import BytesIO
 from collections import OrderedDict
 from pathlib import Path
+import zipfile
+import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from functools import partial
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -39,6 +41,143 @@ from reportlab.pdfgen import canvas as pdfgen_canvas
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
+# ===== HỆ THỐNG BẢN ĐỒ KÊNH MƯƠNG KML/KMZ =====
+
+KML_DATA_DIR = BASE_DIR / "kml_data"
+KML_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def parse_kml_coordinates(text):
+    """Đọc chuỗi tọa độ KML theo dạng longitude,latitude,altitude."""
+    coordinates = []
+
+    if not text:
+        return coordinates
+
+    for item in text.strip().split():
+        parts = item.split(",")
+
+        if len(parts) >= 2:
+            try:
+                longitude = float(parts[0])
+                latitude = float(parts[1])
+                altitude = float(parts[2]) if len(parts) >= 3 else 0.0
+
+                coordinates.append({
+                    "lat": latitude,
+                    "lng": longitude,
+                    "alt": altitude
+                })
+            except (ValueError, TypeError):
+                continue
+
+    return coordinates
+
+
+def parse_kml_kmz(file_path):
+    """
+    Đọc KML hoặc KMZ và trích xuất:
+    - tên tuyến/đối tượng
+    - mô tả
+    - tọa độ
+    - loại hình học
+    """
+
+    file_path = Path(file_path)
+
+    try:
+        # ----- KML -----
+        if file_path.suffix.lower() == ".kml":
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+
+        # ----- KMZ -----
+        elif file_path.suffix.lower() == ".kmz":
+            with zipfile.ZipFile(file_path, "r") as archive:
+                kml_names = [
+                    name for name in archive.namelist()
+                    if name.lower().endswith(".kml")
+                ]
+
+                if not kml_names:
+                    return []
+
+                kml_data = archive.read(kml_names[0])
+                root = ET.fromstring(kml_data)
+
+        else:
+            return []
+
+        # KML thường sử dụng namespace
+        namespace = {
+            "kml": "http://www.opengis.net/kml/2.2"
+        }
+
+        results = []
+
+        for placemark in root.findall(".//kml:Placemark", namespace):
+
+            name_element = placemark.find("kml:name", namespace)
+            description_element = placemark.find(
+                "kml:description",
+                namespace
+            )
+
+            name = (
+                name_element.text.strip()
+                if name_element is not None and name_element.text
+                else ""
+            )
+
+            description = (
+                description_element.text.strip()
+                if description_element is not None and description_element.text
+                else ""
+            )
+
+            # ----- Point -----
+            point = placemark.find(".//kml:Point/kml:coordinates", namespace)
+
+            # ----- LineString -----
+            line = placemark.find(
+                ".//kml:LineString/kml:coordinates",
+                namespace
+            )
+
+            # ----- Polygon -----
+            polygon = placemark.find(
+                ".//kml:Polygon//kml:coordinates",
+                namespace
+            )
+
+            geometry_type = None
+            coordinates = []
+
+            if point is not None:
+                geometry_type = "Point"
+                coordinates = parse_kml_coordinates(point.text)
+
+            elif line is not None:
+                geometry_type = "LineString"
+                coordinates = parse_kml_coordinates(line.text)
+
+            elif polygon is not None:
+                geometry_type = "Polygon"
+                coordinates = parse_kml_coordinates(polygon.text)
+
+            if coordinates:
+                results.append({
+                    "name": name,
+                    "description": description,
+                    "geometry_type": geometry_type,
+                    "coordinates": coordinates
+                })
+
+        return results
+
+    except Exception as e:
+        print(f"[KML] Lỗi đọc {file_path}: {e}")
+        return []
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
@@ -904,7 +1043,72 @@ async def upload_file(file: UploadFile = File(...)):
             await file.close()
         except Exception:
             pass
+# ============================================================
+# KML / KMZ UPLOAD
+# ============================================================
 
+@app.post("/kml-upload")
+async def kml_upload(file: UploadFile = File(...)):
+    """
+    Nhận file KML/KMZ của hệ thống kênh mương,
+    lưu vào thư mục kml_data và đọc dữ liệu tọa độ.
+    """
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa chọn file KML/KMZ."
+        )
+
+    filename = Path(file.filename).name
+    suffix = Path(filename).suffix.lower()
+
+    if suffix not in {".kml", ".kmz"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Chỉ hỗ trợ file KML hoặc KMZ."
+        )
+
+    try:
+        content = await file.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail="File KML/KMZ rỗng."
+            )
+
+        save_path = KML_DATA_DIR / filename
+
+        with open(save_path, "wb") as f:
+            f.write(content)
+
+        kml_items = parse_kml_kmz(save_path)
+
+        total_coordinates = sum(
+            len(item.get("coordinates", []))
+            for item in kml_items
+        )
+
+        return {
+            "success": True,
+            "filename": filename,
+            "file_path": str(save_path),
+            "objects": len(kml_items),
+            "coordinates": total_coordinates,
+            "message": "Đã nạp hệ thống KML/KMZ thành công."
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print(f"[KML UPLOAD] Lỗi: {e}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Không thể nạp KML/KMZ: {str(e)}"
+        )
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
