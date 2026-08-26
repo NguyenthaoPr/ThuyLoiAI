@@ -1622,6 +1622,119 @@ async def kml_index_build():
             detail=f"Lỗi xây dựng GIS Index: {str(e)}"
         )
 # ============================================================
+# KML GIS - KIỂM TRA LINESTRING ĐỘC LẬP
+# BƯỚC THỬ NGHIỆM GPS → TUYẾN
+#
+# NGUYÊN TẮC:
+# - Không thay đổi parser hiện tại
+# - Không thay đổi GIS Index hiện tại
+# - Không thay đổi dữ liệu KML/KMZ gốc
+# - Chỉ đọc LineString để kiểm tra
+# ============================================================
+
+@app.get("/kml-lines-preview")
+async def kml_lines_preview():
+    """
+    Lấy mẫu các đối tượng LineString từ KML/KMZ hiện tại.
+
+    Mục đích:
+    - Xác nhận tuyến dạng LineString thực tế.
+    - Kiểm tra tên tuyến.
+    - Kiểm tra số lượng tọa độ.
+    - Kiểm tra tọa độ đầu và cuối tuyến.
+
+    Chưa thực hiện tính khoảng cách GPS.
+    Chưa thay đổi dữ liệu hệ thống.
+    """
+
+    files = sorted(
+        KML_DATA_DIR.glob("*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    kml_files = [
+        p for p in files
+        if p.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not kml_files:
+        return {
+            "success": False,
+            "message": "Chưa có file KML/KMZ trong hệ thống."
+        }
+
+    file_path = kml_files[0]
+
+    try:
+        kml_items = parse_kml_kmz(file_path)
+
+        if not kml_items:
+            return {
+                "success": False,
+                "message": "Không đọc được đối tượng từ KML/KMZ."
+            }
+
+        lines = [
+            item
+            for item in kml_items
+            if item.get("geometry_type") == "LineString"
+        ]
+
+        samples = []
+
+        for index, item in enumerate(lines[:10], start=1):
+            coordinates = item.get("coordinates", [])
+
+            first_coordinate = (
+                coordinates[0]
+                if coordinates
+                else None
+            )
+
+            last_coordinate = (
+                coordinates[-1]
+                if coordinates
+                else None
+            )
+
+            samples.append({
+                "id": f"LINE-{index:04d}",
+                "name": item.get("name", ""),
+                "geometry_type": item.get(
+                    "geometry_type"
+                ),
+                "coordinate_count": len(
+                    coordinates
+                ),
+                "first_coordinate": first_coordinate,
+                "last_coordinate": last_coordinate
+            })
+
+        return {
+            "success": True,
+            "file": file_path.name,
+            "linestring_count": len(lines),
+            "samples": samples,
+            "message": (
+                "Đã đọc các tuyến LineString "
+                "từ KML/KMZ. Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+        print(
+            "[KML LINE PREVIEW ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Lỗi kiểm tra LineString: {str(e)}"
+            )
+        )
+# ============================================================
 # IMAGE UPLOAD
 # ============================================================
 @app.post("/image-upload")
