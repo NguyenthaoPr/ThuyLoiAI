@@ -1735,6 +1735,293 @@ async def kml_lines_preview():
             )
         )
 # ============================================================
+# KML GIS - GPS -> TUYẾN KÊNH GẦN NHẤT
+# BƯỚC THỬ NGHIỆM ĐỘC LẬP
+#
+# Không thay đổi parser hiện tại
+# Không thay đổi GIS Index hiện tại
+# Không thay đổi /ask
+# Không thay đổi image-analyze
+# ============================================================
+
+@app.get("/kml-gps-test")
+async def kml_gps_test(
+    latitude: float,
+    longitude: float
+):
+    """
+    Thử nghiệm xác định tuyến LineString gần nhất
+    từ một tọa độ GPS.
+
+    Chưa kết nối với ảnh.
+    Chưa kết nối báo cáo.
+    Chỉ dùng để kiểm tra thuật toán GIS.
+    """
+
+    files = sorted(
+        KML_DATA_DIR.glob("*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    kml_files = [
+        p for p in files
+        if p.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not kml_files:
+        return {
+            "success": False,
+            "message": "Chưa có file KML/KMZ trong hệ thống."
+        }
+
+    file_path = kml_files[0]
+
+    try:
+        kml_items = parse_kml_kmz(file_path)
+
+        lines = [
+            item
+            for item in kml_items
+            if item.get("geometry_type") == "LineString"
+            and item.get("coordinates")
+        ]
+
+        if not lines:
+            return {
+                "success": False,
+                "message": "Không tìm thấy tuyến LineString."
+            }
+
+        # ----------------------------------------------------
+        # Hàm lấy lat/lon linh hoạt theo cấu trúc parser hiện tại
+        # ----------------------------------------------------
+
+        def get_lat_lon(point):
+            if not isinstance(point, dict):
+                return None, None
+
+            lat = point.get("lat")
+            lon = point.get("lon")
+
+            if lon is None:
+                lon = point.get("lng")
+
+            try:
+                return float(lat), float(lon)
+            except (TypeError, ValueError):
+                return None, None
+
+        # ----------------------------------------------------
+        # Tính khoảng cách GPS đến một đoạn thẳng
+        # bằng phép chiếu cục bộ.
+        #
+        # Phù hợp cho phạm vi hệ thống kênh.
+        # ----------------------------------------------------
+
+        import math
+
+        earth_radius = 6371000.0
+
+        def distance_to_segment(
+            gps_lat,
+            gps_lon,
+            lat1,
+            lon1,
+            lat2,
+            lon2
+        ):
+            ref_lat = math.radians(gps_lat)
+
+            scale_x = (
+                earth_radius
+                * math.cos(ref_lat)
+                * math.pi
+                / 180.0
+            )
+
+            scale_y = (
+                earth_radius
+                * math.pi
+                / 180.0
+            )
+
+            x1 = (
+                lon1 - gps_lon
+            ) * scale_x
+
+            y1 = (
+                lat1 - gps_lat
+            ) * scale_y
+
+            x2 = (
+                lon2 - gps_lon
+            ) * scale_x
+
+            y2 = (
+                lat2 - gps_lat
+            ) * scale_y
+
+            dx = x2 - x1
+            dy = y2 - y1
+
+            segment_length_sq = (
+                dx * dx + dy * dy
+            )
+
+            if segment_length_sq == 0:
+                t = 0.0
+            else:
+                t = (
+                    -(x1 * dx + y1 * dy)
+                    / segment_length_sq
+                )
+
+                t = max(0.0, min(1.0, t))
+
+            nearest_x = x1 + t * dx
+            nearest_y = y1 + t * dy
+
+            distance = math.sqrt(
+                nearest_x * nearest_x
+                + nearest_y * nearest_y
+            )
+
+            nearest_lat = (
+                gps_lat
+                + nearest_y / scale_y
+            )
+
+            nearest_lon = (
+                gps_lon
+                + nearest_x / scale_x
+            )
+
+            return (
+                distance,
+                nearest_lat,
+                nearest_lon
+            )
+
+        # ----------------------------------------------------
+        # Tìm tuyến gần nhất
+        # ----------------------------------------------------
+
+        results = []
+
+        for item in lines:
+
+            coordinates = item.get(
+                "coordinates",
+                []
+            )
+
+            best_distance = None
+            best_lat = None
+            best_lon = None
+
+            for i in range(
+                len(coordinates) - 1
+            ):
+
+                lat1, lon1 = get_lat_lon(
+                    coordinates[i]
+                )
+
+                lat2, lon2 = get_lat_lon(
+                    coordinates[i + 1]
+                )
+
+                if (
+                    lat1 is None
+                    or lon1 is None
+                    or lat2 is None
+                    or lon2 is None
+                ):
+                    continue
+
+                (
+                    distance,
+                    nearest_lat,
+                    nearest_lon
+                ) = distance_to_segment(
+                    latitude,
+                    longitude,
+                    lat1,
+                    lon1,
+                    lat2,
+                    lon2
+                )
+
+                if (
+                    best_distance is None
+                    or distance < best_distance
+                ):
+                    best_distance = distance
+                    best_lat = nearest_lat
+                    best_lon = nearest_lon
+
+            if best_distance is not None:
+
+                results.append({
+                    "name": item.get(
+                        "name",
+                        ""
+                    ),
+                    "geometry_type": "LineString",
+                    "coordinate_count": len(
+                        coordinates
+                    ),
+                    "distance_m": round(
+                        best_distance,
+                        2
+                    ),
+                    "nearest_point": {
+                        "latitude": round(
+                            best_lat,
+                            8
+                        ),
+                        "longitude": round(
+                            best_lon,
+                            8
+                        )
+                    }
+                })
+
+        results.sort(
+            key=lambda x: x["distance_m"]
+        )
+
+        return {
+            "success": True,
+            "file": file_path.name,
+            "gps": {
+                "latitude": latitude,
+                "longitude": longitude
+            },
+            "linestring_count": len(lines),
+            "nearest": results[:10],
+            "message": (
+                "Đã kiểm tra GPS với hệ thống "
+                "tuyến LineString. "
+                "Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+
+        print(
+            "[KML GPS TEST ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Lỗi kiểm tra GPS: {str(e)}"
+            )
+        )
+# ============================================================
 # IMAGE UPLOAD
 # ============================================================
 @app.post("/image-upload")
