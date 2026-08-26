@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <!-- Thêm thư viện QRCode -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
+    /* ... CSS giữ nguyên như cũ ... */
     :root {
       --primary: #2563EB;
       --deep-navy: #0F2742;
@@ -288,7 +288,7 @@
   </main>
 
   <!-- ============================================================ -->
-  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH + QR CODE                      -->
+  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH + QR CODE (CẢI TIẾN)          -->
   <!-- ============================================================ -->
   <script>
     (function() {
@@ -323,11 +323,12 @@
       window.preparedImageName = 'image.jpg';
       window.reportTitle = '';
       window.reportAnswer = '';
-      window.captureTimestamp = null; // Lưu thời gian chụp ảnh (HH:MM DD/MM/YYYY)
+      window.captureTimestamp = null;
 
       let isCooldown = false;
       let currentLocation = null;
       let currentAddress = '';
+      let qrAvailable = false; // Trạng thái QR
 
       // ===== HELPERS =====
       function esc(s) {
@@ -465,24 +466,27 @@
         }
       }
 
-      // ===== HÀM TẠO QR CODE TRÊN CANVAS =====
+      // ===== TẠO QR CODE TRÊN CANVAS (cải tiến) =====
       function generateQRCanvas(text, size) {
         return new Promise((resolve) => {
           const canvas = document.createElement('canvas');
           canvas.width = size;
           canvas.height = size;
-          // Sử dụng QRCode.js để vẽ
-          const qr = new QRCode(canvas, {
-            text: text,
-            width: size,
-            height: size,
-            colorDark: '#000000',
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.H
-          });
-          // QRCode.js vẽ trực tiếp lên canvas, nhưng có thể chưa kịp render.
-          // Ta chờ một chút rồi resolve.
-          setTimeout(() => resolve(canvas), 50);
+          try {
+            const qr = new QRCode(canvas, {
+              text: text,
+              width: size,
+              height: size,
+              colorDark: '#000000',
+              colorLight: '#ffffff',
+              correctLevel: QRCode.CorrectLevel.H
+            });
+            // Đợi 200ms để đảm bảo QR được vẽ hoàn chỉnh
+            setTimeout(() => resolve(canvas), 200);
+          } catch (e) {
+            console.error('QR generation error:', e);
+            resolve(null);
+          }
         });
       }
 
@@ -523,9 +527,11 @@
           currentLocation = location;
           address = await reverseGeocode(location.lat, location.lng);
           currentAddress = address;
+          qrAvailable = true;
         } else {
           currentLocation = null;
           currentAddress = '';
+          qrAvailable = false;
         }
 
         const now = new Date();
@@ -535,17 +541,16 @@
         const lat = location ? location.lat : null;
         const lng = location ? location.lng : null;
 
-        // Lưu timestamp để dùng khi xuất PDF
+        // Lưu timestamp cho PDF
         window.captureTimestamp = timeStr + ' ' + dateStr;
 
-        // === PHONG CÁCH MỚI: SÁNG, DỄ ĐỌC ===
+        // === PHONG CÁCH SÁNG ===
         const baseFontSize = Math.max(14, Math.min(20, width / 40));
         const lineHeight = baseFontSize * 1.5;
         const paddingX = 20;
         const paddingY = 16;
         const accentWidth = 6;
 
-        // Chuẩn bị nội dung dòng thông tin (8 dòng)
         const stampLines = [
           { text: '📍 THỦY LỢI AI • 100% Chân thực', size: baseFontSize * 1.1, weight: 'bold', color: '#0F2742' },
           { text: timeStr, size: baseFontSize, weight: 'bold', color: '#1E293B' },
@@ -554,11 +559,10 @@
           { text: address || 'Đang cập nhật địa điểm', size: baseFontSize * 0.9, weight: 'normal', color: '#1E293B' },
           { text: 'THỦY LỢI AI', size: baseFontSize * 0.9, weight: 'bold', color: '#0F2742' },
           { text: (lat && lng) ? `Tọa độ: ${lat.toFixed(6)}°N, ${lng.toFixed(6)}°E` : 'Tọa độ: Chưa xác định', size: baseFontSize * 0.85, weight: 'normal', color: '#64748B' },
-          // Dòng cuối sẽ được thay thế bằng QR + text bản quyền, nên chỉ giữ lại text ngắn
           { text: '© THỦY LỢI AI • Xác thực', size: baseFontSize * 0.75, weight: 'normal', color: '#94A3B8' },
         ];
 
-        // Đo chiều rộng tối đa (cho việc tính kích thước khung)
+        // Đo chiều rộng
         let maxLineWidth = 0;
         for (const line of stampLines) {
           ctx.font = `${line.weight} ${line.size}px sans-serif`;
@@ -566,18 +570,17 @@
           if (metrics.width > maxLineWidth) maxLineWidth = metrics.width;
         }
 
-        // Dự trù thêm không gian cho QR code (nếu có)
-        const qrSize = (location) ? Math.min(80, width * 0.06) : 0; // QR 60-80px
+        // Dự trù QR
+        const qrSize = (location) ? Math.min(80, width * 0.06) : 0;
         const extraWidth = qrSize + 12;
 
         const boxWidth = Math.min(maxLineWidth + paddingX * 2 + extraWidth, width * 0.75);
         const boxHeight = stampLines.length * lineHeight + paddingY * 2;
 
-        // Vị trí đóng dấu: góc dưới bên phải
         const posX = width - boxWidth - 20;
         const posY = height - boxHeight - 20;
 
-        // Vẽ nền trắng mờ
+        // Nền trắng mờ
         ctx.shadowColor = 'rgba(0,0,0,0.15)';
         ctx.shadowBlur = 20;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
@@ -586,7 +589,7 @@
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Viền sáng
+        // Viền
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -599,7 +602,7 @@
         ctx.roundRect(posX + 6, posY + 8, accentWidth, boxHeight - 16, 6);
         ctx.fill();
 
-        // Vẽ các dòng chữ, ngoại trừ dòng cuối sẽ vẽ riêng
+        // Vẽ chữ (trừ dòng cuối)
         ctx.textBaseline = 'top';
         let textY = posY + paddingY;
         for (let i = 0; i < stampLines.length - 1; i++) {
@@ -611,30 +614,33 @@
           textY += lineHeight;
         }
 
-        // Dòng cuối: bên trái là text bản quyền, bên phải là QR (nếu có)
+        // Dòng cuối: text bên trái, QR bên phải
         const lastLine = stampLines[stampLines.length - 1];
         ctx.font = `${lastLine.weight} ${lastLine.size}px sans-serif`;
         ctx.fillStyle = lastLine.color;
         ctx.textAlign = 'left';
-        // Vẽ text bản quyền ở bên trái
-        const textX = posX + paddingX + 10;
-        ctx.fillText(lastLine.text, textX, textY);
+        ctx.fillText(lastLine.text, posX + paddingX + 10, textY);
 
-        // Vẽ QR code bên phải (nếu có tọa độ)
+        // Vẽ QR nếu có GPS
         if (location && qrSize > 0) {
           const qrUrl = `https://www.google.com/maps?q=${lat},${lng}`;
           try {
             const qrCanvas = await generateQRCanvas(qrUrl, qrSize);
-            // Vị trí QR: cách lề phải và dưới một khoảng
-            const qrX = posX + boxWidth - qrSize - 12;
-            const qrY = posY + boxHeight - qrSize - 12;
-            ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+            if (qrCanvas) {
+              const qrX = posX + boxWidth - qrSize - 12;
+              const qrY = posY + boxHeight - qrSize - 12;
+              ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+              console.log('✅ QR đã được vẽ tại', qrX, qrY);
+            } else {
+              console.warn('QR canvas null');
+            }
           } catch (e) {
-            console.warn('QR generation failed:', e);
+            console.error('QR draw error:', e);
           }
+        } else {
+          console.warn('⚠️ Không có GPS, bỏ qua QR.');
         }
 
-        // Xuất blob
         return new Promise((resolve) => {
           canvas.toBlob((blob) => {
             resolve({ blob, w: width, h: height });
@@ -659,7 +665,7 @@
         return this;
       };
 
-      // ===== XỬ LÝ ẢNH TRONG CHAT =====
+      // ===== XỬ LÝ ẢNH CHAT =====
       cameraBtn.addEventListener('click', function() {
         imageInput.click();
       });
@@ -668,7 +674,7 @@
         const file = imageInput.files?.[0];
         if (!file) return;
         imagePreview.hidden = false;
-        imagePreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy vị trí & đóng dấu + QR)...';
+        imagePreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy GPS & đóng dấu + QR)...';
         window.preparedImageBlob = null;
         try {
           const result = await prepareImageWithStamp(file);
@@ -680,14 +686,15 @@
           const thumbUrl = URL.createObjectURL(result.blob);
           imagePreview.innerHTML =
             '<img class="thumb" src="' + thumbUrl + '" alt="Ảnh đã đóng dấu + QR">' +
-            '<strong>✅ Ảnh xác thực hiện trường (có QR)</strong><br>' +
+            '<strong>✅ Ảnh xác thực hiện trường</strong><br>' +
             'JPEG · ' + result.w + '×' + result.h +
             ' · ' + sizeKB + ' KB' +
             ' · gốc ' + originalKB + ' KB' +
             '<br>🕐 ' + new Date().toLocaleString('vi-VN') +
             (currentLocation ? ' · 📍 ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6) : '') +
             (currentAddress ? ' · 📌 ' + currentAddress.substring(0, 60) : '') +
-            '<br><span>💡 Quét QR để xem vị trí trên Google Maps.</span>';
+            (qrAvailable ? '<br>📱 Có mã QR – quét để định vị' : '<br>⚠️ Không có GPS – không tạo QR') +
+            '<br><span>💡 Gửi câu hỏi để THỦY LỢI AI phân tích.</span>';
         } catch (err) {
           window.preparedImageBlob = null;
           imagePreview.hidden = false;
@@ -695,7 +702,7 @@
         }
       });
 
-      // ===== FIELD REPORT (giữ nguyên, chỉ sử dụng prepareImageWithStamp mới) =====
+      // ===== FIELD REPORT (giữ nguyên nhưng dùng prepareImageWithStamp mới) =====
       (function() {
         let selectedReportType = '';
         let fieldReportFile = null;
@@ -748,7 +755,7 @@
           if (!file) return;
           fieldReportFile = null;
           fieldReportPreview.hidden = false;
-          fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy vị trí & đóng dấu + QR)...';
+          fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy GPS & đóng dấu + QR)...';
           try {
             const result = await prepareImageWithStamp(file);
             fieldReportFile = new File([result.blob], (file.name || 'hien-truong.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
@@ -759,11 +766,12 @@
             fieldReportPreview.innerHTML =
               '<div class="field-report-preview-inner">' +
               '<img src="' + url + '" class="thumb" alt="Ảnh hiện trường">' +
-              '<div><strong>✅ Ảnh xác thực hiện trường (có QR)</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB + ' KB<br>' +
+              '<div><strong>✅ Ảnh xác thực hiện trường</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB + ' KB<br>' +
               '🕐 ' + new Date().toLocaleString('vi-VN') +
               (currentLocation ? ' · 📍 ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6) : '') +
               (currentAddress ? ' · 📌 ' + currentAddress.substring(0, 60) : '') +
-              '<br><span>📱 Quét QR để định vị.</span></div></div>';
+              (qrAvailable ? '<br>📱 Có mã QR – quét để định vị' : '<br>⚠️ Không có GPS – không tạo QR') +
+              '</div></div>';
             updateFieldReportButton();
           } catch (err) {
             fieldReportFile = null;
@@ -804,7 +812,6 @@
             const reportTitle = result.report_title || getReportTypeName(selectedReportType);
             const answer = result.answer || 'THỦY LỢI AI chưa tạo được nội dung báo cáo.';
 
-            // Kiểm tra ảnh không hợp lệ
             const irrelevantKeywords = ['không liên quan', 'không phải công trình', 'không thể hiện', 'ảnh không chứa'];
             const isIrrelevant = irrelevantKeywords.some(kw => answer.toLowerCase().includes(kw));
             if (isIrrelevant) {
@@ -982,7 +989,7 @@
     })();
   </script>
 
-  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI CAPTURE_TIMESTAMP ===== -->
+  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI CAPTURE_TIMESTAMP VÀ ẢNH ===== -->
   <script>
     (function() {
       "use strict";
@@ -1037,13 +1044,17 @@
           const reviewer = getReviewer();
           if (reviewer) formData.append("reviewer", reviewer);
 
-          // === GỬI THỜI GIAN CHỤP ẢNH ===
+          // Gửi thời gian chụp ảnh
           if (window.captureTimestamp) {
             formData.append("capture_time", window.captureTimestamp);
           }
 
+          // Gửi ảnh đã đóng dấu
           if (window.preparedImageBlob) {
             formData.append("image", window.preparedImageBlob, window.preparedImageName || "image.jpg");
+            console.log('📤 Gửi ảnh đã đóng dấu kích thước:', window.preparedImageBlob.size);
+          } else {
+            console.warn('⚠️ Không có ảnh để gửi.');
           }
 
           const response = await fetch("/field-report-pdf", {
