@@ -480,7 +480,50 @@
           }
         });
       }
+// ======================================================
+// KIỂM TRA GPS VỚI TUYẾN KML/KMZ
+// ======================================================
+async function checkGpsAgainstKml() {
+    try {
+        const location = await getLocation();
 
+        if (!location) {
+            return {
+                success: false,
+                message: "Không lấy được vị trí GPS."
+            };
+        }
+
+        const { lat, lng } = location;
+
+        const response = await fetch(
+            `/kml-gps-test?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}`
+        );
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+            return {
+                success: false,
+                message: data.message || "Không kiểm tra được GPS với tuyến."
+            };
+        }
+
+        return data;
+
+    } catch (error) {
+        console.error("KML GPS ERROR:", error);
+
+        return {
+            success: false,
+            message: "Lỗi kiểm tra GPS với tuyến."
+        };
+    }
+}
       async function reverseGeocode(lat, lng) {
         try {
           const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
