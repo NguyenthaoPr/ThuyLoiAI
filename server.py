@@ -2122,47 +2122,47 @@ async def kml_gps_test(
                 item["status_code"] = "RED"
                 item["assessment"] = "Không đủ cơ sở xác nhận vị trí trên tuyến."
         # ==========================================================
-    # NHẬN DIỆN ĐỐI TƯỢNG GIS TỪ KẾT QUẢ GPS
-    # ==========================================================
+        # NHẬN DIỆN ĐỐI TƯỢNG GIS TỪ KẾT QUẢ GPS
+                # ==========================================================
 
-    gis_identification = None
-
-    if results:
-        # Sắp xếp theo khoảng cách từ GPS đến tuyến
-        sorted_results = sorted(
-            results,
-            key=lambda x: x.get("distance_m", 999999)
-        )
-
-        nearest = sorted_results[0]
-
-        gis_identification = {
-            "identified": True,
-            "name": nearest.get("name", ""),
-            "geometry_type": nearest.get(
-                "geometry_type",
-                "LineString"
-            ),
-            "distance_m": nearest.get(
-                "distance_m"
-            ),
-            "nearest_point": nearest.get(
-                "nearest_point"
-            ),
-            "status": nearest.get(
-                "status",
-                "CHƯA XÁC ĐỊNH"
-            ),
-            "status_code": nearest.get(
-                "status_code",
-                "RED"
-            ),
-            "assessment": nearest.get(
-                "assessment",
-                ""
-            ),
-            "source": "GIS MASTER KMZ"
-        }        
+        gis_identification = None
+    
+        if results:
+            # Sắp xếp theo khoảng cách từ GPS đến tuyến
+            sorted_results = sorted(
+                results,
+                key=lambda x: x.get("distance_m", 999999)
+            )
+    
+            nearest = sorted_results[0]
+    
+            gis_identification = {
+                "identified": True,
+                "name": nearest.get("name", ""),
+                "geometry_type": nearest.get(
+                    "geometry_type",
+                    "LineString"
+                ),
+                "distance_m": nearest.get(
+                    "distance_m"
+                ),
+                "nearest_point": nearest.get(
+                    "nearest_point"
+                ),
+                "status": nearest.get(
+                    "status",
+                    "CHƯA XÁC ĐỊNH"
+                ),
+                "status_code": nearest.get(
+                    "status_code",
+                    "RED"
+                ),
+                "assessment": nearest.get(
+                    "assessment",
+                    ""
+                ),
+                "source": "GIS MASTER KMZ"
+            }        
         return {
             "success": True,
             "file": file_path.name,
