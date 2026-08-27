@@ -888,7 +888,6 @@ if (window.kmlGpsResult) {
     JSON.stringify(window.kmlGpsResult)
   );
 }
-
             const result = await fetchJSON('/field-report', { method: 'POST', body: formData }, 90000);
 
             if (!result.success) {
