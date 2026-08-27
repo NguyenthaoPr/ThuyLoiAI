@@ -1105,6 +1105,16 @@ if (window.kmlGpsResult) {
           if (window.captureTimestamp) {
             formData.append("capture_time", window.captureTimestamp);
           }
+          // ===== GỬI TỌA ĐỘ GPS CHO PDF =====
+          if (window.currentLocation) {
+            formData.append("latitude", String(window.currentLocation.lat));
+            formData.append("longitude", String(window.currentLocation.lng));
+          
+            console.log("📍 GPS gửi tạo PDF:", {
+              latitude: window.currentLocation.lat,
+              longitude: window.currentLocation.lng
+            });
+          }
 
           // Tạo File object với type rõ ràng
           const filename = window.preparedImageName || "image.jpg";
