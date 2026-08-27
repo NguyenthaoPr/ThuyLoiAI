@@ -12,3 +12,4 @@ python-multipart>=0.0.9
 pydantic>=2.6.0
 Pillow
 reportlab
+qrcode[pil]>=8.2.0
