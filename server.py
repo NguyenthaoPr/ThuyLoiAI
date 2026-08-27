@@ -50,6 +50,9 @@ GIS_MASTER_DIR = BASE_DIR / "gis_master"
 GIS_MASTER_DIR.mkdir(parents=True, exist_ok=True)
 
 GIS_MASTER_KMZ = GIS_MASTER_DIR / "master.kmz"
+print(f"[GIS MASTER] BASE_DIR = {BASE_DIR}")
+print(f"[GIS MASTER] GIS_MASTER_DIR = {GIS_MASTER_DIR}")
+print(f"[GIS MASTER] GIS_MASTER_KMZ = {GIS_MASTER_KMZ}, EXISTS = {GIS_MASTER_KMZ.exists()}")
 GIS_MASTER_INDEX = GIS_MASTER_DIR / "gis_index.json"
 
 
