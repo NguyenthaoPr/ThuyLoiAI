@@ -1776,6 +1776,7 @@ async def kml_gps_test(
         }
 
     file_path = kml_files[0]
+    print("KML GPS TEST FILE:", file_path)
 
     try:
         kml_items = parse_kml_kmz(file_path)
