@@ -568,7 +568,7 @@ let kmlGpsResult = null;
 
 if (location) {
     currentLocation = location;
-
+    window.currentLocation = location;
     address = await reverseGeocode(
         location.lat,
         location.lng
@@ -586,6 +586,7 @@ if (location) {
 
 } else {
     currentLocation = null;
+    window.currentLocation = null;
     currentAddress = '';
     qrAvailable = false;
 
