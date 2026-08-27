@@ -8,6 +8,7 @@ import hashlib
 import base64
 import math
 import json
+import qrcode
 from PIL import Image, ImageOps
 from io import BytesIO
 from collections import OrderedDict
