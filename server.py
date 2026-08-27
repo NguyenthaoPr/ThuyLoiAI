@@ -1429,7 +1429,12 @@ async def kml_index_preview():
     - Không ghi đè dữ liệu KML/KMZ hiện tại
     - Không thay đổi parser hiện tại
     """
+    # Ưu tiên GIS MASTER KMZ
+if GIS_MASTER_KMZ.exists():
+    file_path = GIS_MASTER_KMZ
 
+else:
+    # Giữ cơ chế KML/KMZ cũ làm dự phòng
     files = sorted(
         KML_DATA_DIR.glob("*"),
         key=lambda p: p.stat().st_mtime,
@@ -1446,8 +1451,6 @@ async def kml_index_preview():
             "success": False,
             "message": "Chưa có file KML/KMZ trong hệ thống."
         }
-
-    file_path = kml_files[0]
 
     try:
         diagnostic = inspect_kml_structure(
@@ -1529,6 +1532,12 @@ async def kml_index_build():
     - Chỉ đọc và chuẩn hóa dữ liệu GIS trong RAM.
     """
 
+    # Ưu tiên GIS MASTER KMZ
+if GIS_MASTER_KMZ.exists():
+    file_path = GIS_MASTER_KMZ
+
+else:
+    # Giữ cơ chế KML/KMZ cũ làm dự phòng
     files = sorted(
         KML_DATA_DIR.glob("*"),
         key=lambda p: p.stat().st_mtime,
@@ -1539,6 +1548,14 @@ async def kml_index_build():
         p for p in files
         if p.suffix.lower() in {".kml", ".kmz"}
     ]
+
+    if not kml_files:
+        return {
+            "success": False,
+            "message": "Chưa có file KML/KMZ trong hệ thống."
+        }
+
+    file_path = kml_files[0]
 
     if not kml_files:
         return {
