@@ -2200,6 +2200,7 @@ async def field_report(
     file: UploadFile = File(...),
     report_type: str = Form("incident"),
     question: str = Form(""),
+    kml_context: str = Form(""),
 ):
     if not GEMINI_API_KEY:
         return {"success": False, "error": "THỦY LỢI AI chưa được cấu hình Gemini API."}
@@ -2243,6 +2244,22 @@ async def field_report(
     question = (question or "").strip()
     if not question:
         question = "Hãy lập dự thảo báo cáo hiện trường dựa trên hình ảnh."
+            # ===== DỮ LIỆU GIS/KML =====
+    kml_context = (kml_context or "").strip()
+
+    if kml_context:
+        try:
+            import json
+            kml_data = json.loads(kml_context)
+            kml_context_text = json.dumps(
+                kml_data,
+                ensure_ascii=False,
+                indent=2
+            )
+        except Exception:
+            kml_context_text = kml_context
+    else:
+        kml_context_text = "Chưa có dữ liệu đối chiếu GIS/KML."
     report_prompt = f"""
 Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi
 của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
@@ -2257,6 +2274,32 @@ LOẠI BÁO CÁO:
 {report_title}
 
 NGUYÊN TẮC BẮT BUỘC:
+DỮ LIỆU ĐỐI CHIẾU GIS/KML:
+
+{kml_context_text}
+
+Khi lập báo cáo, phải sử dụng dữ liệu GIS/KML ở trên nếu có
+để đối chiếu vị trí hiện trường.
+
+Nếu dữ liệu GIS/KML xác định được:
+- tên tuyến;
+- tên công trình;
+- tọa độ;
+- khoảng cách đến tuyến;
+- đối tượng gần nhất;
+- trạng thái vị trí;
+
+thì phải đưa thông tin phù hợp vào báo cáo.
+
+Phải phân biệt rõ:
+- thông tin quan sát từ hình ảnh;
+- thông tin xác định từ GPS/GIS/KML;
+- thông tin lấy từ hồ sơ;
+- nhận định hoặc đánh giá chuyên môn.
+
+Không được tự suy diễn tên công trình hoặc tuyến kênh
+nếu dữ liệu GIS/KML không đủ căn cứ.
+
 
 1. Chỉ mô tả những gì có thể quan sát hoặc có căn cứ.
 
@@ -2310,12 +2353,21 @@ CẤU TRÚC BÁO CÁO:
 
 - Loại báo cáo:
 {report_title}
+
 - Thời gian:
-Chưa xác định từ hình ảnh.
+Lấy từ thông tin người dùng cung cấp hoặc thời gian ghi nhận hiện trường.
+Không được tự suy đoán nếu không có căn cứ.
+
 - Địa điểm:
-Chưa xác định từ hình ảnh.
+Ưu tiên sử dụng tọa độ GPS/GIS/KML nếu dữ liệu có cung cấp.
+Nếu GIS/KML xác định được vị trí thì phải ghi tọa độ và thông tin vị trí tương ứng.
+Nếu không xác định được thì ghi rõ: "Chưa xác định."
+
 - Công trình:
-Chưa xác định từ hình ảnh.
+Ưu tiên sử dụng tên tuyến, tên công trình hoặc đối tượng gần nhất được xác định từ dữ liệu GIS/KML.
+Nếu GIS/KML xác định được tên công trình/tuyến thì phải sử dụng tên đó trong báo cáo.
+Không được ghi "Chưa xác định từ hình ảnh" nếu dữ liệu GIS/KML đã cung cấp thông tin xác định.
+Nếu GIS/KML cũng không đủ căn cứ thì ghi rõ: "Chưa xác định."
 
 ## 2. Hiện trạng quan sát từ hình ảnh
 
