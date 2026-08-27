@@ -6,6 +6,8 @@ import tempfile
 import time
 import hashlib
 import base64
+import math
+import json
 from PIL import Image, ImageOps
 from io import BytesIO
 from collections import OrderedDict
@@ -248,6 +250,8 @@ def get_gis_master():
         GIS_MASTER_CACHE = load_gis_master()
 
     return GIS_MASTER_CACHE
+
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
@@ -1112,6 +1116,7 @@ async def upload_file(file: UploadFile = File(...)):
             await file.close()
         except Exception:
             pass
+
 # ============================================================
 # KML / KMZ UPLOAD
 # ============================================================
@@ -1178,7 +1183,8 @@ async def kml_upload(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Không thể nạp KML/KMZ: {str(e)}"
         )
- # ============================================================
+
+# ============================================================
 # KML / KMZ DIAGNOSTIC - KIỂM TRA CẤU TRÚC ĐỘC LẬP
 # Không thay đổi parser KML/KMZ hiện tại
 # ============================================================
@@ -1364,7 +1370,7 @@ async def kml_diagnostic():
 
     Không thay đổi dữ liệu hệ thống hiện tại.
     """
-        # Ưu tiên GIS Master KMZ
+    # Ưu tiên GIS Master KMZ
     if GIS_MASTER_KMZ.exists():
         file_path = GIS_MASTER_KMZ
 
@@ -1389,7 +1395,6 @@ async def kml_diagnostic():
 
         file_path = kml_files[0]
 
-
     try:
         result = inspect_kml_structure(file_path)
 
@@ -1410,6 +1415,7 @@ async def kml_diagnostic():
             status_code=500,
             detail=f"Lỗi kiểm tra KML/KMZ: {str(e)}"
         )
+
 # ============================================================
 # KML GIS INDEX - BƯỚC THỬ NGHIỆM
 # Chỉ tạo Index trong RAM, chưa lưu hệ thống
@@ -1517,6 +1523,7 @@ async def kml_index_preview():
             status_code=500,
             detail=f"Lỗi tạo GIS Index thử nghiệm: {str(e)}"
         )
+
 # ============================================================
 # KML GIS INDEX - BUILD TOÀN BỘ
 # BƯỚC 3C - CHỈ KIỂM TRA, CHƯA GHI ĐÈ DỮ LIỆU CŨ
@@ -1707,6 +1714,7 @@ async def kml_index_build():
             status_code=500,
             detail=f"Lỗi xây dựng GIS Index: {str(e)}"
         )
+
 # ============================================================
 # KML GIS - KIỂM TRA LINESTRING ĐỘC LẬP
 # BƯỚC THỬ NGHIỆM GPS → TUYẾN
@@ -1733,24 +1741,30 @@ async def kml_lines_preview():
     Chưa thay đổi dữ liệu hệ thống.
     """
 
-    files = sorted(
-        KML_DATA_DIR.glob("*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )
+    # Ưu tiên GIS MASTER KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
 
-    kml_files = [
-        p for p in files
-        if p.suffix.lower() in {".kml", ".kmz"}
-    ]
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
-    if not kml_files:
-        return {
-            "success": False,
-            "message": "Chưa có file KML/KMZ trong hệ thống."
-        }
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
 
-    file_path = kml_files[0]
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+
+        file_path = kml_files[0]
 
     try:
         kml_items = parse_kml_kmz(file_path)
@@ -1820,6 +1834,7 @@ async def kml_lines_preview():
                 f"Lỗi kiểm tra LineString: {str(e)}"
             )
         )
+
 # ============================================================
 # KML GIS - GPS -> TUYẾN KÊNH GẦN NHẤT
 # BƯỚC THỬ NGHIỆM ĐỘC LẬP
@@ -1843,7 +1858,7 @@ async def kml_gps_test(
     Chưa kết nối báo cáo.
     Chỉ dùng để kiểm tra thuật toán GIS.
     """
-     # Ưu tiên GIS MASTER KMZ
+    # Ưu tiên GIS MASTER KMZ
     if GIS_MASTER_KMZ.exists():
         file_path = GIS_MASTER_KMZ
 
@@ -1868,10 +1883,10 @@ async def kml_gps_test(
 
         file_path = kml_files[0]
 
-        print("KML GPS TEST FILE:", file_path)
+    print("KML GPS TEST FILE:", file_path)
 
-        try:
-            kml_items = parse_kml_kmz(file_path)
+    try:
+        kml_items = parse_kml_kmz(file_path)
 
         lines = [
             item
@@ -1911,8 +1926,6 @@ async def kml_gps_test(
         #
         # Phù hợp cho phạm vi hệ thống kênh.
         # ----------------------------------------------------
-
-        import math
 
         earth_radius = 6371000.0
 
@@ -2084,7 +2097,8 @@ async def kml_gps_test(
         results.sort(
             key=lambda x: x["distance_m"]
         )
-                # ============================================================
+
+        # ============================================================
         # ĐÁNH GIÁ KHOẢNG CÁCH GPS ĐẾN TUYẾN
         # ============================================================
 
@@ -2137,6 +2151,7 @@ async def kml_gps_test(
                 f"Lỗi kiểm tra GPS: {str(e)}"
             )
         )
+
 # ============================================================
 # GIS MASTER UPLOAD
 # BỔ SUNG MỚI - CHỈ DÀNH CHO QUẢN TRỊ DỮ LIỆU
@@ -2237,6 +2252,7 @@ async def gis_master_upload(
             status_code=500,
             detail=f"Lỗi nạp GIS Master: {str(e)}"
         )
+
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
@@ -2437,12 +2453,12 @@ async def field_report(
     question = (question or "").strip()
     if not question:
         question = "Hãy lập dự thảo báo cáo hiện trường dựa trên hình ảnh."
-            # ===== DỮ LIỆU GIS/KML =====
+
+    # ===== DỮ LIỆU GIS/KML =====
     kml_context = (kml_context or "").strip()
 
     if kml_context:
         try:
-            import json
             kml_data = json.loads(kml_context)
             kml_context_text = json.dumps(
                 kml_data,
@@ -2453,6 +2469,7 @@ async def field_report(
             kml_context_text = kml_context
     else:
         kml_context_text = "Chưa có dữ liệu đối chiếu GIS/KML."
+
     report_prompt = f"""
 Bạn là THỦY LỢI AI, trợ lý chuyên ngành thủy lợi
 của Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
@@ -3102,4 +3119,4 @@ async def field_report_pdf(
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "10000"))
-    uvicorn.run("server:app", host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
