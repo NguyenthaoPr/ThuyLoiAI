@@ -187,7 +187,7 @@ def parse_kml_kmz(file_path):
     except Exception as e:
         print(f"[KML] Lỗi đọc {file_path}: {e}")
         return []
-        
+
 # ============================================================
 # GIS MASTER DATA - ĐỌC KMZ DÙNG CHUNG
 # BỔ SUNG MỚI - KHÔNG THAY ĐỔI HỆ THỐNG CŨ
@@ -1388,7 +1388,7 @@ async def kml_diagnostic():
             }
 
         file_path = kml_files[0]
-    
+
 
     try:
         result = inspect_kml_structure(file_path)
@@ -1409,8 +1409,8 @@ async def kml_diagnostic():
         raise HTTPException(
             status_code=500,
             detail=f"Lỗi kiểm tra KML/KMZ: {str(e)}"
-        ) 
-   # ============================================================
+        )
+# ============================================================
 # KML GIS INDEX - BƯỚC THỬ NGHIỆM
 # Chỉ tạo Index trong RAM, chưa lưu hệ thống
 # Không thay đổi parser KML/KMZ hiện tại
@@ -1430,27 +1430,29 @@ async def kml_index_preview():
     - Không thay đổi parser hiện tại
     """
     # Ưu tiên GIS MASTER KMZ
-if GIS_MASTER_KMZ.exists():
-    file_path = GIS_MASTER_KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
 
-else:
-    # Giữ cơ chế KML/KMZ cũ làm dự phòng
-    files = sorted(
-        KML_DATA_DIR.glob("*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
-    kml_files = [
-        p for p in files
-        if p.suffix.lower() in {".kml", ".kmz"}
-    ]
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
 
-    if not kml_files:
-        return {
-            "success": False,
-            "message": "Chưa có file KML/KMZ trong hệ thống."
-        }
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+
+        file_path = kml_files[0]
 
     try:
         diagnostic = inspect_kml_structure(
@@ -1514,7 +1516,7 @@ else:
         raise HTTPException(
             status_code=500,
             detail=f"Lỗi tạo GIS Index thử nghiệm: {str(e)}"
-        )     
+        )
 # ============================================================
 # KML GIS INDEX - BUILD TOÀN BỘ
 # BƯỚC 3C - CHỈ KIỂM TRA, CHƯA GHI ĐÈ DỮ LIỆU CŨ
@@ -1533,37 +1535,29 @@ async def kml_index_build():
     """
 
     # Ưu tiên GIS MASTER KMZ
-if GIS_MASTER_KMZ.exists():
-    file_path = GIS_MASTER_KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
 
-else:
-    # Giữ cơ chế KML/KMZ cũ làm dự phòng
-    files = sorted(
-        KML_DATA_DIR.glob("*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
-    kml_files = [
-        p for p in files
-        if p.suffix.lower() in {".kml", ".kmz"}
-    ]
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
 
-    if not kml_files:
-        return {
-            "success": False,
-            "message": "Chưa có file KML/KMZ trong hệ thống."
-        }
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
 
-    file_path = kml_files[0]
-
-    if not kml_files:
-        return {
-            "success": False,
-            "message": "Chưa có file KML/KMZ trong hệ thống."
-        }
-
-    file_path = kml_files[0]
+        file_path = kml_files[0]
 
     try:
         # =====================================================
@@ -2885,7 +2879,7 @@ def create_field_report_pdf(
                 skip_intro = False
         cleaned.append(line)
     answer = '\n'.join(cleaned)
-    
+
     # Xóa ký hiệu Markdown # ở đầu dòng
     answer = re.sub(r'(?m)^\s*#{1,6}\s*', '', answer)
 
