@@ -2396,7 +2396,6 @@ Liệt kê những thông tin cán bộ hiện trường
 cần cung cấp thêm nếu cần.
 
 GHI CHÚ CỦA NGƯỜI DÙNG:
-
 {question}
 """
     gemini_input = [
