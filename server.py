@@ -1364,25 +1364,31 @@ async def kml_diagnostic():
 
     Không thay đổi dữ liệu hệ thống hiện tại.
     """
+        # Ưu tiên GIS Master KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
 
-    files = sorted(
-        KML_DATA_DIR.glob("*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )
+    else:
+        # Nếu chưa có GIS Master thì giữ cơ chế KML/KMZ cũ
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
-    kml_files = [
-        p for p in files
-        if p.suffix.lower() in {".kml", ".kmz"}
-    ]
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
 
-    if not kml_files:
-        return {
-            "success": False,
-            "message": "Chưa có file KML/KMZ trong hệ thống."
-        }
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
 
-    file_path = kml_files[0]
+        file_path = kml_files[0]
+    
 
     try:
         result = inspect_kml_structure(file_path)
