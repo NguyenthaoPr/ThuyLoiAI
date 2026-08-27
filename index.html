@@ -881,6 +881,13 @@ if (location) {
             formData.append('file', fieldReportFile, fieldReportFile.name);
             formData.append('report_type', selectedReportType);
             formData.append('question', (fieldReportQuestion.value || '').trim());
+            // ===== DỮ LIỆU GIS/KML ĐƯA VÀO AI =====
+if (window.kmlGpsResult) {
+  formData.append(
+    'kml_context',
+    JSON.stringify(window.kmlGpsResult)
+  );
+}
 
             const result = await fetchJSON('/field-report', { method: 'POST', body: formData }, 90000);
 
