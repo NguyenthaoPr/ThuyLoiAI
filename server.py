@@ -1847,7 +1847,6 @@ async def kml_gps_test(
     # Ưu tiên GIS MASTER KMZ
 if GIS_MASTER_KMZ.exists():
     file_path = GIS_MASTER_KMZ
-
 else:
     # Giữ cơ chế KML/KMZ cũ làm dự phòng
     files = sorted(
@@ -1866,11 +1865,14 @@ else:
             "success": False,
             "message": "Chưa có file KML/KMZ trong hệ thống."
         }
+
     file_path = kml_files[0]
+
     print("KML GPS TEST FILE:", file_path)
 
     try:
         kml_items = parse_kml_kmz(file_path)
+
 
         lines = [
             item
