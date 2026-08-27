@@ -45,6 +45,12 @@ INDEX_FILE = BASE_DIR / "index.html"
 
 KML_DATA_DIR = BASE_DIR / "kml_data"
 KML_DATA_DIR.mkdir(parents=True, exist_ok=True)
+# ===== GIS MASTER DATA - BỔ SUNG, KHÔNG THAY ĐỔI HỆ THỐNG CŨ =====
+GIS_MASTER_DIR = BASE_DIR / "gis_master"
+GIS_MASTER_DIR.mkdir(parents=True, exist_ok=True)
+
+GIS_MASTER_KMZ = GIS_MASTER_DIR / "master.kmz"
+GIS_MASTER_INDEX = GIS_MASTER_DIR / "gis_index.json"
 
 
 def parse_kml_coordinates(text):
@@ -178,7 +184,67 @@ def parse_kml_kmz(file_path):
     except Exception as e:
         print(f"[KML] Lỗi đọc {file_path}: {e}")
         return []
+        
+# ============================================================
+# GIS MASTER DATA - ĐỌC KMZ DÙNG CHUNG
+# BỔ SUNG MỚI - KHÔNG THAY ĐỔI HỆ THỐNG CŨ
+# ============================================================
 
+def load_gis_master():
+    """
+    Đọc dữ liệu GIS Master từ file master.kmz.
+
+    File master.kmz được nạp một lần vào hệ thống.
+    Người dùng AI chỉ sử dụng dữ liệu đã có,
+    không cần và không được nạp lại KMZ.
+    """
+
+    try:
+        if not GIS_MASTER_KMZ.exists():
+            return {
+                "success": False,
+                "message": "Chưa có file GIS Master KMZ.",
+                "data": []
+            }
+
+        data = parse_kml_kmz(GIS_MASTER_KMZ)
+
+        return {
+            "success": True,
+            "message": "Đã đọc dữ liệu GIS Master.",
+            "file": GIS_MASTER_KMZ.name,
+            "count": len(data),
+            "data": data
+        }
+
+    except Exception as e:
+        print(f"[GIS MASTER] Lỗi đọc KMZ: {e}")
+
+        return {
+            "success": False,
+            "message": f"Lỗi đọc GIS Master: {str(e)}",
+            "data": []
+        }
+
+
+# Bộ nhớ GIS Master trong phiên chạy hiện tại
+GIS_MASTER_CACHE = None
+
+
+def get_gis_master():
+    """
+    Lấy dữ liệu GIS Master.
+
+    Chỉ đọc file khi cần lần đầu.
+    Các lần sau sử dụng dữ liệu đã lưu trong bộ nhớ.
+    """
+
+    global GIS_MASTER_CACHE
+
+    if GIS_MASTER_CACHE is None:
+        GIS_MASTER_CACHE = load_gis_master()
+
+    return GIS_MASTER_CACHE
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
@@ -2044,6 +2110,106 @@ async def kml_gps_test(
             detail=(
                 f"Lỗi kiểm tra GPS: {str(e)}"
             )
+        )
+# ============================================================
+# GIS MASTER UPLOAD
+# BỔ SUNG MỚI - CHỈ DÀNH CHO QUẢN TRỊ DỮ LIỆU
+# KHÔNG THAY ĐỔI API CŨ
+# ============================================================
+
+@app.post("/admin/gis-master-upload")
+async def gis_master_upload(
+    file: UploadFile = File(...)
+):
+    """
+    Nạp file KMZ Master vào hệ thống.
+
+    Chức năng này chỉ phục vụ quản trị dữ liệu GIS.
+    Người dùng AI Thủy lợi thông thường không cần nạp KMZ.
+    """
+
+    global GIS_MASTER_CACHE
+
+    try:
+        # ----------------------------------------------------
+        # 1. Kiểm tra định dạng
+        # ----------------------------------------------------
+        filename = (file.filename or "").strip()
+
+        if not filename.lower().endswith(".kmz"):
+            raise HTTPException(
+                status_code=400,
+                detail="Chỉ chấp nhận file KMZ."
+            )
+
+        # ----------------------------------------------------
+        # 2. Đọc dữ liệu upload
+        # ----------------------------------------------------
+        content = await file.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail="File KMZ rỗng."
+            )
+
+        # ----------------------------------------------------
+        # 3. Ghi vào file tạm
+        #    Không ghi đè master.kmz ngay
+        # ----------------------------------------------------
+        temp_path = GIS_MASTER_DIR / "_master_upload_tmp.kmz"
+
+        temp_path.write_bytes(content)
+
+        # ----------------------------------------------------
+        # 4. Kiểm tra KMZ có đọc được hay không
+        # ----------------------------------------------------
+        test_data = parse_kml_kmz(temp_path)
+
+        if not test_data:
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+
+            raise HTTPException(
+                status_code=400,
+                detail="Không đọc được dữ liệu từ KMZ. "
+                       "File có thể không hợp lệ hoặc không chứa dữ liệu KML."
+            )
+
+        # ----------------------------------------------------
+        # 5. KMZ hợp lệ -> thay thế Master
+        # ----------------------------------------------------
+        temp_path.replace(GIS_MASTER_KMZ)
+
+        # ----------------------------------------------------
+        # 6. Xóa cache cũ để hệ thống đọc Master mới
+        # ----------------------------------------------------
+        GIS_MASTER_CACHE = None
+
+        # Đọc lại Master ngay sau khi nạp
+        master_data = get_gis_master()
+
+        return {
+            "success": True,
+            "message": "Đã nạp GIS Master KMZ thành công.",
+            "file": GIS_MASTER_KMZ.name,
+            "source_filename": filename,
+            "count": master_data.get("count", 0)
+                if isinstance(master_data, dict)
+                else 0
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print(f"[GIS MASTER UPLOAD ERROR] {repr(e)}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi nạp GIS Master: {str(e)}"
         )
 # ============================================================
 # IMAGE UPLOAD
