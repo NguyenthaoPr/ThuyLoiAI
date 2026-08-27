@@ -2925,6 +2925,8 @@ def create_field_report_pdf(
     image_bytes=None,
     reviewer="",
     capture_time=None,  # Thêm tham số
+    latitude=None,
+    longitude=None,
 ):
     # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
@@ -3016,7 +3018,79 @@ def create_field_report_pdf(
     ]))
     story.append(KeepTogether(meta_table))
     story.append(Spacer(1, 6))
+        # ============================================================
+    # QR VỊ TRÍ CHỤP ẢNH
+    # ============================================================
+    if latitude is not None and longitude is not None:
+        try:
+            latitude = float(latitude)
+            longitude = float(longitude)
 
+            maps_url = (
+                f"https://www.google.com/maps?q="
+                f"{latitude:.8f},{longitude:.8f}"
+            )
+
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                box_size=8,
+                border=4,
+            )
+            qr.add_data(maps_url)
+            qr.make(fit=True)
+
+            qr_image = qr.make_image(
+                fill_color="black",
+                back_color="white",
+            )
+
+            qr_buffer = BytesIO()
+            qr_image.save(qr_buffer, format="PNG")
+            qr_buffer.seek(0)
+
+            from reportlab.platypus import Image as RLImage
+
+            qr_rl = RLImage(
+                qr_buffer,
+                width=32 * mm,
+                height=32 * mm,
+            )
+            qr_rl.hAlign = "CENTER"
+
+            qr_text = Paragraph(
+                f"<b>VỊ TRÍ CHỤP ẢNH</b><br/>"
+                f"{latitude:.6f}°N, {longitude:.6f}°E<br/>"
+                f"<font size='8'>Quét mã QR để mở vị trí trên Google Maps</font>",
+                value_style,
+            )
+
+            qr_table = Table(
+                [[qr_rl, qr_text]],
+                colWidths=[40 * mm, doc.width - 40 * mm],
+            )
+
+            qr_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("BOX", (0, 0), (-1, -1), 0.6, PDF_COLOR_BORDER),
+                ("BACKGROUND", (0, 0), (-1, -1), PDF_COLOR_LABEL_BG),
+            ]))
+
+            story.append(qr_table)
+            story.append(Spacer(1, 8))
+
+            print(
+                f"✅ QR vị trí đã tạo: "
+                f"{latitude:.8f}, {longitude:.8f}"
+            )
+
+        except Exception as qr_error:
+            print("⚠️ PDF QR ERROR:", repr(qr_error))
     # ẢNH – Xử lý cẩn thận và log lỗi
     if image_bytes:
         try:
@@ -3127,7 +3201,9 @@ async def field_report_pdf(
     answer: str = Form(""),
     image: UploadFile | None = File(None),
     reviewer: str = Form(""),
-    capture_time: str = Form(None),  # Thêm tham số
+    capture_time: str = Form(None),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),  # Thêm tham số
 ):
     if not answer.strip():
         return {"success": False, "error": "Không có nội dung báo cáo để tạo PDF."}
@@ -3145,6 +3221,8 @@ async def field_report_pdf(
             image_bytes,
             reviewer,
             capture_time,  # Truyền tham số
+            latitude,
+            longitude,
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
