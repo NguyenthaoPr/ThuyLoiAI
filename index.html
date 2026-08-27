@@ -1106,16 +1106,17 @@ if (window.kmlGpsResult) {
             formData.append("capture_time", window.captureTimestamp);
           }
           // ===== GỬI TỌA ĐỘ GPS CHO PDF =====
-          if (window.currentLocation) {
-            formData.append("latitude", String(window.currentLocation.lat));
-            formData.append("longitude", String(window.currentLocation.lng));
+          if (currentLocation) {
+              formData.append("latitude", String(currentLocation.lat));
+              formData.append("longitude", String(currentLocation.lng));
           
-            console.log("📍 GPS gửi tạo PDF:", {
-              latitude: window.currentLocation.lat,
-              longitude: window.currentLocation.lng
-            });
+              console.log("📍 GPS gửi tạo PDF:", {
+                  latitude: currentLocation.lat,
+                  longitude: currentLocation.lng
+              });
+          } else {
+              console.warn("⚠️ Không có GPS khi tạo PDF - PDF sẽ không có QR vị trí.");
           }
-
           // Tạo File object với type rõ ràng
           const filename = window.preparedImageName || "image.jpg";
           const file = new File([window.preparedImageBlob], filename, { type: 'image/jpeg' });
