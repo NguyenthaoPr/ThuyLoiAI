@@ -483,9 +483,9 @@
 // ======================================================
 // KIỂM TRA GPS VỚI TUYẾN KML/KMZ
 // ======================================================
-async function checkGpsAgainstKml() {
+async function checkGpsAgainstKml(locationOverride = null) {
     try {
-        const location = await getLocation();
+        const location = locationOverride || await getLocation();
 
         if (!location) {
             return {
@@ -594,17 +594,38 @@ async function checkGpsAgainstKml() {
         ctx.drawImage(img, 0, 0, width, height);
 
         const location = await getLocation();
-        let address = '';
-        if (location) {
-          currentLocation = location;
-          address = await reverseGeocode(location.lat, location.lng);
-          currentAddress = address;
-          qrAvailable = true;
-        } else {
-          currentLocation = null;
-          currentAddress = '';
-          qrAvailable = false;
-        }
+
+let address = '';
+let kmlGpsResult = null;
+
+if (location) {
+    currentLocation = location;
+
+    address = await reverseGeocode(
+        location.lat,
+        location.lng
+    );
+
+    currentAddress = address;
+
+    qrAvailable = true;
+
+    // Kiểm tra GPS với tuyến KML/KMZ
+    kmlGpsResult = await checkGpsAgainstKml(location);
+
+    // Lưu kết quả để dùng cho ảnh và báo cáo
+    window.kmlGpsResult = kmlGpsResult;
+
+} else {
+    currentLocation = null;
+    currentAddress = '';
+    qrAvailable = false;
+
+    window.kmlGpsResult = {
+        success: false,
+        message: "Không có GPS để kiểm tra tuyến."
+    };
+}
 
         const now = new Date();
         const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -1248,7 +1269,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const formData = new FormData();
             formData.append("file", file);
 
-            const response = await fetch("/upload-kml", {
+            const response = await fetch("/kml-upload", {
                 method: "POST",
                 body: formData
             });
