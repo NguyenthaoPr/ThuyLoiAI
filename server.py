@@ -1843,36 +1843,35 @@ async def kml_gps_test(
     Chưa kết nối báo cáo.
     Chỉ dùng để kiểm tra thuật toán GIS.
     """
+     # Ưu tiên GIS MASTER KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
 
-    # Ưu tiên GIS MASTER KMZ
-if GIS_MASTER_KMZ.exists():
-    file_path = GIS_MASTER_KMZ
-else:
-    # Giữ cơ chế KML/KMZ cũ làm dự phòng
-    files = sorted(
-        KML_DATA_DIR.glob("*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
-    kml_files = [
-        p for p in files
-        if p.suffix.lower() in {".kml", ".kmz"}
-    ]
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
 
-    if not kml_files:
-        return {
-            "success": False,
-            "message": "Chưa có file KML/KMZ trong hệ thống."
-        }
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
 
-    file_path = kml_files[0]
+        file_path = kml_files[0]
 
-    print("KML GPS TEST FILE:", file_path)
+        print("KML GPS TEST FILE:", file_path)
 
-    try:
-        kml_items = parse_kml_kmz(file_path)
-
+        try:
+            kml_items = parse_kml_kmz(file_path)
 
         lines = [
             item
