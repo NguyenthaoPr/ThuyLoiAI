@@ -251,7 +251,164 @@ def get_gis_master():
         GIS_MASTER_CACHE = load_gis_master()
 
     return GIS_MASTER_CACHE
+# ============================================================
+# GIS ENGINE - BƯỚC 1
+# KMZ/KML -> GeoJSON
+# Chỉ bổ sung, không thay đổi parser hiện tại
+# ============================================================
 
+def kml_items_to_geojson(items):
+    """
+    Chuyển dữ liệu do parse_kml_kmz() tạo ra
+    sang GeoJSON FeatureCollection.
+
+    Không sửa dữ liệu gốc.
+    Chỉ tạo một lớp dữ liệu chuẩn để BẢN ĐỒ AI,
+    tính lý trình và PDF có thể dùng chung.
+    """
+    features = []
+
+    geometry_map = {
+        "Point": "Point",
+        "LineString": "LineString",
+        "Polygon": "Polygon",
+    }
+
+    for index, item in enumerate(items or []):
+        geometry_type = item.get("geometry_type")
+        coordinates = item.get("coordinates") or []
+
+        if geometry_type not in geometry_map:
+            continue
+
+        if not coordinates:
+            continue
+
+        if geometry_type == "Point":
+            geometry_coordinates = [
+                coordinates[0]["lng"],
+                coordinates[0]["lat"],
+            ]
+
+        elif geometry_type == "LineString":
+            geometry_coordinates = [
+                [point["lng"], point["lat"]]
+                for point in coordinates
+            ]
+
+        elif geometry_type == "Polygon":
+            ring = [
+                [point["lng"], point["lat"]]
+                for point in coordinates
+            ]
+
+            # GeoJSON Polygon cần vòng khép kín
+            if ring and ring[0] != ring[-1]:
+                ring.append(ring[0])
+
+            geometry_coordinates = [ring]
+
+        else:
+            continue
+
+        features.append({
+            "type": "Feature",
+            "id": index,
+            "properties": {
+                "name": item.get("name", ""),
+                "description": item.get("description", ""),
+                "geometry_type": geometry_type,
+            },
+            "geometry": {
+                "type": geometry_map[geometry_type],
+                "coordinates": geometry_coordinates,
+            },
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+    }
+
+
+def get_active_kml_file():
+    """
+    Tìm file KML/KMZ đang có trong thư mục kml_data.
+
+    Ưu tiên file KMZ mới nhất.
+    Không tạo cơ chế nạp dữ liệu mới.
+    """
+    if not KML_DATA_DIR.exists():
+        return None
+
+    files = [
+        path
+        for path in KML_DATA_DIR.iterdir()
+        if path.is_file()
+        and path.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not files:
+        return None
+
+    kmz_files = [
+        path for path in files
+        if path.suffix.lower() == ".kmz"
+    ]
+
+    if kmz_files:
+        return max(kmz_files, key=lambda path: path.stat().st_mtime)
+
+    return max(files, key=lambda path: path.stat().st_mtime)
+
+
+# ============================================================
+# GIS DATA API - BƯỚC 1
+# ============================================================
+
+@app.get("/gis/data")
+async def gis_data():
+    """
+    Trả dữ liệu hệ thống kênh dưới dạng GeoJSON.
+
+    Đây là API mới, không ảnh hưởng các API cũ.
+    """
+    try:
+        active_file = get_active_kml_file()
+
+        if active_file is None:
+            return {
+                "success": False,
+                "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
+                "geojson": {
+                    "type": "FeatureCollection",
+                    "features": [],
+                },
+            }
+
+        items = parse_kml_kmz(active_file)
+        geojson = kml_items_to_geojson(items)
+
+        return {
+            "success": True,
+            "filename": active_file.name,
+            "objects": len(items),
+            "features": len(geojson["features"]),
+            "geojson": geojson,
+        }
+
+    except Exception as e:
+        print("[GIS DATA ERROR]", repr(e))
+
+        return {
+            "success": False,
+            "message": "Không thể đọc dữ liệu GIS.",
+            "error": str(e),
+            "geojson": {
+                "type": "FeatureCollection",
+                "features": [],
+            },
+        }
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
