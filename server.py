@@ -361,55 +361,6 @@ def get_active_kml_file():
 
     return max(files, key=lambda path: path.stat().st_mtime)
 
-
-# ============================================================
-# GIS DATA API - BƯỚC 1
-# ============================================================
-
-@app.get("/gis/data")
-async def gis_data():
-    """
-    Trả dữ liệu hệ thống kênh dưới dạng GeoJSON.
-
-    Đây là API mới, không ảnh hưởng các API cũ.
-    """
-    try:
-        active_file = get_active_kml_file()
-
-        if active_file is None:
-            return {
-                "success": False,
-                "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
-                "geojson": {
-                    "type": "FeatureCollection",
-                    "features": [],
-                },
-            }
-
-        items = parse_kml_kmz(active_file)
-        geojson = kml_items_to_geojson(items)
-
-        return {
-            "success": True,
-            "filename": active_file.name,
-            "objects": len(items),
-            "features": len(geojson["features"]),
-            "geojson": geojson,
-        }
-
-    except Exception as e:
-        print("[GIS DATA ERROR]", repr(e))
-
-        return {
-            "success": False,
-            "message": "Không thể đọc dữ liệu GIS.",
-            "error": str(e),
-            "geojson": {
-                "type": "FeatureCollection",
-                "features": [],
-            },
-        }
-
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
@@ -734,6 +685,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============================================================
+# GIS DATA API - BƯỚC 1
+# ============================================================
+
+@app.get("/gis/data")
+async def gis_data():
+    """
+    Trả dữ liệu hệ thống kênh dưới dạng GeoJSON.
+
+    Đây là API mới, không ảnh hưởng các API cũ.
+    """
+    try:
+        active_file = get_active_kml_file()
+
+        if active_file is None:
+            return {
+                "success": False,
+                "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
+                "geojson": {
+                    "type": "FeatureCollection",
+                    "features": [],
+                },
+            }
+
+        items = parse_kml_kmz(active_file)
+        geojson = kml_items_to_geojson(items)
+
+        return {
+            "success": True,
+            "filename": active_file.name,
+            "objects": len(items),
+            "features": len(geojson["features"]),
+            "geojson": geojson,
+        }
+
+    except Exception as e:
+        print("[GIS DATA ERROR]", repr(e))
+
+        return {
+            "success": False,
+            "message": "Không thể đọc dữ liệu GIS.",
+            "error": str(e),
+            "geojson": {
+                "type": "FeatureCollection",
+                "features": [],
+            },
+        }
 # ============================================================
 # MODELS
 # ============================================================
