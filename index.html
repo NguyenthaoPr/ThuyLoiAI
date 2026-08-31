@@ -1306,6 +1306,21 @@ const geoLayer = L.geoJSON(
             let description =
                 p.description ||
                 '';
+            const code =
+            p.code ||
+            p.Code ||
+            p.ma ||
+            p.Ma ||
+            p.id ||
+            p.ID ||
+            '';
+            const station =
+            p.station ||
+            p.Station ||
+            p.ly_trinh ||
+            p.LyTrinh ||
+            p.lyTrinh ||
+            '';
 
 
             // Nếu description là HTML
