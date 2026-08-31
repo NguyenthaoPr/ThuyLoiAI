@@ -1699,21 +1699,61 @@ const geoLayer = L.geoJSON(
         // ĐỐI TƯỢNG ĐƯỜNG / KÊNH
         // -------------------------------
 
-        style: function(feature) {
+       style: function(feature) {
 
-            const properties =
-                feature.properties || {};
+    const properties =
+        feature.properties || {};
 
-            const type =
-                getCongTrinhType(
-                    properties,
-                    feature.geometry
-                );
+    const type =
+        getCongTrinhType(
+            properties,
+            feature.geometry
+        );
 
-            return getCongTrinhStyle(type);
-        },
+    const geometryType =
+        feature.geometry?.type || "";
 
+    // ==============================
+    // TUYẾN KÊNH / ĐƯỜNG
+    // ==============================
+    if (
+        geometryType === "LineString" ||
+        geometryType === "MultiLineString"
+    ) {
+        return {
+            color: "#1677ff",
+            weight: 2,
+            opacity: 0.85,
+            fill: false
+        };
+    }
 
+    // ==============================
+    // VÙNG HỒ CHỨA / KHU TƯỚI
+    // ==============================
+    if (
+        geometryType === "Polygon" ||
+        geometryType === "MultiPolygon"
+    ) {
+        return {
+            color: "#1677ff",
+            weight: 1.5,
+            opacity: 0.65,
+            fillColor: "#1677ff",
+            fillOpacity: 0.06
+        };
+    }
+
+    // ==============================
+    // CÁC TRƯỜNG HỢP KHÁC
+    // ==============================
+    return {
+        color: "#1677ff",
+        weight: 1.5,
+        opacity: 0.7,
+        fillOpacity: 0.05
+    };
+},
         // -------------------------------
         // POPUP
         // -------------------------------
