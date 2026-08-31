@@ -3662,7 +3662,7 @@ async def field_report_pdf(
     else:
         print("⚠️ Không nhận được ảnh từ client.")
 
-   # Tự động xác định GIS dựa trên tọa độ GPS
+    # Tự động xác định GIS dựa trên tọa độ GPS
     gis_identification = None
 
     if latitude is not None and longitude is not None:
