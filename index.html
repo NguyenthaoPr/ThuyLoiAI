@@ -168,6 +168,70 @@
     #mapAiBtn:hover {
         background: rgba(14,159,110,.06);
     }
+    /* =========================================
+   BẢN ĐỒ AI - KHỐI BỔ SUNG
+   Không thay đổi CSS hiện hữu
+   ========================================= */
+
+    .map-ai-panel {
+        padding: 14px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+    }
+    
+    .map-ai-panel.hidden {
+        display: none;
+    }
+    
+    .map-ai-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 16px;
+        margin-bottom: 8px;
+    }
+    
+    .map-ai-header strong {
+        font-weight: 700;
+    }
+    
+    #closeMapAi {
+        background: transparent;
+        border: 0;
+        font-size: 22px;
+        line-height: 1;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    
+    #closeMapAi:hover {
+        color: var(--text);
+    }
+    
+    .map-ai-info {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+    }
+    
+    #aiMap {
+        width: 100%;
+        height: 420px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        background: #eef3f5;
+    }
+    
+    .map-ai-status {
+        margin-top: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: var(--success-bg);
+        color: #065F46;
+        font-size: 13px;
+    }
 
     .field-report-panel { padding: 14px; background: var(--surface); border-top: 1px solid var(--border); }
     .field-report-panel.hidden { display: none; }
@@ -279,10 +343,27 @@
       🗺️ BẢN ĐỒ AI
       </button>
       
+      </div>   
       </div>
-      
-      </div>
-      
+      <div id="mapAiPanel" class="map-ai-panel hidden">
+
+    <div class="map-ai-header">
+        <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
+
+        <button id="closeMapAi" type="button">×</button>
+    </div>
+
+    <div class="map-ai-info">
+        Dữ liệu hệ thống kênh và công trình từ KMZ
+    </div>
+
+    <div id="aiMap"></div>
+
+    <div id="mapAiStatus" class="map-ai-status">
+        Đang chuẩn bị bản đồ...
+    </div>
+
+</div>
 
       <div id="fieldReportPanel" class="field-report-panel hidden">
         <div class="field-report-title">
@@ -375,6 +456,12 @@
       const createFieldReport = document.getElementById('createFieldReport');
       const fieldReportStatus = document.getElementById('fieldReportStatus');
       const reportTypeButtons = document.querySelectorAll('[data-report-type]');
+      // ===== BẢN ĐỒ AI - DOM REFS =====
+      const mapAiBtn = document.getElementById('mapAiBtn');
+      const mapAiPanel = document.getElementById('mapAiPanel');
+      const closeMapAi = document.getElementById('closeMapAi');
+      const aiMapElement = document.getElementById('aiMap');
+      const mapAiStatus = document.getElementById('mapAiStatus');
 
       // ===== STATE =====
       window.preparedImageBlob = null;
@@ -835,7 +922,18 @@ if (location) {
           fieldReportPanel.classList.remove('hidden');
           fieldReportPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
-
+        // ===== BẢN ĐỒ AI - MỞ / ĐÓNG =====
+        mapAiBtn.addEventListener('click', function() {
+            mapAiPanel.classList.remove('hidden');
+            mapAiPanel.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        });
+        
+        closeMapAi.addEventListener('click', function() {
+            mapAiPanel.classList.add('hidden');
+        });
         closeFieldReport.addEventListener('click', function() {
           fieldReportPanel.classList.add('hidden');
         });
