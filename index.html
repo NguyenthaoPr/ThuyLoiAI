@@ -1041,24 +1041,74 @@ async function initAiMap() {
                     },
 
                 onEachFeature:
-                    function(feature, layer) {
+    function(feature, layer) {
 
-                        const p =
-                            feature.properties || {};
+        const p = feature.properties || {};
 
-                        const name =
-                            p.name ||
-                            p.Name ||
-                            p.description ||
-                            'Công trình thủy lợi';
+        const name =
+            p.name ||
+            p.Name ||
+            p.ten ||
+            p.Ten ||
+            p.description ||
+            'Công trình thủy lợi';
 
-                        layer.bindPopup(
-                            '<strong>' +
-                            escapeHtmlMap(name) +
-                            '</strong>'
-                        );
+        const type =
+            p.type ||
+            p.Type ||
+            p.loai ||
+            p.Loai ||
+            p.category ||
+            p.Category ||
+            'Chưa xác định';
 
-                    }
+        const code =
+            p.code ||
+            p.Code ||
+            p.ma ||
+            p.Ma ||
+            p.id ||
+            p.ID ||
+            '';
+
+        const station =
+            p.station ||
+            p.Station ||
+            p.ly_trinh ||
+            p.LyTrinh ||
+            p.lytrinh ||
+            '';
+
+        let popup = '';
+
+        popup += '<div style="min-width:220px">';
+        popup += '<strong style="font-size:15px;">';
+        popup += '💧 ' + escapeHtmlMap(name);
+        popup += '</strong>';
+
+        popup += '<hr style="margin:7px 0;">';
+
+        popup += '<div><b>Loại:</b> ';
+        popup += escapeHtmlMap(type);
+        popup += '</div>';
+
+        if (code) {
+            popup += '<div><b>Mã:</b> ';
+            popup += escapeHtmlMap(code);
+            popup += '</div>';
+        }
+
+        if (station) {
+            popup += '<div><b>Lý trình:</b> ';
+            popup += escapeHtmlMap(station);
+            popup += '</div>';
+        }
+
+        popup += '</div>';
+
+        layer.bindPopup(popup);
+
+    }
 
             }
         );
