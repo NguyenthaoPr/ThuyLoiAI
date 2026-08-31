@@ -1315,69 +1315,141 @@ const geoLayer = L.geoJSON(
                 description =
                     String(description);
             }
-      let popup = '';
+            // ============================================
+        // TẠO POPUP THÔNG TIN CÔNG TRÌNH
+        // ============================================
 
-popup += '<div style="min-width:240px;max-width:360px;">';
+        let popup = `
+            <div style="
+                min-width:240px;
+                max-width:360px;
+                font-family:Arial,sans-serif;
+                font-size:13px;
+                line-height:1.4;
+            ">
 
-popup += '<div style="font-size:15px;font-weight:700;margin-bottom:6px;">' +
-    '💧 ' + escapeHtmlMap(name) +
-    '</div>';
+                <!-- TÊN CÔNG TRÌNH -->
+                <div style="
+                    font-size:15px;
+                    font-weight:700;
+                    margin-bottom:7px;
+                ">
+                    💧 ${escapeHtmlMap(name)}
+                </div>
 
-popup += '<div style="border-top:1px solid #ddd;padding-top:6px;">';
+                <!-- LOẠI CÔNG TRÌNH -->
+                <div style="
+                    border-top:1px solid #ddd;
+                    padding-top:6px;
+                ">
+        `;
 
-if (type) {
-    popup += '<div style="margin:3px 0;">' +
-        '<b>Loại:</b> ' +
-        escapeHtmlMap(type) +
-        '</div>';
-}
+        // --------------------------------------------
+        // LOẠI CÔNG TRÌNH
+        // --------------------------------------------
+        if (type) {
+            popup += `
+                <div style="
+                    margin:3px 0;
+                ">
+                    <b>Loại:</b>
+                    ${escapeHtmlMap(type)}
+                </div>
+            `;
+        }
 
-if (code) {
-    popup += '<div style="margin:3px 0;">' +
-        '<b>Mã công trình:</b> ' +
-        escapeHtmlMap(code) +
-        '</div>';
-}
+        // --------------------------------------------
+        // MÃ CÔNG TRÌNH
+        // --------------------------------------------
+        if (code) {
+            popup += `
+                <div style="
+                    margin:3px 0;
+                ">
+                    <b>Mã công trình:</b>
+                    ${escapeHtmlMap(code)}
+                </div>
+            `;
+        }
 
-if (station) {
-    popup += '<div style="margin:3px 0;">' +
-        '<b>Lý trình:</b> ' +
-        escapeHtmlMap(station) +
-        '</div>';
-}
+        // --------------------------------------------
+        // LÝ TRÌNH / VỊ TRÍ
+        // --------------------------------------------
+        if (station) {
+            popup += `
+                <div style="
+                    margin:3px 0;
+                ">
+                    <b>Lý trình:</b>
+                    ${escapeHtmlMap(station)}
+                </div>
+            `;
+        }
 
-popup += '</div>';
+        popup += `
+                </div>
+        `;
 
-/*
- * Hiển thị phần mô tả/thông số kỹ thuật
- * Nếu GIS đã chứa bảng HTML thì giữ nguyên bảng.
- */
-if (p.description) {
+        // ============================================
+        // THÔNG SỐ KỸ THUẬT / BẢNG DỮ LIỆU GIS
+        // ============================================
 
-    const description = String(p.description);
+        if (description) {
 
-    if (
-        description.includes('<table') ||
-        description.includes('<TABLE')
-    ) {
+            const desc =
+                String(description).trim();
 
-        popup +=
-            '<div style="margin-top:8px;">' +
-            description +
-            '</div>';
+            // ----------------------------------------
+            // NẾU DỮ LIỆU LÀ BẢNG HTML
+            // → GIỮ NGUYÊN HTML
+            // ----------------------------------------
+            if (
+                desc.includes('<table') ||
+                desc.includes('<TABLE')
+            ) {
 
-    } else {
+                popup += `
+                    <div style="
+                        margin-top:8px;
+                        max-height:260px;
+                        overflow:auto;
+                        border-top:1px solid #ddd;
+                        padding-top:6px;
+                    ">
+                        ${desc}
+                    </div>
+                `;
 
-        popup +=
-            '<div style="margin-top:8px;line-height:1.45;">' +
-            escapeHtmlMap(description) +
-            '</div>';
-    }
-}
+            } else {
 
-popup += '</div>';
+                // ------------------------------------
+                // NẾU LÀ TEXT THƯỜNG
+                // → ESCAPE HTML
+                // ------------------------------------
 
-layer.bindPopup(popup);
+                popup += `
+                    <div style="
+                        margin-top:8px;
+                        line-height:1.45;
+                        border-top:1px solid #ddd;
+                        padding-top:6px;
+                    ">
+                        ${escapeHtmlMap(desc)}
+                    </div>
+                `;
+            }
+        }
+
+        // ============================================
+        // KẾT THÚC POPUP
+        // ============================================
+
+        popup += `
+            </div>
+        `;
+
+        // Gắn popup vào đối tượng GIS
+        layer.bindPopup(popup);
             // Ghi nhận để kiểm tra
             console.log(
                 'CÔNG TRÌNH:',
