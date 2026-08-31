@@ -1420,6 +1420,53 @@ L.tileLayer(
 
         // 4. Lớp dữ liệu GIS
         aiMapLayer = L.layerGroup().addTo(aiMap);
+      // ==========================================
+// TỰ ĐỘNG ĐIỀU CHỈNH GIS THEO MỨC ZOOM
+// ==========================================
+
+function updateGISZoomStyle() {
+
+    if (!aiMapLayer) return;
+
+    const zoom = aiMap.getZoom();
+
+    let lineWeight;
+    let lineOpacity;
+
+    if (zoom <= 8) {
+        lineWeight = 1;
+        lineOpacity = 0.45;
+    }
+    else if (zoom <= 10) {
+        lineWeight = 1.5;
+        lineOpacity = 0.60;
+    }
+    else if (zoom <= 12) {
+        lineWeight = 2;
+        lineOpacity = 0.75;
+    }
+    else {
+        lineWeight = 3;
+        lineOpacity = 0.90;
+    }
+
+    aiMapLayer.eachLayer(function(layer) {
+
+        if (layer.setStyle) {
+            layer.setStyle({
+                weight: lineWeight,
+                opacity: lineOpacity
+            });
+        }
+
+    });
+}
+
+// Cập nhật khi thay đổi mức zoom
+aiMap.on('zoomend', updateGISZoomStyle);
+
+// Áp dụng ngay khi bản đồ được khởi tạo
+updateGISZoomStyle();
 
         mapAiStatus.textContent =
             '⏳ Đang tải dữ liệu hệ thống thủy lợi...';
