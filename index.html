@@ -129,9 +129,45 @@
     .footer { display: none; }
     .uiCompat { display: none; }
 
-    .field-report-entry { padding: 8px 14px 12px; border-top: 1px solid var(--border); background: var(--surface-soft); }
-    #fieldReportBtn { width: 100%; border: 1px dashed var(--primary); background: transparent; border-radius: 12px; padding: 10px 0; font-weight: 600; color: var(--primary); font-size: 15px; transition: background .15s; }
-    #fieldReportBtn:hover { background: rgba(37,99,235,.06); }
+    .field-report-entry {
+    padding: 8px 14px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-soft);
+    }
+    
+    .ai-action-buttons {
+        display: flex;
+        width: 100%;
+        gap: 8px;
+    }
+    
+    #fieldReportBtn,
+    #mapAiBtn {
+        flex: 1;
+        min-width: 0;
+        border: 1px dashed var(--primary);
+        background: transparent;
+        border-radius: 12px;
+        padding: 10px 6px;
+        font-weight: 600;
+        color: var(--primary);
+        font-size: 15px;
+        line-height: 1.25;
+        transition: background .15s;
+    }
+    
+    #fieldReportBtn:hover {
+        background: rgba(37,99,235,.06);
+    }
+    
+    #mapAiBtn {
+        border-color: #0E9F6E;
+        color: #0E9F6E;
+    }
+    
+    #mapAiBtn:hover {
+        background: rgba(14,159,110,.06);
+    }
 
     .field-report-panel { padding: 14px; background: var(--surface); border-top: 1px solid var(--border); }
     .field-report-panel.hidden { display: none; }
@@ -141,6 +177,15 @@
     #closeFieldReport:hover { color: var(--text); }
 
     .field-report-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: 14px; }
+    .ai-action-buttons {
+    gap: 7px;
+    }
+    
+    #fieldReportBtn,
+    #mapAiBtn {
+        font-size: 13px;
+        padding: 10px 4px;
+    }
     .field-report-types { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
     .field-report-types button { border: 1px solid var(--border); background: var(--surface-soft); border-radius: 10px; padding: 10px 6px; font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: border-color .15s, background .15s; }
     .field-report-types button:hover { border-color: var(--primary); background: #F0F7FF; }
@@ -222,10 +267,22 @@
         <div class="msg assistant"><div class="bubble"><strong>Chào bạn! 🌿</strong><p>Tôi là trợ lý AI chuyên ngành Thủy lợi. Hãy đặt câu hỏi hoặc gửi ảnh hiện trường để tôi phân tích.</p></div></div>
       </div>
       <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
-
       <div class="field-report-entry">
-        <button id="fieldReportBtn" type="button">📋 Báo cáo hiện trường</button>
+
+      <div class="ai-action-buttons">
+      
+      <button id="fieldReportBtn" type="button">
+      📋 Báo cáo hiện trường
+      </button>
+      
+      <button id="mapAiBtn" type="button">
+      🗺️ BẢN ĐỒ AI
+      </button>
+      
       </div>
+      
+      </div>
+      
 
       <div id="fieldReportPanel" class="field-report-panel hidden">
         <div class="field-report-title">
