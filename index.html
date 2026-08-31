@@ -1858,9 +1858,10 @@ function getCongTrinhIcon(type) {
     });
 }
 
-// ======================================================
+
+// ========================================
 // TẠO LỚP GIS
-// ======================================================
+// ========================================
 
 const geoLayer = L.geoJSON(
     geojson,
@@ -1889,46 +1890,6 @@ pointToLayer: function(feature, latlng) {
             zIndexOffset: 1000,
 
             riseOnHover: true
-        }
-    );
-},
-
-    let color = "#1677ff";
-    
-    if (type === "ho") {
-        color = "#00a8e8";          // Hồ chứa
-    }
-    else if (type === "tram_bom") {
-        color = "#1677ff";          // Trạm bơm
-    }
-    else if (type === "dap") {
-        color = "#ff7a00";          // Đập dâng
-    }
-    else if (type === "cong") {
-        color = "#7c3aed";          // Cống
-    }
-    else if (type === "tran") {
-        color = "#f59e0b";          // Tràn
-    }
-    else if (type === "cau") {
-        color = "#92400e";          // Cầu
-    }
-    else if (type === "ong") {
-        color = "#dc2626";          // Đường ống
-    }
-    else if (type === "kenh") {
-        color = "#16a34a";          // Kênh
-    }
-
-    return L.circleMarker(
-        latlng,
-        {
-            radius: 3,
-            color: color,
-            weight: 1,
-            opacity: 0.9,
-            fillColor: color,
-            fillOpacity: 0.75
         }
     );
 },
