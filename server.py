@@ -2150,85 +2150,141 @@ async def kml_gps_test(
 
         earth_radius = 6371000.0
 
-        def distance_to_segment(
-            gps_lat,
-            gps_lon,
-            lat1,
-            lon1,
-            lat2,
-            lon2
-        ):
-            ref_lat = math.radians(gps_lat)
+       def distance_to_segment(
+    gps_lat,
+    gps_lon,
+    lat1,
+    lon1,
+    lat2,
+    lon2
+):
+    """
+    Tính:
+    - khoảng cách GPS đến đoạn tuyến
+    - điểm chiếu gần nhất
+    - tỷ lệ vị trí trên đoạn (t)
+    - chiều dài đoạn tuyến
 
-            scale_x = (
-                earth_radius
-                * math.cos(ref_lat)
-                * math.pi
-                / 180.0
-            )
+    Đơn vị khoảng cách: mét.
+    """
 
-            scale_y = (
-                earth_radius
-                * math.pi
-                / 180.0
-            )
+    ref_lat = math.radians(gps_lat)
 
-            x1 = (
-                lon1 - gps_lon
-            ) * scale_x
+    scale_x = (
+        earth_radius
+        * math.cos(ref_lat)
+        * math.pi
+        / 180.0
+    )
 
-            y1 = (
-                lat1 - gps_lat
-            ) * scale_y
+    scale_y = (
+        earth_radius
+        * math.pi
+        / 180.0
+    )
 
-            x2 = (
-                lon2 - gps_lon
-            ) * scale_x
+    # ----------------------------------------------------
+    # Chuyển tọa độ sang hệ tọa độ cục bộ mét
+    # lấy GPS làm gốc
+    # ----------------------------------------------------
 
-            y2 = (
-                lat2 - gps_lat
-            ) * scale_y
+    x1 = (
+        lon1 - gps_lon
+    ) * scale_x
 
-            dx = x2 - x1
-            dy = y2 - y1
+    y1 = (
+        lat1 - gps_lat
+    ) * scale_y
 
-            segment_length_sq = (
-                dx * dx + dy * dy
-            )
+    x2 = (
+        lon2 - gps_lon
+    ) * scale_x
 
-            if segment_length_sq == 0:
-                t = 0.0
-            else:
-                t = (
-                    -(x1 * dx + y1 * dy)
-                    / segment_length_sq
-                )
+    y2 = (
+        lat2 - gps_lat
+    ) * scale_y
 
-                t = max(0.0, min(1.0, t))
+    dx = x2 - x1
+    dy = y2 - y1
 
-            nearest_x = x1 + t * dx
-            nearest_y = y1 + t * dy
+    segment_length_sq = (
+        dx * dx
+        + dy * dy
+    )
 
-            distance = math.sqrt(
-                nearest_x * nearest_x
-                + nearest_y * nearest_y
-            )
+    # ----------------------------------------------------
+    # Tỷ lệ điểm chiếu trên đoạn
+    #
+    # t = 0  → đầu đoạn
+    # t = 1  → cuối đoạn
+    # ----------------------------------------------------
 
-            nearest_lat = (
-                gps_lat
-                + nearest_y / scale_y
-            )
+    if segment_length_sq == 0:
 
-            nearest_lon = (
-                gps_lon
-                + nearest_x / scale_x
-            )
+        t = 0.0
 
-            return (
-                distance,
-                nearest_lat,
-                nearest_lon
-            )
+    else:
+
+        t = (
+            -(x1 * dx + y1 * dy)
+            / segment_length_sq
+        )
+
+        t = max(
+            0.0,
+            min(1.0, t)
+        )
+
+    # ----------------------------------------------------
+    # Điểm chiếu
+    # ----------------------------------------------------
+
+    nearest_x = (
+        x1 + t * dx
+    )
+
+    nearest_y = (
+        y1 + t * dy
+    )
+
+    # ----------------------------------------------------
+    # Khoảng cách GPS → tuyến
+    # ----------------------------------------------------
+
+    distance = math.sqrt(
+        nearest_x * nearest_x
+        + nearest_y * nearest_y
+    )
+
+    # ----------------------------------------------------
+    # Đổi điểm chiếu trở lại GPS
+    # ----------------------------------------------------
+
+    nearest_lat = (
+        gps_lat
+        + nearest_y / scale_y
+    )
+
+    nearest_lon = (
+        gps_lon
+        + nearest_x / scale_x
+    )
+
+    # ----------------------------------------------------
+    # Chiều dài thực của đoạn
+    # ----------------------------------------------------
+
+    segment_length = math.sqrt(
+        segment_length_sq
+    )
+
+    return (
+        distance,
+        nearest_lat,
+        nearest_lon,
+        t,
+        segment_length
+    )
 
         # ----------------------------------------------------
         # Tìm tuyến gần nhất
@@ -2242,11 +2298,18 @@ async def kml_gps_test(
                 "coordinates",
                 []
             )
+         # ----------------------------------------------------
+# BƯỚC 2: TÍNH KHOẢNG CÁCH DỌC THEO TUYẾN
+# ----------------------------------------------------
 
-            best_distance = None
-            best_lat = None
-            best_lon = None
+cumulative_distance = 0.0
 
+best_distance_along_line = None
+best_distance = None
+best_lat = None
+best_lon = None
+best_ratio = None
+best_segment_length = None
             for i in range(
                 len(coordinates) - 1
             ):
@@ -2271,6 +2334,8 @@ async def kml_gps_test(
                     distance,
                     nearest_lat,
                     nearest_lon
+                    segment_ratio,
+                    segment_length
                 ) = distance_to_segment(
                     latitude,
                     longitude,
@@ -2287,7 +2352,13 @@ async def kml_gps_test(
                     best_distance = distance
                     best_lat = nearest_lat
                     best_lon = nearest_lon
-
+                    best_ratio = segment_ratio
+                    best_segment_length = segment_length
+                    best_distance_along_line = (
+                        cumulative_distance
+                        + segment_ratio * segment_length
+                    )
+            cumulative_distance += segment_length
             if best_distance is not None:
 
                 results.append({
@@ -2301,6 +2372,10 @@ async def kml_gps_test(
                     ),
                     "distance_m": round(
                         best_distance,
+                        2
+                    ),
+                    "distance_along_line_m": round(
+                        best_distance_along_line,
                         2
                     ),
                     "nearest_point": {
@@ -2377,6 +2452,9 @@ async def kml_gps_test(
                 "status_code": nearest.get(
                     "status_code",
                     "RED"
+                ),
+                "distance_along_line_m": nearest.get(
+                    "distance_along_line_m"
                 ),
                 "assessment": nearest.get(
                     "assessment",
@@ -2918,6 +2996,7 @@ PDF_DOC_LABEL = "BÁO CÁO NHANH HIỆN TRƯỜNG"
 
 PDF_COLOR_PRIMARY = colors.HexColor("#0B4F6C")
 PDF_COLOR_ACCENT = colors.HexColor("#1B7A8C")
+PDF_COLOR_ACCENT_LIGHT = colors.HexColor("#EAF2F5")
 PDF_COLOR_TEXT = colors.HexColor("#20303B")
 PDF_COLOR_MUTED = colors.HexColor("#5A6B75")
 PDF_COLOR_BORDER = colors.HexColor("#C9D8DE")
@@ -3147,6 +3226,7 @@ def create_field_report_pdf(
     capture_time=None,  # Thêm tham số
     latitude=None,
     longitude=None,
+    gis_identification=None,
 ):
     # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
@@ -3342,7 +3422,144 @@ def create_field_report_pdf(
         print("⚠️ Không có ảnh để chèn vào PDF.")
 
     story.append(Spacer(1, 4))
+    # ============================================================
+# VỊ TRÍ KỸ THUẬT XÁC ĐỊNH TỪ GPS
+# ============================================================
 
+if gis_identification and gis_identification.get("identified"):
+
+    gis_name = gis_identification.get("name", "")
+    geometry_type = gis_identification.get("geometry_type", "")
+    distance_m = gis_identification.get("distance_m")
+    distance_along_line_m = gis_identification.get("distance_along_line_m")
+
+    location_rows = []
+
+    # Tên đối tượng GIS
+    if gis_name:
+        location_rows.append([
+            Paragraph("<b>Đối tượng</b>", body_style),
+            Paragraph(str(gis_name), body_style)
+        ])
+
+    # Tuyến kênh
+    if geometry_type == "LineString" and distance_along_line_m is not None:
+
+        ly_trinh_m = float(distance_along_line_m)
+
+        km = int(ly_trinh_m // 1000)
+        m = int(round(ly_trinh_m % 1000))
+
+        # Làm tròn tránh trường hợp K3+999.8 → K4+000
+        if m >= 1000:
+            km += 1
+            m = 0
+
+        ly_trinh = f"K{km}+{m:03d}"
+
+        location_rows.append([
+            Paragraph("<b>Loại vị trí</b>", body_style),
+            Paragraph("Trên tuyến kênh", body_style)
+        ])
+
+        location_rows.append([
+            Paragraph("<b>Lý trình</b>", body_style),
+            Paragraph(
+                f"<b>{ly_trinh}</b>",
+                body_style
+            )
+        ])
+
+        if distance_m is not None:
+            location_rows.append([
+                Paragraph("<b>Khoảng cách GPS đến tuyến</b>", body_style),
+                Paragraph(f"{float(distance_m):.1f} m", body_style)
+            ])
+
+    # Công trình đầu mối
+    elif geometry_type == "Point":
+
+        location_rows.append([
+            Paragraph("<b>Loại vị trí</b>", body_style),
+            Paragraph("Công trình đầu mối", body_style)
+        ])
+
+    if location_rows:
+
+        story.append(Spacer(1, 6))
+
+        story.append(
+            _pdf_section_header_table(
+                Paragraph(
+                    "📍 VỊ TRÍ KỸ THUẬT XÁC ĐỊNH",
+                    section_heading_style
+                ),
+                doc.width,
+                PDF_COLOR_ACCENT
+            )
+        )
+
+        story.append(Spacer(1, 4))
+
+        location_table = Table(
+            location_rows,
+            colWidths=[
+                doc.width * 0.32,
+                doc.width * 0.68
+            ],
+            repeatRows=0
+        )
+
+        location_table.setStyle(
+            TableStyle([
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE"
+                ),
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.4,
+                    PDF_COLOR_ACCENT
+                ),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (0, -1),
+                    PDF_COLOR_ACCENT_LIGHT
+                ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    6
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    6
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    5
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    5
+                ),
+            ])
+        )
+
+        story.append(location_table)
+        story.append(Spacer(1, 10))
     # NỘI DUNG BÁO CÁO
     story.append(_pdf_section_header_table(Paragraph("NỘI DUNG BÁO CÁO", section_heading_style), doc.width, PDF_COLOR_ACCENT))
     story.append(Spacer(1, 6))
@@ -3443,6 +3660,7 @@ async def field_report_pdf(
             capture_time,  # Truyền tham số
             latitude,
             longitude,
+            gis_identification=gis_identification,
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
