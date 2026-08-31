@@ -1866,7 +1866,25 @@ function getCongTrinhIcon(type) {
 const geoLayer = L.geoJSON(
     geojson,
     {
+        // CHỈ HIỂN THỊ BIỂU TƯỢNG 3 CÔNG TRÌNH ĐẦU MỐI
+        filter: function(feature) {
+            const geometryType = feature?.geometry?.type;
 
+            // Không lọc các đối tượng đường/vùng GIS
+            if (geometryType !== "Point") {
+                return true;
+            }
+
+            const type = getCongTrinhType(
+                feature.properties,
+                feature.geometry
+            );
+
+            // Chỉ giữ lại: Hồ chứa - Trạm bơm - Đập dâng
+            return ["ho", "tram_bom", "dap"].includes(type);
+        },
+
+        pointToLayer: function(feature, latlng) {
 pointToLayer: function(feature, latlng) {
 
     const properties =
