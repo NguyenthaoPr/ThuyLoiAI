@@ -1990,7 +1990,72 @@ async def kml_lines_preview():
                 f"Lỗi kiểm tra LineString: {str(e)}"
             )
         )
+# ============================================================
+# THỦY LỢI AI - BỘ MÁY XÁC ĐỊNH LÝ TRÌNH
+# BƯỚC 1: CHUẨN HÓA MỐC LÝ TRÌNH
+# ============================================================
 
+CHAINAGE_PATTERN = re.compile(
+    r'(?i)(?:K|Km)\s*(\d+)\s*\+\s*(\d+(?:\.\d+)?)'
+)
+
+
+def parse_chainage(text):
+    """
+    Đọc lý trình từ tên hoặc mô tả GIS.
+
+    Ví dụ:
+        K3+101
+        Km3+101
+        K 3+101
+        K3+101.5
+
+    Trả về:
+        mét tính từ Km0
+    """
+
+    if not text:
+        return None
+
+    match = CHAINAGE_PATTERN.search(str(text))
+
+    if not match:
+        return None
+
+    try:
+        km = float(match.group(1))
+        met = float(match.group(2))
+
+        return km * 1000.0 + met
+
+    except (TypeError, ValueError):
+        return None
+
+
+def format_chainage(distance_m):
+    """
+    Chuyển số mét thành dạng:
+        K3+198
+    """
+
+    if distance_m is None:
+        return None
+
+    try:
+        distance_m = float(distance_m)
+
+        km = int(distance_m // 1000)
+        met = distance_m - km * 1000
+
+        if abs(met - round(met)) < 0.01:
+            met_text = str(int(round(met)))
+        else:
+            met_text = f"{met:.1f}"
+
+        return f"K{km}+{met_text}"
+
+    except (TypeError, ValueError):
+        return None
 # ============================================================
 # KML GIS - GPS -> TUYẾN KÊNH GẦN NHẤT
 # BƯỚC THỬ NGHIỆM ĐỘC LẬP
