@@ -697,7 +697,7 @@ async def gis_data():
     Đây là API mới, không ảnh hưởng các API cũ.
     """
     try:
-        active_file = get_active_kml_file()
+        active_file = GIS_MASTER_KMZ
 
         if active_file is None:
             return {
