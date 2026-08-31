@@ -638,6 +638,73 @@
   }
 
 }
+ /* ========================================
+   BIỂU TƯỢNG CÔNG TRÌNH THỦY LỢI
+   ======================================== */
+
+.thuyloi-cong-trinh-icon {
+    background: transparent !important;
+    border: none !important;
+}
+
+.thuyloi-pin {
+    position: relative;
+    width: 42px;
+    height: 52px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+}
+
+.thuyloi-pin-icon {
+    width: 36px;
+    height: 36px;
+
+    margin-top: 1px;
+
+    border-radius: 50% 50% 50% 0;
+
+    transform: rotate(-45deg);
+
+    background: var(--pin-color);
+
+    border: 3px solid #ffffff;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    color: #ffffff;
+
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.thuyloi-pin-icon::first-letter {
+    transform: rotate(45deg);
+}
+
+.thuyloi-pin-icon {
+    text-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+
+.thuyloi-pin-icon {
+    line-height: 1;
+}
+
+.thuyloi-pin-tail {
+    position: absolute;
+
+    top: 35px;
+
+    width: 0;
+    height: 0;
+
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 12px solid var(--pin-color);
+}   
 </style>
 </head>
 <body>
@@ -1719,8 +1786,91 @@ const geoLayer = L.geoJSON(
         // -------------------------------
         // ĐỐI TƯỢNG ĐIỂM
         // -------------------------------
+// ========================================
+// BIỂU TƯỢNG CÔNG TRÌNH TRÊN BẢN ĐỒ
+// ========================================
+function getCongTrinhIcon(type) {
 
-       pointToLayer: function(feature, latlng) {
+    const icons = {
+
+        ho: {
+            icon: '💧',
+            color: '#1683ff',
+            label: 'Hồ chứa'
+        },
+
+        tram_bom: {
+            icon: '⚙',
+            color: '#1683ff',
+            label: 'Trạm bơm'
+        },
+
+        dap: {
+            icon: '▥',
+            color: '#ff7a00',
+            label: 'Đập dâng'
+        },
+
+        cong: {
+            icon: '▣',
+            color: '#8e44ad',
+            label: 'Cống'
+        },
+
+        kenh: {
+            icon: '⌁',
+            color: '#16a34a',
+            label: 'Kênh'
+        },
+
+        tran: {
+            icon: '≋',
+            color: '#f59e0b',
+            label: 'Tràn'
+        },
+
+        cau: {
+            icon: '╬',
+            color: '#795548',
+            label: 'Cầu'
+        },
+
+        ong: {
+            icon: '●',
+            color: '#dc2626',
+            label: 'Đường ống'
+        }
+    };
+
+    const cfg = icons[type] || {
+        icon: '●',
+        color: '#1677ff',
+        label: 'Công trình'
+    };
+
+    return L.divIcon({
+
+        className: 'thuyloi-cong-trinh-icon',
+
+        html: `
+            <div
+                class="thuyloi-pin"
+                style="--pin-color:${cfg.color};"
+                title="${cfg.label}"
+            >
+                <div class="thuyloi-pin-icon">
+                    ${cfg.icon}
+                </div>
+                <div class="thuyloi-pin-tail"></div>
+            </div>
+        `,
+
+        iconSize: [42, 52],
+        iconAnchor: [21, 50],
+        popupAnchor: [0, -48]
+    });
+}
+pointToLayer: function(feature, latlng) {
 
     const properties =
         feature.properties || {};
@@ -1730,6 +1880,22 @@ const geoLayer = L.geoJSON(
             properties,
             feature.geometry
         );
+
+    // ====================================
+    // HIỂN THỊ BIỂU TƯỢNG CÔNG TRÌNH
+    // ====================================
+
+    return L.marker(
+        latlng,
+        {
+            icon: getCongTrinhIcon(type),
+
+            zIndexOffset: 1000,
+
+            riseOnHover: true
+        }
+    );
+},
 
     let color = "#1677ff";
     
