@@ -6,6 +6,14 @@
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+ />
+
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+</script>
   <style>
     /* ... CSS giữ nguyên như cũ, không thay đổi ... */
     :root {
@@ -462,6 +470,10 @@
       const closeMapAi = document.getElementById('closeMapAi');
       const aiMapElement = document.getElementById('aiMap');
       const mapAiStatus = document.getElementById('mapAiStatus');
+      // ===== BẢN ĐỒ AI STATE =====
+      let aiMap = null;
+      let aiMapLayer = null;
+      let aiMapLoaded = false;
 
       // ===== STATE =====
       window.preparedImageBlob = null;
@@ -923,12 +935,202 @@ if (location) {
           fieldReportPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
         // ===== BẢN ĐỒ AI - MỞ / ĐÓNG =====
+        // =====================================================
+// BẢN ĐỒ AI - KHỞI TẠO VÀ TẢI DỮ LIỆU GIS
+// =====================================================
+
+async function initAiMap() {
+
+    // Bản đồ đã được tạo rồi thì chỉ cập nhật kích thước
+    if (aiMap) {
+        setTimeout(function() {
+            aiMap.invalidateSize();
+        }, 200);
+        return;
+    }
+
+    // Kiểm tra Leaflet
+    if (typeof L === 'undefined') {
+        mapAiStatus.textContent =
+            '❌ Không tải được thư viện bản đồ.';
+        return;
+    }
+
+    try {
+
+        mapAiStatus.textContent =
+            '⏳ Đang khởi tạo bản đồ...';
+
+        // 1. Tạo bản đồ
+        aiMap = L.map('aiMap', {
+            zoomControl: true,
+            preferCanvas: true
+        });
+
+        // 2. Bản đồ nền
+        L.tileLayer(
+            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            {
+                maxZoom: 19,
+                attribution:
+                    '&copy; OpenStreetMap contributors'
+            }
+        ).addTo(aiMap);
+
+        // 3. Vị trí ban đầu
+        aiMap.setView(
+            [15.75, 108.30],
+            9
+        );
+
+        // 4. Lớp dữ liệu GIS
+        aiMapLayer = L.layerGroup().addTo(aiMap);
+
+        mapAiStatus.textContent =
+            '⏳ Đang tải dữ liệu hệ thống thủy lợi...';
+
+        // 5. Gọi API GIS
+        const response = await fetch('/gis/data');
+
+        if (!response.ok) {
+            throw new Error(
+                'Không thể truy cập /gis/data (' +
+                response.status +
+                ')'
+            );
+        }
+
+        const result = await response.json();
+
+        // 6. Kiểm tra dữ liệu trả về
+        if (!result.success) {
+            throw new Error(
+                result.message ||
+                'API GIS trả về lỗi.'
+            );
+        }
+
+        const geojson = result.geojson;
+
+        if (
+            !geojson ||
+            !Array.isArray(geojson.features)
+        ) {
+            throw new Error(
+                'Dữ liệu GeoJSON không hợp lệ.'
+            );
+        }
+
+        // 7. Đưa dữ liệu lên bản đồ
+        const geoLayer = L.geoJSON(
+            geojson,
+            {
+
+                pointToLayer:
+                    function(feature, latlng) {
+
+                        return L.circleMarker(
+                            latlng,
+                            {
+                                radius: 4,
+                                weight: 1,
+                                fillOpacity: 0.75
+                            }
+                        );
+
+                    },
+
+                onEachFeature:
+                    function(feature, layer) {
+
+                        const p =
+                            feature.properties || {};
+
+                        const name =
+                            p.name ||
+                            p.Name ||
+                            p.description ||
+                            'Công trình thủy lợi';
+
+                        layer.bindPopup(
+                            '<strong>' +
+                            escapeHtmlMap(name) +
+                            '</strong>'
+                        );
+
+                    }
+
+            }
+        );
+
+        geoLayer.addTo(aiMapLayer);
+
+        // 8. Zoom toàn bộ dữ liệu
+        const bounds =
+            geoLayer.getBounds();
+
+        if (bounds.isValid()) {
+
+            aiMap.fitBounds(
+                bounds,
+                {
+                    padding: [20, 20],
+                    maxZoom: 14
+                }
+            );
+
+        }
+
+        // 9. Hoàn tất
+        aiMapLoaded = true;
+
+        mapAiStatus.textContent =
+            '✅ Đã tải ' +
+            geojson.features.length.toLocaleString('vi-VN') +
+            ' đối tượng thủy lợi.';
+
+        setTimeout(function() {
+            aiMap.invalidateSize();
+        }, 300);
+
+    } catch (error) {
+
+        console.error(
+            'AI MAP ERROR:',
+            error
+        );
+
+        mapAiStatus.textContent =
+            '❌ Lỗi bản đồ: ' +
+            error.message;
+
+    }
+}
+
+
+// =====================================================
+// BẢO VỆ NỘI DUNG POPUP
+// =====================================================
+
+function escapeHtmlMap(value) {
+
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+}
         mapAiBtn.addEventListener('click', function() {
             mapAiPanel.classList.remove('hidden');
             mapAiPanel.scrollIntoView({
                 behavior: 'smooth',
                 block: 'center'
             });
+          await initAiMap();
+
+        });
         });
         
         closeMapAi.addEventListener('click', function() {
