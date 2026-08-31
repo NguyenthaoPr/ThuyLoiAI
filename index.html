@@ -1042,6 +1042,9 @@ async function initAiMap() {
 
                 onEachFeature:
     function(feature, layer) {
+      if (!window.__gisSampleCount) window.__gisSampleCount = 0;
+      if (window.__gisSampleCount++ < 5)
+      console.log("GIS PROPERTIES:", feature.properties);
 
         const p = feature.properties || {};
 
