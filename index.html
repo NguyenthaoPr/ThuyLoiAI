@@ -1732,21 +1732,30 @@ const geoLayer = L.geoJSON(
         );
 
     let color = "#1677ff";
-
+    
     if (type === "ho") {
-        color = "#00a8e8";
+        color = "#00a8e8";          // Hồ chứa
     }
-    else if (type === "tram bom") {
-        color = "#1677ff";
+    else if (type === "tram_bom") {
+        color = "#1677ff";          // Trạm bơm
     }
     else if (type === "dap") {
-        color = "#ff7a00";
+        color = "#ff7a00";          // Đập dâng
     }
     else if (type === "cong") {
-        color = "#7c3aed";
+        color = "#7c3aed";          // Cống
+    }
+    else if (type === "tran") {
+        color = "#f59e0b";          // Tràn
+    }
+    else if (type === "cau") {
+        color = "#92400e";          // Cầu
+    }
+    else if (type === "ong") {
+        color = "#dc2626";          // Đường ống
     }
     else if (type === "kenh") {
-        color = "#16a34a";
+        color = "#16a34a";          // Kênh
     }
 
     return L.circleMarker(
