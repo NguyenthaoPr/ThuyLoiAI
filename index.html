@@ -1315,53 +1315,69 @@ const geoLayer = L.geoJSON(
                 description =
                     String(description);
             }
+      let popup = '';
 
+popup += '<div style="min-width:240px;max-width:360px;">';
 
-            const popupHtml = `
-                <div style="
-                    min-width:220px;
-                    max-width:420px;
-                    font-family:Arial,sans-serif;
-                ">
+popup += '<div style="font-size:15px;font-weight:700;margin-bottom:6px;">' +
+    '💧 ' + escapeHtmlMap(name) +
+    '</div>';
 
-                    <div style="
-                        font-weight:700;
-                        font-size:14px;
-                        margin-bottom:6px;
-                    ">
-                        💧 ${label}
-                    </div>
+popup += '<div style="border-top:1px solid #ddd;padding-top:6px;">';
 
-                    <div style="
-                        font-size:14px;
-                        font-weight:600;
-                        margin-bottom:6px;
-                    ">
-                        ${escapeHtmlMap(name)}
-                    </div>
+if (type) {
+    popup += '<div style="margin:3px 0;">' +
+        '<b>Loại:</b> ' +
+        escapeHtmlMap(type) +
+        '</div>';
+}
 
-                    ${
-                        description
-                            ? `
-                            <div style="
-                                font-size:12px;
-                                max-height:260px;
-                                overflow:auto;
-                                border-top:1px solid #ddd;
-                                padding-top:6px;
-                            ">
-                                ${description}
-                            </div>
-                            `
-                            : ''
-                    }
+if (code) {
+    popup += '<div style="margin:3px 0;">' +
+        '<b>Mã công trình:</b> ' +
+        escapeHtmlMap(code) +
+        '</div>';
+}
 
-                </div>
-            `;
+if (station) {
+    popup += '<div style="margin:3px 0;">' +
+        '<b>Lý trình:</b> ' +
+        escapeHtmlMap(station) +
+        '</div>';
+}
 
-            layer.bindPopup(popupHtml);
+popup += '</div>';
 
+/*
+ * Hiển thị phần mô tả/thông số kỹ thuật
+ * Nếu GIS đã chứa bảng HTML thì giữ nguyên bảng.
+ */
+if (p.description) {
 
+    const description = String(p.description);
+
+    if (
+        description.includes('<table') ||
+        description.includes('<TABLE')
+    ) {
+
+        popup +=
+            '<div style="margin-top:8px;">' +
+            description +
+            '</div>';
+
+    } else {
+
+        popup +=
+            '<div style="margin-top:8px;line-height:1.45;">' +
+            escapeHtmlMap(description) +
+            '</div>';
+    }
+}
+
+popup += '</div>';
+
+layer.bindPopup(popup);
             // Ghi nhận để kiểm tra
             console.log(
                 'CÔNG TRÌNH:',
