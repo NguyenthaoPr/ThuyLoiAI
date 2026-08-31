@@ -1774,25 +1774,13 @@ function getCongTrinhLabel(type) {
     return labels[type] || 'CÔNG TRÌNH';
 }
 
-
-// ======================================================
-// TẠO LỚP GIS
-// ======================================================
-
-const geoLayer = L.geoJSON(
-    geojson,
-    {
-
-        // -------------------------------
-        // ĐỐI TƯỢNG ĐIỂM
-        // -------------------------------
 // ========================================
 // BIỂU TƯỢNG CÔNG TRÌNH TRÊN BẢN ĐỒ
 // ========================================
+
 function getCongTrinhIcon(type) {
 
     const icons = {
-
         ho: {
             icon: '💧',
             color: '#1683ff',
@@ -1849,7 +1837,6 @@ function getCongTrinhIcon(type) {
     };
 
     return L.divIcon({
-
         className: 'thuyloi-cong-trinh-icon',
 
         html: `
@@ -1870,6 +1857,21 @@ function getCongTrinhIcon(type) {
         popupAnchor: [0, -48]
     });
 }
+
+
+// ========================================
+// TẠO LỚP GIS
+// ========================================
+
+const geoLayer = L.geoJSON(
+// ======================================================
+// TẠO LỚP GIS
+// ======================================================
+
+const geoLayer = L.geoJSON(
+    geojson,
+    {
+
 pointToLayer: function(feature, latlng) {
 
     const properties =
