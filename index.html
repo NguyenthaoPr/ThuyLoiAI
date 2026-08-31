@@ -321,7 +321,324 @@
       .quick button { font-size: 11px; }
       .messages { min-height: 290px; }
     }
-  </style>
+    /* =========================================================
+   BẢN ĐỒ AI - GIAO DIỆN MOBILE
+   ========================================================= */
+.map-ai-panel {
+  position: relative;
+  width: 100%;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.map-ai-header {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: #082a4a;
+  color: #ffffff;
+}
+
+.map-ai-header strong {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+#closeMapAi {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* =========================
+   TÌM KIẾM
+   ========================= */
+
+.map-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 14px 10px;
+  height: 46px;
+  padding: 0 8px 0 14px;
+  border: 1px solid #d8e1eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(8,42,74,.08);
+}
+
+.map-search-icon {
+  font-size: 25px;
+  color: #64748b;
+}
+
+.map-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.map-search-box input::placeholder {
+  color: #94a3b8;
+}
+
+#mapLocateBtn {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: #eef6ff;
+  color: #0875e1;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+/* =========================
+   BỘ LỌC
+   ========================= */
+
+.map-filter-scroll {
+  display: flex;
+  gap: 8px;
+  padding: 2px 14px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.map-filter-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.map-filter {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 15px;
+  border: 1px solid #d8e1eb;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-filter.active {
+  border-color: #0875e1;
+  background: #0875e1;
+  color: #ffffff;
+}
+
+/* =========================
+   KHUNG BẢN ĐỒ
+   ========================= */
+
+.map-container {
+  position: relative;
+  width: 100%;
+  height: min(62vh, 560px);
+  min-height: 420px;
+  overflow: hidden;
+  background: #dbeafe;
+}
+
+#aiMap {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  z-index: 1;
+}
+
+/* =========================
+   NÚT NỔI TRÊN BẢN ĐỒ
+   ========================= */
+
+.map-floating-btn {
+  position: absolute;
+  right: 14px;
+  z-index: 500;
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #0f3b63;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+#mapLayerBtn {
+  top: 16px;
+}
+
+.map-gps-btn {
+  top: 70px;
+  color: #0875e1;
+}
+
+/* =========================
+   THẺ CÔNG TRÌNH
+   ========================= */
+
+.map-feature-card {
+  position: relative;
+  z-index: 20;
+  margin: -74px 14px 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background: #082a4a;
+  color: #ffffff;
+  box-shadow: 0 8px 28px rgba(0,0,0,.25);
+}
+
+.map-feature-card.hidden {
+  display: none;
+}
+
+.map-feature-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-feature-type {
+  margin-bottom: 5px;
+  color: #60d394;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.map-feature-name {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+#mapFeatureClose {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.map-feature-summary {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.14);
+  color: #dbeafe;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.map-detail-btn {
+  width: 100%;
+  height: 44px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #0875e1;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* =========================
+   TRẠNG THÁI
+   ========================= */
+
+.map-ai-status {
+  margin: 0;
+  padding: 10px 14px;
+  background: #ecfdf5;
+  color: #15803d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* =========================
+   LEAFLET
+   ========================= */
+
+.map-container .leaflet-control-zoom {
+  margin-top: 14px;
+  margin-left: 14px;
+  border: 0;
+  box-shadow: 0 3px 12px rgba(0,0,0,.18);
+}
+
+.map-container .leaflet-control-zoom a {
+  width: 38px;
+  height: 38px;
+  line-height: 38px;
+  color: #0f3b63;
+  font-weight: 700;
+}
+
+/* =========================
+   MOBILE
+   ========================= */
+
+@media (max-width: 600px) {
+
+  .map-ai-header {
+    height: 56px;
+  }
+
+  .map-ai-header strong {
+    font-size: 15px;
+  }
+
+  .map-container {
+    height: 58vh;
+    min-height: 430px;
+  }
+
+  #aiMap {
+    min-height: 430px;
+  }
+
+  .map-feature-card {
+    margin-top: -82px;
+  }
+
+}
+
+/* =========================
+   DESKTOP
+   ========================= */
+
+@media (min-width: 601px) {
+
+  .map-ai-panel {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .map-container {
+    height: 600px;
+  }
+
+}
+</style>
 </head>
 <body>
   <header class="header">
@@ -353,23 +670,142 @@
       
       </div>   
       </div>
-      <div id="mapAiPanel" class="map-ai-panel hidden">
+    <div id="mapAiPanel" class="map-ai-panel hidden">
 
-    <div class="map-ai-header">
-        <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
+  <div class="map-ai-header">
+    <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
+    <button id="closeMapAi" type="button">×</button>
+  </div>
 
-        <button id="closeMapAi" type="button">×</button>
-    </div>
+  <!-- TÌM KIẾM -->
+  <div class="map-search-box">
+    <span class="map-search-icon">⌕</span>
 
-    <div class="map-ai-info">
-        Dữ liệu hệ thống kênh và công trình từ KMZ
-    </div>
+    <input
+      id="mapSearch"
+      type="search"
+      placeholder="Tìm công trình..."
+      autocomplete="off"
+    >
+
+    <button
+      id="mapLocateBtn"
+      type="button"
+      title="Vị trí hiện tại"
+    >
+      ⌖
+    </button>
+  </div>
+
+  <!-- BỘ LỌC -->
+  <div class="map-filter-scroll">
+
+    <button class="map-filter active" data-filter="all">
+      Tất cả
+    </button>
+
+    <button class="map-filter" data-filter="hồ">
+      💧 Hồ chứa
+    </button>
+
+    <button class="map-filter" data-filter="trạm bơm">
+      🔵 Trạm bơm
+    </button>
+
+    <button class="map-filter" data-filter="đập">
+      🟠 Đập dâng
+    </button>
+
+    <button class="map-filter" data-filter="cống">
+      🔷 Cống
+    </button>
+
+    <button class="map-filter" data-filter="kênh">
+      ━ Kênh
+    </button>
+
+  </div>
+
+  <!-- BẢN ĐỒ -->
+  <div class="map-container">
 
     <div id="aiMap"></div>
 
-    <div id="mapAiStatus" class="map-ai-status">
-        Đang chuẩn bị bản đồ...
+    <button
+      id="mapLayerBtn"
+      class="map-floating-btn"
+      type="button"
+      title="Lớp bản đồ"
+    >
+      ▱
+    </button>
+
+    <button
+      id="mapGpsBtn"
+      class="map-floating-btn map-gps-btn"
+      type="button"
+      title="Vị trí của tôi"
+    >
+      ➤
+    </button>
+
+  </div>
+
+  <!-- THẺ THÔNG TIN CÔNG TRÌNH -->
+  <div id="mapFeatureCard" class="map-feature-card hidden">
+
+    <div class="map-feature-top">
+
+      <div>
+
+        <div
+          id="mapFeatureType"
+          class="map-feature-type"
+        >
+          💧 CÔNG TRÌNH
+        </div>
+
+        <div
+          id="mapFeatureName"
+          class="map-feature-name"
+        >
+          Chưa chọn công trình
+        </div>
+
+      </div>
+
+      <button
+        id="mapFeatureClose"
+        type="button"
+      >
+        ×
+      </button>
+
     </div>
+
+    <div
+      id="mapFeatureSummary"
+      class="map-feature-summary"
+    >
+      Chọn một công trình trên bản đồ để xem thông tin.
+    </div>
+
+    <button
+      id="mapFeatureDetail"
+      class="map-detail-btn"
+      type="button"
+    >
+      Xem chi tiết
+    </button>
+
+  </div>
+
+  <div
+    id="mapAiStatus"
+    class="map-ai-status"
+  >
+    Đang chuẩn bị bản đồ...
+  </div>
 
 </div>
 
