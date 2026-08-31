@@ -3662,36 +3662,32 @@ async def field_report_pdf(
     else:
         print("⚠️ Không nhận được ảnh từ client.")
 
-    # Tự động xác định GIS dựa trên tọa độ (nếu có)
+   # Tự động xác định GIS dựa trên tọa độ GPS
     gis_identification = None
+
     if latitude is not None and longitude is not None:
         try:
-            # Gọi nội bộ hàm kml_gps_test để lấy thông tin GIS
-            from fastapi import Request
-            # Tạo request giả để gọi endpoint (cách đơn giản là gọi trực tiếp hàm)
-            # Ở đây ta sẽ gọi trực tiếp logic của kml_gps_test
-            # Nhưng để đơn giản, ta sẽ gọi API nội bộ qua HTTP (có thể dùng httpx)
-            # Tuy nhiên để tránh phụ thuộc, ta sẽ gọi hàm tương tự.
-            # Trong thực tế, ta nên tách logic thành hàm riêng.
-            # Vì đây là code hiện tại, ta sẽ dùng cách gọi HTTP tới chính mình.
-            # Nhưng để đảm bảo không vòng lặp, ta sẽ gọi trực tiếp hàm
-            # kml_gps_test (có thể gọi như một hàm async).
-            # Tuy nhiên, kml_gps_test là một endpoint, nên ta sẽ gọi nó như một hàm bình thường.
-            # Ta sẽ tạo một hàm helper.
-            async def get_gis_identification(lat, lon):
-                # Gọi endpoint /kml-gps-test bằng cách gửi request tới chính mình
-                # Sử dụng httpx hoặc aiohttp. Ở đây tôi sẽ dùng httpx.
-                # Nhưng để tránh thêm thư viện, ta sẽ dùng aiohttp? 
-                # Thôi, cách nhanh nhất là gọi trực tiếp hàm đã viết.
-                # Nhưng hàm kml_gps_test yêu cầu tham số latitude, longitude
-                # và có thể truy cập vào file master.kmz.
-                # Ta sẽ tạo một hàm nội bộ.
-                pass
-            # Do không muốn thay đổi cấu trúc, ta sẽ bỏ qua việc tự động xác định GIS tại đây.
-            # Thay vào đó, client sẽ gửi kèm gis_identification nếu có.
-            # Vì vậy, ta chỉ nhận từ form.
+            gis_result = await kml_gps_test(
+                latitude=latitude,
+                longitude=longitude
+            )
+
+            if isinstance(gis_result, dict):
+                gis_identification = gis_result.get(
+                    "gis_identification"
+                )
+
+            print(
+                "📍 GIS IDENTIFICATION:",
+                gis_identification
+            )
+
         except Exception as e:
-            print("⚠️ Lỗi xác định GIS tự động:", repr(e))
+            print(
+                "⚠️ Lỗi xác định GIS tự động:",
+                repr(e)
+            )
+            gis_identification = None
 
     try:
         pdf_buffer = await asyncio.to_thread(
