@@ -1397,21 +1397,20 @@ async function initAiMap() {
         mapAiStatus.textContent =
             '⏳ Đang khởi tạo bản đồ...';
 
-        // 1. Tạo bản đồ
-        aiMap = L.map('aiMap', {
-            zoomControl: true,
-            preferCanvas: true
-        });
+       // 1. Tạo bản đồ
+aiMap = L.map('aiMap', {
+    zoomControl: true,
+    preferCanvas: true
+});
 
-        // 2. Bản đồ nền
-        L.tileLayer(
-            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            {
-                maxZoom: 19,
-                attribution:
-                    '&copy; OpenStreetMap contributors'
-            }
-        ).addTo(aiMap);
+// 2. Bản đồ nền vệ tinh Esri
+L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+        maxZoom: 19,
+        attribution: 'Tiles © Esri'
+    }
+).addTo(aiMap);
 
         // 3. Vị trí ban đầu
         aiMap.setView(
