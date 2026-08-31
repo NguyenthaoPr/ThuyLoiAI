@@ -1674,25 +1674,47 @@ const geoLayer = L.geoJSON(
         // ĐỐI TƯỢNG ĐIỂM
         // -------------------------------
 
-        pointToLayer: function(feature, latlng) {
+       pointToLayer: function(feature, latlng) {
 
-            const properties =
-                feature.properties || {};
+    const properties =
+        feature.properties || {};
 
-            const type =
-                getCongTrinhType(
-                    properties,
-                    feature.geometry
-                );
+    const type =
+        getCongTrinhType(
+            properties,
+            feature.geometry
+        );
 
-            const style =
-                getCongTrinhStyle(type);
+    let color = "#1677ff";
 
-            return L.circleMarker(
-                latlng,
-                style
-            );
-        },
+    if (type === "ho") {
+        color = "#00a8e8";
+    }
+    else if (type === "tram bom") {
+        color = "#1677ff";
+    }
+    else if (type === "dap") {
+        color = "#ff7a00";
+    }
+    else if (type === "cong") {
+        color = "#7c3aed";
+    }
+    else if (type === "kenh") {
+        color = "#16a34a";
+    }
+
+    return L.circleMarker(
+        latlng,
+        {
+            radius: 3,
+            color: color,
+            weight: 1,
+            opacity: 0.9,
+            fillColor: color,
+            fillOpacity: 0.75
+        }
+    );
+},
 
 
         // -------------------------------
