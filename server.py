@@ -318,6 +318,7 @@ def kml_items_to_geojson(items):
                 "name": item.get("name", ""),
                 "description": item.get("description", ""),
                 "geometry_type": geometry_type,
+                "gis_class": item.get("gis_class", "CONG_TRINH"),
             },
             "geometry": {
                 "type": geometry_map[geometry_type],
@@ -816,12 +817,19 @@ async def gis_data():
             }
 
         items = parse_kml_kmz(active_file)
-        geojson = kml_items_to_geojson(items)
+
+        cong_trinh_items, khu_tuoi_items = split_gis_items(items)
+        
+        geojson = kml_items_to_geojson(
+            cong_trinh_items + khu_tuoi_items
+        )
 
         return {
             "success": True,
             "filename": active_file.name,
             "objects": len(items),
+            "cong_trinh": len(cong_trinh_items),
+            "khu_tuoi": len(khu_tuoi_items),
             "features": len(geojson["features"]),
             "geojson": geojson,
         }
