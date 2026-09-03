@@ -330,7 +330,113 @@ def kml_items_to_geojson(items):
         "features": features,
     }
 
+# ============================================================
+# GIS CLASSIFICATION - BƯỚC 1
+# TÁCH KHU TƯỚI KHỎI CÔNG TRÌNH
+#
+# NGUYÊN TẮC:
+# - KHU_TUOI chỉ dùng xác định GPS có nằm trong khu tưới hay không.
+# - Không dùng đường bao khu tưới để nhận diện công trình.
+# - Công trình được xử lý độc lập.
+# - Không thay đổi parser KML/KMZ hiện tại.
+# ============================================================
 
+def normalize_gis_text(text):
+    """
+    Chuẩn hóa tên/mô tả GIS để phân loại.
+    Không thay đổi dữ liệu gốc.
+    """
+    if not text:
+        return ""
+
+    value = str(text).strip().lower()
+
+    # Chuẩn hóa một số ký tự thường gặp
+    value = value.replace("_", " ")
+    value = value.replace("-", " ")
+
+    # Gom khoảng trắng
+    value = re.sub(r"\s+", " ", value)
+
+    return value
+
+
+def classify_gis_item(item):
+    """
+    Phân loại một đối tượng GIS.
+
+    Kết quả:
+        KHU_TUOI
+        CONG_TRINH
+
+    Lưu ý:
+    Đây mới là BƯỚC 1.
+    Chưa phân loại chi tiết Kênh / Đập / Trạm bơm...
+    """
+
+    if not isinstance(item, dict):
+        return "CONG_TRINH"
+
+    name = normalize_gis_text(item.get("name", ""))
+    description = normalize_gis_text(item.get("description", ""))
+
+    text = f"{name} {description}".strip()
+
+    # --------------------------------------------------------
+    # KHU TƯỚI
+    # --------------------------------------------------------
+    khu_tuoi_keywords = (
+        "khu tưới",
+        "khu tuoi",
+        "diện tích tưới",
+        "dien tich tuoi",
+        "phạm vi tưới",
+        "pham vi tuoi",
+        "vùng tưới",
+        "vung tuoi",
+    )
+
+    if any(keyword in text for keyword in khu_tuoi_keywords):
+        return "KHU_TUOI"
+
+    # --------------------------------------------------------
+    # Một số trường hợp đường bao có tên "khu tưới"
+    # nhưng không nằm trong description.
+    # --------------------------------------------------------
+    if "khu" in name and "tưới" in name:
+        return "KHU_TUOI"
+
+    return "CONG_TRINH"
+
+
+def split_gis_items(items):
+    """
+    Tách GIS Master thành 2 nhóm độc lập:
+
+        cong_trinh_items
+        khu_tuoi_items
+
+    Không xóa và không sửa dữ liệu gốc.
+    """
+
+    cong_trinh_items = []
+    khu_tuoi_items = []
+
+    for item in items or []:
+        item_copy = dict(item)
+
+        gis_type = classify_gis_item(item_copy)
+
+        # Gắn loại nội bộ để các bước sau sử dụng.
+        # Không thay đổi name/description/geometry.
+        item_copy["gis_class"] = gis_type
+
+        if gis_type == "KHU_TUOI":
+            khu_tuoi_items.append(item_copy)
+        else:
+            cong_trinh_items.append(item_copy)
+
+    return cong_trinh_items, khu_tuoi_items
 def get_active_kml_file():
     """
     Tìm file KML/KMZ đang có trong thư mục kml_data.
