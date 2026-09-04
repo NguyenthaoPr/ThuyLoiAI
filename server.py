@@ -3235,7 +3235,550 @@ def _pdf_section_header_table(text, doc_width, bg_color):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     return header_table
+# ============================================================
+# GIS MAP IMAGE - TẠO ẢNH VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
+# Không dùng để xác định loại công trình.
+# Chỉ dùng để trực quan hóa kết quả GIS đã xác định.
+# ============================================================
 
+def create_gis_location_map(
+    latitude,
+    longitude,
+    gis_identification=None,
+):
+    """
+    Tạo ảnh bản đồ GIS từ GIS MASTER.
+
+    Thành phần:
+    - Nền tuyến/công trình từ GIS MASTER
+    - GPS hiện trường
+    - Công trình được xác định
+    - Thông tin loại công trình
+    - Lý trình
+    - Khoảng cách GPS -> đối tượng
+
+    Lưu ý:
+    Polygon khu tưới chỉ được hiển thị trực quan,
+    KHÔNG được dùng để xác định loại công trình.
+    """
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        # ----------------------------------------------------
+        # 1. LẤY GIS MASTER
+        # ----------------------------------------------------
+        gis_master = get_gis_master()
+
+        if not isinstance(gis_master, dict):
+            print("⚠️ GIS MASTER không hợp lệ.")
+            return None
+
+        if not gis_master.get("success"):
+            print("⚠️ GIS MASTER chưa sẵn sàng.")
+            return None
+
+        items = gis_master.get("data") or []
+
+        if not items:
+            print("⚠️ GIS MASTER không có dữ liệu.")
+            return None
+
+        # ----------------------------------------------------
+        # 2. TỌA ĐỘ GPS
+        # ----------------------------------------------------
+        gps_lat = float(latitude)
+        gps_lng = float(longitude)
+
+        # ----------------------------------------------------
+        # 3. TÌM ĐỐI TƯỢNG GIS ĐƯỢC XÁC ĐỊNH
+        # ----------------------------------------------------
+        identified_name = ""
+
+        if isinstance(gis_identification, dict):
+            identified_name = str(
+                gis_identification.get("name", "")
+            ).strip()
+
+        # ----------------------------------------------------
+        # 4. CHỌN VÙNG BẢN ĐỒ
+        #
+        # Ưu tiên vùng quanh GPS.
+        # Không lấy toàn bộ GIS MASTER để tránh bản đồ quá nhỏ.
+        # ----------------------------------------------------
+        map_radius = 0.0035
+
+        min_lng = gps_lng - map_radius
+        max_lng = gps_lng + map_radius
+        min_lat = gps_lat - map_radius
+        max_lat = gps_lat + map_radius
+
+        # ----------------------------------------------------
+        # 5. KÍCH THƯỚC ẢNH
+        # ----------------------------------------------------
+        width = 1400
+        height = 900
+
+        image = Image.new(
+            "RGB",
+            (width, height),
+            "white"
+        )
+
+        draw = ImageDraw.Draw(image)
+
+        # ----------------------------------------------------
+        # 6. FONT
+        # ----------------------------------------------------
+        try:
+            font_regular = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                24
+            )
+
+            font_small = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                18
+            )
+
+            font_title = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                30
+            )
+
+            font_big = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                34
+            )
+
+        except Exception:
+            font_regular = None
+            font_small = None
+            font_title = None
+            font_big = None
+
+        # ----------------------------------------------------
+        # 7. HÀM CHUYỂN LAT/LNG -> PIXEL
+        # ----------------------------------------------------
+        margin_left = 70
+        margin_right = 70
+        margin_top = 110
+        margin_bottom = 70
+
+        map_width = width - margin_left - margin_right
+        map_height = height - margin_top - margin_bottom
+
+        def geo_to_pixel(lng, lat):
+            x_ratio = (
+                (lng - min_lng)
+                / (max_lng - min_lng)
+            )
+
+            y_ratio = (
+                (max_lat - lat)
+                / (max_lat - min_lat)
+            )
+
+            x = int(
+                margin_left
+                + x_ratio * map_width
+            )
+
+            y = int(
+                margin_top
+                + y_ratio * map_height
+            )
+
+            return x, y
+
+        # ----------------------------------------------------
+        # 8. KHUNG BẢN ĐỒ
+        # ----------------------------------------------------
+        draw.rectangle(
+            [
+                margin_left,
+                margin_top,
+                width - margin_right,
+                height - margin_bottom
+            ],
+            outline="gray",
+            width=2
+        )
+
+        # ----------------------------------------------------
+        # 9. VẼ POLYGON
+        #
+        # Polygon có thể là khu tưới/phạm vi.
+        # Chỉ hiển thị nền, KHÔNG dùng nhận dạng.
+        # ----------------------------------------------------
+        for item in items:
+
+            if item.get("geometry_type") != "Polygon":
+                continue
+
+            coordinates = item.get("coordinates") or []
+
+            polygon_points = []
+
+            for point in coordinates:
+
+                try:
+                    lng = float(point["lng"])
+                    lat = float(point["lat"])
+
+                    if (
+                        min_lng <= lng <= max_lng
+                        and
+                        min_lat <= lat <= max_lat
+                    ):
+                        polygon_points.append(
+                            geo_to_pixel(lng, lat)
+                        )
+
+                except Exception:
+                    continue
+
+            if len(polygon_points) >= 3:
+                draw.polygon(
+                    polygon_points,
+                    outline="lightgray",
+                    fill="#f3f3f3"
+                )
+
+        # ----------------------------------------------------
+        # 10. VẼ TUYẾN LINESTRING
+        # ----------------------------------------------------
+        for item in items:
+
+            if item.get("geometry_type") != "LineString":
+                continue
+
+            coordinates = item.get("coordinates") or []
+
+            line_points = []
+
+            for point in coordinates:
+
+                try:
+                    lng = float(point["lng"])
+                    lat = float(point["lat"])
+
+                    if (
+                        min_lng <= lng <= max_lng
+                        and
+                        min_lat <= lat <= max_lat
+                    ):
+                        line_points.append(
+                            geo_to_pixel(lng, lat)
+                        )
+
+                except Exception:
+                    continue
+
+            if len(line_points) >= 2:
+
+                draw.line(
+                    line_points,
+                    fill="#287f8f",
+                    width=5
+                )
+
+        # ----------------------------------------------------
+        # 11. VẼ CÁC CÔNG TRÌNH POINT
+        # ----------------------------------------------------
+        for item in items:
+
+            if item.get("geometry_type") != "Point":
+                continue
+
+            coordinates = item.get("coordinates") or []
+
+            if not coordinates:
+                continue
+
+            try:
+                lng = float(coordinates[0]["lng"])
+                lat = float(coordinates[0]["lat"])
+
+                if not (
+                    min_lng <= lng <= max_lng
+                    and
+                    min_lat <= lat <= max_lat
+                ):
+                    continue
+
+                x, y = geo_to_pixel(lng, lat)
+
+                is_identified = (
+                    identified_name
+                    and
+                    str(item.get("name", "")).strip()
+                    == identified_name
+                )
+
+                radius = 12 if is_identified else 7
+
+                draw.ellipse(
+                    [
+                        x - radius,
+                        y - radius,
+                        x + radius,
+                        y + radius
+                    ],
+                    fill="red" if is_identified else "gray",
+                    outline="white",
+                    width=3
+                )
+
+            except Exception:
+                continue
+
+        # ----------------------------------------------------
+        # 12. ĐIỂM GPS HIỆN TRƯỜNG
+        # ----------------------------------------------------
+        gps_x, gps_y = geo_to_pixel(
+            gps_lng,
+            gps_lat
+        )
+
+        # Vòng tròn GPS
+        draw.ellipse(
+            [
+                gps_x - 22,
+                gps_y - 22,
+                gps_x + 22,
+                gps_y + 22
+            ],
+            outline="red",
+            width=6
+        )
+
+        draw.ellipse(
+            [
+                gps_x - 8,
+                gps_y - 8,
+                gps_x + 8,
+                gps_y + 8
+            ],
+            fill="red"
+        )
+
+        # ----------------------------------------------------
+        # 13. TIÊU ĐỀ
+        # ----------------------------------------------------
+        draw.text(
+            (70, 25),
+            "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
+            fill="#0f5872",
+            font=font_title
+        )
+
+        draw.text(
+            (70, 65),
+            f"GPS: {gps_lat:.6f}, {gps_lng:.6f}",
+            fill="black",
+            font=font_small
+        )
+
+        # ----------------------------------------------------
+        # 14. THÔNG TIN GIS
+        # ----------------------------------------------------
+        info_x = 930
+        info_y = 135
+
+        draw.rectangle(
+            [
+                info_x,
+                info_y,
+                width - 70,
+                380
+            ],
+            fill="white",
+            outline="gray",
+            width=2
+        )
+
+        draw.text(
+            (info_x + 20, info_y + 20),
+            "THÔNG TIN GIS",
+            fill="#0f5872",
+            font=font_title
+        )
+
+        if isinstance(gis_identification, dict):
+
+            gis_name = str(
+                gis_identification.get("name", "")
+            )
+
+            gis_type = str(
+                gis_identification.get(
+                    "construction_type",
+                    gis_identification.get(
+                        "geometry_type",
+                        ""
+                    )
+                )
+            )
+
+            chainage = str(
+                gis_identification.get(
+                    "chainage",
+                    ""
+                )
+            )
+
+            distance_m = gis_identification.get(
+                "distance_m"
+            )
+
+            info_lines = [
+                f"Công trình: {gis_name or 'Chưa xác định'}",
+                f"Loại: {gis_type or 'Chưa xác định'}",
+                f"Lý trình: {chainage or 'Chưa xác định'}",
+            ]
+
+            if distance_m is not None:
+                try:
+                    info_lines.append(
+                        f"Khoảng cách GPS: {float(distance_m):.1f} m"
+                    )
+                except Exception:
+                    pass
+
+        else:
+
+            info_lines = [
+                "Công trình: Chưa xác định",
+                "Loại: Chưa xác định",
+                "Lý trình: Chưa xác định",
+            ]
+
+        y = info_y + 80
+
+        for line in info_lines:
+
+            draw.text(
+                (info_x + 20, y),
+                line,
+                fill="black",
+                font=font_regular
+            )
+
+            y += 48
+
+        # ----------------------------------------------------
+        # 15. CHÚ GIẢI
+        # ----------------------------------------------------
+        legend_x = 80
+        legend_y = height - 130
+
+        draw.ellipse(
+            [
+                legend_x,
+                legend_y,
+                legend_x + 18,
+                legend_y + 18
+            ],
+            fill="red"
+        )
+
+        draw.text(
+            (legend_x + 30, legend_y - 5),
+            "GPS hiện trường",
+            fill="black",
+            font=font_small
+        )
+
+        draw.line(
+            [
+                legend_x,
+                legend_y + 45,
+                legend_x + 45,
+                legend_y + 45
+            ],
+            fill="#287f8f",
+            width=5
+        )
+
+        draw.text(
+            (legend_x + 60, legend_y + 35),
+            "Tuyến GIS",
+            fill="black",
+            font=font_small
+        )
+
+        # ----------------------------------------------------
+        # 16. HƯỚNG BẮC
+        # ----------------------------------------------------
+        north_x = width - 110
+        north_y = height - 150
+
+        draw.line(
+            [
+                north_x,
+                north_y + 55,
+                north_x,
+                north_y
+            ],
+            fill="black",
+            width=5
+        )
+
+        draw.polygon(
+            [
+                (north_x, north_y - 15),
+                (north_x - 10, north_y + 10),
+                (north_x + 10, north_y + 10)
+            ],
+            fill="black"
+        )
+
+        draw.text(
+            (north_x - 10, north_y - 55),
+            "N",
+            fill="black",
+            font=font_big
+        )
+
+        # ----------------------------------------------------
+        # 17. GHI CHÚ
+        # ----------------------------------------------------
+        draw.text(
+            (width - 500, height - 55),
+            "Nguồn: GIS MASTER / master.kmz",
+            fill="gray",
+            font=font_small
+        )
+
+        # ----------------------------------------------------
+        # 18. XUẤT PNG RA MEMORY
+        # ----------------------------------------------------
+        buffer = BytesIO()
+
+        image.save(
+            buffer,
+            format="PNG"
+        )
+
+        buffer.seek(0)
+
+        result = buffer.getvalue()
+
+        print(
+            f"🗺️ GIS MAP CREATED: {len(result)} bytes"
+        )
+
+        return result
+
+    except Exception as e:
+
+        print(
+            "❌ CREATE GIS MAP ERROR:",
+            repr(e)
+        )
+
+        return None
 # ============================================================
 # CREATE FIELD REPORT PDF - ĐÃ SỬA LỖI CÚ PHÁP
 # ============================================================
@@ -3248,6 +3791,7 @@ def create_field_report_pdf(
     latitude=None,
     longitude=None,
     gis_identification=None,
+    gis_map_bytes=None,
 ):
     # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
@@ -3671,7 +4215,34 @@ async def field_report_pdf(
         except Exception as e:
             print("⚠️ Lỗi xác định GIS tự động:", repr(e))
             gis_identification = None
+    # ============================================================
+    # TẠO ẢNH VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
+    # ============================================================
+    gis_map_bytes = None
 
+    if latitude is not None and longitude is not None:
+        try:
+            gis_map_bytes = await asyncio.to_thread(
+                create_gis_location_map,
+                latitude,
+                longitude,
+                gis_identification
+            )
+
+            if gis_map_bytes:
+                print(
+                    f"🗺️ GIS MAP CREATED: "
+                    f"{len(gis_map_bytes)} bytes"
+                )
+            else:
+                print("⚠️ GIS MAP không tạo được.")
+
+        except Exception as e:
+            print(
+                "⚠️ GIS MAP ERROR:",
+                repr(e)
+            )
+            gis_map_bytes = None
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
@@ -3683,6 +4254,7 @@ async def field_report_pdf(
             latitude,
             longitude,
             gis_identification,
+            gis_map_bytes,
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
