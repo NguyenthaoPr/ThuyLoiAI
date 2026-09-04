@@ -3416,34 +3416,103 @@ def create_field_report_pdf(
             print("⚠️ PDF QR ERROR:", repr(qr_error))
 
     # ẢNH – Xử lý cẩn thận và log lỗi
-    if image_bytes:
-        try:
-            from reportlab.platypus import Image as RLImage
-            # Kiểm tra kích thước ảnh trước khi chèn
-            img_stream = BytesIO(image_bytes)
-            pil_img = Image.open(img_stream)
-            img_width, img_height = pil_img.size
-            print(f"📸 Chèn ảnh vào PDF: {img_width}x{img_height}, {len(image_bytes)} bytes")
+    # ============================================================
+# ẢNH HIỆN TRƯỜNG - CHÈN PDF AN TOÀN
+# ============================================================
+if image_bytes:
+    try:
+        from reportlab.platypus import Image as RLImage
 
-            max_width = doc.width
-            max_height = 90 * mm
-            scale = min(max_width / img_width, max_height / img_height, 1.0)
-            display_width = img_width * scale
-            display_height = img_height * scale
+        # Đọc ảnh bằng PIL
+        source_stream = BytesIO(image_bytes)
+        pil_img = Image.open(source_stream)
 
-            story.append(Spacer(1, 6))
-            story.append(Paragraph("ẢNH HIỆN TRƯỜNG", subheading_style))
-            story.append(Spacer(1, 4))
-            field_image = RLImage(BytesIO(image_bytes), width=display_width, height=display_height)
-            field_image.hAlign = "CENTER"
-            story.append(field_image)
-            story.append(Spacer(1, 8))
-            print("✅ Ảnh đã được chèn thành công.")
-        except Exception as image_error:
-            print("❌ FIELD REPORT IMAGE ERROR:", repr(image_error))
-            # Vẫn tiếp tục tạo PDF mà không có ảnh
-    else:
-        print("⚠️ Không có ảnh để chèn vào PDF.")
+        print(
+            f"📸 Ảnh nhận từ client: "
+            f"{pil_img.size[0]}x{pil_img.size[1]}, "
+            f"{len(image_bytes)} bytes, "
+            f"format={pil_img.format}, mode={pil_img.mode}"
+        )
+
+        # Chuẩn hóa ảnh về RGB + JPEG
+        # Giúp ReportLab xử lý ổn định với JPG/PNG/WebP
+        if pil_img.mode not in ("RGB", "L"):
+            pil_img = pil_img.convert("RGB")
+        elif pil_img.mode == "L":
+            pil_img = pil_img.convert("RGB")
+
+        # Nén lại ảnh trước khi đưa vào PDF
+        image_buffer = BytesIO()
+
+        pil_img.save(
+            image_buffer,
+            format="JPEG",
+            quality=88,
+            optimize=True
+        )
+
+        image_buffer.seek(0)
+
+        pdf_image_bytes = image_buffer.getvalue()
+
+        print(
+            f"📦 Ảnh chuẩn hóa cho PDF: "
+            f"{len(pdf_image_bytes)} bytes"
+        )
+
+        # Kích thước hiển thị
+        img_width, img_height = pil_img.size
+
+        max_width = doc.width
+        max_height = 90 * mm
+
+        scale = min(
+            max_width / img_width,
+            max_height / img_height,
+            1.0
+        )
+
+        display_width = img_width * scale
+        display_height = img_height * scale
+
+        story.append(Spacer(1, 6))
+        story.append(
+            Paragraph(
+                "ẢNH HIỆN TRƯỜNG",
+                subheading_style
+            )
+        )
+        story.append(Spacer(1, 4))
+
+        field_image = RLImage(
+            BytesIO(pdf_image_bytes),
+            width=display_width,
+            height=display_height
+        )
+
+        field_image.hAlign = "CENTER"
+
+        story.append(field_image)
+        story.append(Spacer(1, 8))
+
+        print("✅ ẢNH HIỆN TRƯỜNG ĐÃ ĐƯỢC CHÈN VÀO PDF.")
+
+    except Exception as image_error:
+        print(
+            "❌ FIELD REPORT IMAGE ERROR:",
+            repr(image_error)
+        )
+
+        # Không âm thầm bỏ qua lỗi
+        story.append(
+            Paragraph(
+                "⚠ Không thể chèn ảnh hiện trường vào PDF.",
+                warn_body_style
+            )
+        )
+
+else:
+    print("⚠️ Không có ảnh để chèn vào PDF.")
 
     story.append(Spacer(1, 4))
 
@@ -3623,9 +3692,10 @@ def create_field_report_pdf(
                     story.append(Spacer(1, 8))
             
                 except Exception as e:
-                    print(
-                        "[PDF GIS MAP ERROR]",
-                        repr(e)
+                    print("❌ FIELD REPORT PDF ERROR:", repr(e))
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Lỗi tạo PDF: {str(e)}"
                     )
 
     # NỘI DUNG BÁO CÁO
