@@ -2326,10 +2326,19 @@ async def kml_gps_test(
     try:
         kml_items = parse_kml_kmz(file_path)
 
+       # ============================================================
+        # BƯỚC 3 - CHỈ TÌM TUYẾN KÊNH TRONG NHÓM CÔNG TRÌNH
+        #
+        # KHU_TUOI tuyệt đối không tham gia nhận diện tuyến.
+        # ============================================================
+        
+        cong_trinh_items, khu_tuoi_items = split_gis_items(kml_items)
+        
         lines = [
             item
-            for item in kml_items
-            if item.get("geometry_type") == "LineString"
+            for item in cong_trinh_items
+            if item.get("construction_type") == "KENH"
+            and item.get("geometry_type") == "LineString"
             and item.get("coordinates")
         ]
 
