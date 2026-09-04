@@ -3800,7 +3800,43 @@ def create_gis_location_map(
                     outline="white",
                     width=3
                 )
-
+                        # -----------------------------------------------
+                # NHÃN + MŨI TÊN CHO CÔNG TRÌNH POINT
+                # KHÔNG ÁP DỤNG CHO KHU TƯỚI
+                # -----------------------------------------------
+                gis_class = str(
+                    item.get("gis_class", "")
+                ).upper().strip()
+    
+                construction_type = str(
+                    item.get("construction_type", "")
+                ).upper().strip()
+    
+                # Chỉ gọi mũi tên cho các công trình thủy lợi
+                # Không gọi cho đường bao KHU TƯỚI
+                allowed_types = {
+                    "DAP_DANG",
+                    "TRAM_BOM",
+                    "HO_CHUA",
+                    "DAP_CHINH",
+                    "DAP_PHU"
+                }
+    
+                if (
+                    gis_class != "KHU_TUOI"
+                    and construction_type in allowed_types
+                    and item.get("name")
+                ):
+                    draw_gis_callout(
+                        draw,
+                        x,
+                        y,
+                        item.get("name"),
+                        font_small,
+                        width,
+                        height,
+                        accent="#C62828"
+                    )
             except Exception:
                 continue
 
