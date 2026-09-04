@@ -2346,15 +2346,68 @@ let popup = `
 
     </div>
 
-    <!-- THÔNG TIN NHANH -->
+  // THÔNG TIN NHANH
+popup += `
     <div style="
-        display:grid;
-        grid-template-columns:1fr 1fr;
-        gap:7px;
-        padding:9px 2px 3px 2px;
+        margin:8px 2px 4px 2px;
+        padding:9px 10px;
+        display:flex;
+        align-items:center;
+        gap:9px;
+        border-radius:10px;
+        background:#F8FAFB;
+        border:1px solid #E3EAF0;
     ">
-`;
+        <div style="
+            width:28px;
+            height:28px;
+            min-width:28px;
+            border-radius:50%;
+            background:#18B83A;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            box-shadow:0 2px 5px rgba(24,184,58,.25);
+        ">
+            <span style="
+                width:10px;
+                height:10px;
+                border-radius:50%;
+                background:#ffffff;
+            "></span>
+        </div>
 
+        <div style="min-width:0;">
+            <div style="
+                font-size:9px;
+                font-weight:700;
+                color:#78909C;
+                text-transform:uppercase;
+                letter-spacing:.3px;
+            ">
+                Trạng thái
+            </div>
+
+            <div style="
+                margin-top:2px;
+                font-size:12px;
+                font-weight:800;
+                color:#263238;
+                word-break:break-word;
+            ">
+                ${escapeHtmlMap(
+                    p.status ||
+                    p.Status ||
+                    p.trang_thai ||
+                    p.TrangThai ||
+                    p.tinh_trang ||
+                    p.TinhTrang ||
+                    'Chưa cập nhật'
+                )}
+            </div>
+        </div>
+    </div>
+`;
 
 // ======================================================
 // LOẠI CÔNG TRÌNH
