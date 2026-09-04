@@ -3779,6 +3779,7 @@ def create_gis_location_map(
         )
 
         return None
+
 # ============================================================
 # CREATE FIELD REPORT PDF - ĐÃ SỬA LỖI CÚ PHÁP
 # ============================================================
@@ -3955,7 +3956,7 @@ def create_field_report_pdf(
         except Exception as qr_error:
             print("⚠️ PDF QR ERROR:", repr(qr_error))
 
-    # ẢNH
+    # ẢNH HIỆN TRƯỜNG VÀ BẢN ĐỒ GIS
     if image_bytes:
         try:
             from reportlab.platypus import Image as RLImage
@@ -3977,46 +3978,32 @@ def create_field_report_pdf(
             field_image.hAlign = "CENTER"
             story.append(field_image)
             story.append(Spacer(1, 8))
-                # ============================================================
-    # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
-    # ============================================================
+
+            # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
             if gis_map_bytes:
                 try:
-                    from reportlab.platypus import Image as RLImage
-        
-                    story.append(
-                        Paragraph(
-                            "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
-                            subheading_style
-                        )
-                    )
-        
+                    story.append(Paragraph("VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS", subheading_style))
                     story.append(Spacer(1, 4))
-        
                     gis_image = RLImage(
                         BytesIO(gis_map_bytes),
                         width=doc.width,
                         height=doc.width * 900 / 1400
                     )
-        
                     gis_image.hAlign = "CENTER"
                     story.append(gis_image)
                     story.append(Spacer(1, 10))
-        
                     print("🗺️ Đã chèn bản đồ GIS vào PDF thành công.")
-        
                 except Exception as map_error:
-                    print(
-                        "❌ GIS MAP PDF IMAGE ERROR:",
-                        repr(map_error)
-                    )
-        
+                    print("❌ GIS MAP PDF IMAGE ERROR:", repr(map_error))
             else:
                 print("⚠️ Không có bản đồ GIS để chèn vào PDF.")
 
             story.append(Spacer(1, 4))
-        
-            story.append(Spacer(1, 4))
+
+        except Exception as image_error:
+            print("❌ FIELD REPORT IMAGE ERROR:", repr(image_error))
+    else:
+        print("⚠️ Không có ảnh để chèn vào PDF.")
 
     # VỊ TRÍ KỸ THUẬT XÁC ĐỊNH TỪ GPS
     if gis_identification and gis_identification.get("identified"):
@@ -4248,11 +4235,9 @@ async def field_report_pdf(
         except Exception as e:
             print("⚠️ Lỗi xác định GIS tự động:", repr(e))
             gis_identification = None
-    # ============================================================
-    # TẠO ẢNH VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
-    # ============================================================
-    gis_map_bytes = None
 
+    # TẠO ẢNH VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
+    gis_map_bytes = None
     if latitude is not None and longitude is not None:
         try:
             gis_map_bytes = await asyncio.to_thread(
@@ -4261,21 +4246,14 @@ async def field_report_pdf(
                 longitude,
                 gis_identification
             )
-
             if gis_map_bytes:
-                print(
-                    f"🗺️ GIS MAP CREATED: "
-                    f"{len(gis_map_bytes)} bytes"
-                )
+                print(f"🗺️ GIS MAP CREATED: {len(gis_map_bytes)} bytes")
             else:
                 print("⚠️ GIS MAP không tạo được.")
-
         except Exception as e:
-            print(
-                "⚠️ GIS MAP ERROR:",
-                repr(e)
-            )
+            print("⚠️ GIS MAP ERROR:", repr(e))
             gis_map_bytes = None
+
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
