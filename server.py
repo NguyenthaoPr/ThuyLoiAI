@@ -2654,8 +2654,6 @@ async def kml_gps_test(
         # NHẬN DIỆN ĐỐI TƯỢNG GIS TỪ KẾT QUẢ GPS
         # ==========================================================
 
-        gis_identification = None
-
         # ==========================================================
 # NHẬN DIỆN ĐỐI TƯỢNG GIS TỪ KẾT QUẢ GPS
 #
