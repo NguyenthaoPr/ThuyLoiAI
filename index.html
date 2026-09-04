@@ -2571,6 +2571,10 @@ if (window.kmlGpsResult) {
           if (window.captureTimestamp) {
             formData.append("capture_time", window.captureTimestamp);
           }
+          if (window.currentLocation) {
+          formData.append("latitude", String(window.currentLocation.lat));
+          formData.append("longitude", String(window.currentLocation.lng));
+          }
           // ===== GỬI TỌA ĐỘ GPS CHO PDF =====
           if (currentLocation) {
               formData.append("latitude", String(currentLocation.lat));
