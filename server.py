@@ -3841,7 +3841,7 @@ def create_gis_location_map(
         # ----------------------------------------------------
         draw.text(
             (width - 500, height - 55),
-            "Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: Esri World Imagery"
+            "Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: Esri World Imagery",
             fill="gray",
             font=font_small
         )
