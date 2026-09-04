@@ -3285,6 +3285,15 @@ def create_gis_location_map(
         if not items:
             print("⚠️ GIS MASTER không có dữ liệu.")
             return None
+        # ----------------------------------------------------
+        # 2A. PHÂN LOẠI GIS MASTER
+        # ----------------------------------------------------
+        # Gắn gis_class và construction_type cho từng đối tượng.
+        # KHU_TUOI được giữ riêng, không dùng để nhận diện công trình.
+        cong_trinh_items, khu_tuoi_items = split_gis_items(items)
+        
+        # Gộp lại để tiếp tục sử dụng toàn bộ GIS Master
+        items = cong_trinh_items + khu_tuoi_items
 
         # ----------------------------------------------------
         # 2. TỌA ĐỘ GPS
@@ -3873,21 +3882,11 @@ def create_gis_location_map(
         # ----------------------------------------------------
         # 13. TIÊU ĐỀ
         # ----------------------------------------------------
-        draw.text(
-            (70, 25),
-            "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
-            fill="#0f5872",
-            font=font_title
-        )
-
-        draw.text(
-            (70, 65),
-            f"GPS: {gps_lat:.6f}, {gps_lng:.6f}",
-            fill="black",
-            font=font_small
-        )
-
         # ----------------------------------------------------
+        # 13. THÔNG TIN TRÊN ẢNH BẢN ĐỒ
+        # ----------------------------------------------------
+        # Không vẽ tiêu đề/GPS trực tiếp lên ảnh.
+        # Tiêu đề được hiển thị bên ngoài ảnh trong PDF.
        
         # ----------------------------------------------------
         # 15. CHÚ GIẢI
