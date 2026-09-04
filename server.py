@@ -3369,7 +3369,152 @@ def create_gis_location_map(
             font_small = None
             font_title = None
             font_big = None
-
+            # -----------------------------------------------
+    # HÀM VẼ NHÃN + MŨI TÊN CHỈ VÀO CÔNG TRÌNH
+    # -----------------------------------------------
+        def draw_gis_callout(
+            draw,
+            target_x,
+            target_y,
+            name,
+            font,
+            image_width,
+            image_height,
+            accent="#1769AA"
+        ):
+            text = str(name or "").strip()
+    
+            if not text:
+                return
+    
+            # Kích thước chữ
+            bbox = draw.textbbox((0, 0), text, font=font)
+    
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+    
+            padding_x = 10
+            padding_y = 6
+    
+            # Vị trí ban đầu của hộp chú thích
+            label_x = target_x + 35
+            label_y = target_y - text_height - 45
+    
+            box_left = label_x
+            box_top = label_y
+            box_right = label_x + text_width + padding_x * 2
+            box_bottom = label_y + text_height + padding_y * 2
+    
+            # Không cho hộp vượt mép phải
+            if box_right > image_width - 10:
+                box_left = target_x - text_width - padding_x * 2 - 35
+                box_right = box_left + text_width + padding_x * 2
+    
+            # Không cho hộp vượt mép trái
+            if box_left < 10:
+                box_left = 10
+                box_right = box_left + text_width + padding_x * 2
+    
+            # Không cho hộp vượt mép trên
+            if box_top < 10:
+                box_top = target_y + 35
+                box_bottom = box_top + text_height + padding_y * 2
+    
+            # Không cho hộp vượt mép dưới
+            if box_bottom > image_height - 10:
+                box_top = image_height - text_height - padding_y * 2 - 10
+                box_bottom = image_height - 10
+    
+            # Điểm bắt đầu của mũi tên
+            arrow_start_x = (box_left + box_right) / 2
+            arrow_start_y = box_bottom
+    
+            # Nếu hộp nằm phía dưới đối tượng
+            if box_top > target_y:
+                arrow_start_y = box_top
+    
+            # Vẽ đường mũi tên
+            draw.line(
+                [
+                    (arrow_start_x, arrow_start_y),
+                    (target_x, target_y)
+                ],
+                fill=accent,
+                width=3
+            )
+    
+            # Tính đầu mũi tên
+            dx = target_x - arrow_start_x
+            dy = target_y - arrow_start_y
+    
+            length = max(
+                (dx * dx + dy * dy) ** 0.5,
+                1
+            )
+    
+            ux = dx / length
+            uy = dy / length
+    
+            arrow_size = 9
+    
+            left_x = (
+                target_x
+                - ux * arrow_size
+                - uy * arrow_size * 0.55
+            )
+    
+            left_y = (
+                target_y
+                - uy * arrow_size
+                + ux * arrow_size * 0.55
+            )
+    
+            right_x = (
+                target_x
+                - ux * arrow_size
+                + uy * arrow_size * 0.55
+            )
+    
+            right_y = (
+                target_y
+                - uy * arrow_size
+                - ux * arrow_size * 0.55
+            )
+    
+            # Đầu mũi tên
+            draw.polygon(
+                [
+                    (target_x, target_y),
+                    (left_x, left_y),
+                    (right_x, right_y)
+                ],
+                fill=accent
+            )
+    
+            # Hộp tên công trình
+            draw.rounded_rectangle(
+                [
+                    box_left,
+                    box_top,
+                    box_right,
+                    box_bottom
+                ],
+                radius=6,
+                fill="white",
+                outline=accent,
+                width=2
+            )
+    
+            # Tên công trình
+            draw.text(
+                (
+                    box_left + padding_x,
+                    box_top + padding_y
+                ),
+                text,
+                fill=accent,
+                font=font
+            )
         # ----------------------------------------------------
         # 7. HÀM CHUYỂN LAT/LNG -> PIXEL
         # ----------------------------------------------------
