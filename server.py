@@ -433,11 +433,114 @@ def split_gis_items(items):
         item_copy["gis_class"] = gis_type
 
         if gis_type == "KHU_TUOI":
+            item_copy["construction_type"] = "KHU_TUOI"
             khu_tuoi_items.append(item_copy)
         else:
+            item_copy["construction_type"] = (
+            classify_construction_type(item_copy)
+        )
+
             cong_trinh_items.append(item_copy)
 
     return cong_trinh_items, khu_tuoi_items
+    # ============================================================
+# GIS CONSTRUCTION CLASSIFICATION
+# BƯỚC 2 - PHÂN LOẠI CÔNG TRÌNH
+#
+# CHỈ phân loại các đối tượng CONG_TRINH.
+# KHU_TUOI không được dùng để nhận diện công trình.
+# ============================================================
+
+def classify_construction_type(item):
+    """
+    Phân loại công trình GIS thành:
+
+        KENH
+        DAP_DANG
+        TRAM_BOM
+        HO_CHUA
+        DAP_CHINH
+        DAP_PHU
+        KHAC
+
+    Chỉ áp dụng cho đối tượng CONG_TRINH.
+    """
+
+    if not isinstance(item, dict):
+        return "KHAC"
+
+    # KHU_TUOI tuyệt đối không phân loại thành công trình
+    if item.get("gis_class") == "KHU_TUOI":
+        return "KHU_TUOI"
+
+    name = normalize_gis_text(
+        item.get("name", "")
+    )
+
+    description = normalize_gis_text(
+        item.get("description", "")
+    )
+
+    text = f"{name} {description}".strip()
+
+    # ========================================================
+    # 1. TRẠM BƠM
+    # ========================================================
+    if any(keyword in text for keyword in (
+        "trạm bơm",
+        "tram bom",
+    )):
+        return "TRAM_BOM"
+
+    # ========================================================
+    # 2. HỒ CHỨA
+    # ========================================================
+    if any(keyword in text for keyword in (
+        "hồ chứa",
+        "ho chua",
+    )):
+        return "HO_CHUA"
+
+    # ========================================================
+    # 3. ĐẬP CHÍNH
+    # ========================================================
+    if any(keyword in text for keyword in (
+        "đập chính",
+        "dap chinh",
+    )):
+        return "DAP_CHINH"
+
+    # ========================================================
+    # 4. ĐẬP PHỤ
+    # ========================================================
+    if any(keyword in text for keyword in (
+        "đập phụ",
+        "dap phu",
+    )):
+        return "DAP_PHU"
+
+    # ========================================================
+    # 5. ĐẬP DÂNG
+    # ========================================================
+    if any(keyword in text for keyword in (
+        "đập dâng",
+        "dap dang",
+    )):
+        return "DAP_DANG"
+
+    # ========================================================
+    # 6. KÊNH
+    # ========================================================
+    if any(keyword in text for keyword in (
+        "kênh",
+        "kenh",
+    )):
+        return "KENH"
+
+    # ========================================================
+    # 7. CHƯA XÁC ĐỊNH
+    # ========================================================
+    return "KHAC"
 def get_active_kml_file():
     """
     Tìm file KML/KMZ đang có trong thư mục kml_data.
