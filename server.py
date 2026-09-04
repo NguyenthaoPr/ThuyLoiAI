@@ -3978,37 +3978,45 @@ def create_field_report_pdf(
             story.append(field_image)
             story.append(Spacer(1, 8))
                 # ============================================================
-                # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
-                # ============================================================
-    if gis_map_bytes:
-        try:
-            from reportlab.platypus import Image as RLImage
-
-            story.append(
-                Paragraph(
-                    "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
-                    subheading_style
-                )
-            )
+    # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
+    # ============================================================
+            if gis_map_bytes:
+                try:
+                    from reportlab.platypus import Image as RLImage
+        
+                    story.append(
+                        Paragraph(
+                            "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
+                            subheading_style
+                        )
+                    )
+        
+                    story.append(Spacer(1, 4))
+        
+                    gis_image = RLImage(
+                        BytesIO(gis_map_bytes),
+                        width=doc.width,
+                        height=doc.width * 900 / 1400
+                    )
+        
+                    gis_image.hAlign = "CENTER"
+                    story.append(gis_image)
+                    story.append(Spacer(1, 10))
+        
+                    print("🗺️ Đã chèn bản đồ GIS vào PDF thành công.")
+        
+                except Exception as map_error:
+                    print(
+                        "❌ GIS MAP PDF IMAGE ERROR:",
+                        repr(map_error)
+                    )
+        
+            else:
+                print("⚠️ Không có bản đồ GIS để chèn vào PDF.")
 
             story.append(Spacer(1, 4))
-
-            gis_image = RLImage(
-                BytesIO(gis_map_bytes),
-                width=doc.width,
-                height=doc.width * 900 / 1400
-            )
-            gis_image.hAlign = "CENTER"
-            story.append(gis_image)
-            story.append(Spacer(1, 10))
-
-            print("🗺️ Đã chèn bản đồ GIS vào PDF thành công.")
-        except Exception as image_error:
-            print("❌ GIS MAP PDF IMAGE ERROR:", repr(image_error))
-    else:
-        print("⚠️ Không có bản đồ GIS để chèn vào PDF.")
-
-    story.append(Spacer(1, 4))
+        
+            story.append(Spacer(1, 4))
 
     # VỊ TRÍ KỸ THUẬT XÁC ĐỊNH TỪ GPS
     if gis_identification and gis_identification.get("identified"):
