@@ -3977,6 +3977,28 @@ def create_field_report_pdf(
             field_image.hAlign = "CENTER"
             story.append(field_image)
             story.append(Spacer(1, 8))
+                # ============================================================
+                # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
+                # ============================================================
+                if gis_map_bytes:
+                    try:
+                        from reportlab.platypus import Image as RLImage
+            
+                        story.append(
+                            Paragraph(
+                                "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
+                                subheading_style
+                            )
+                        )
+            
+                        story.append(Spacer(1, 4))
+            
+                        gis_image = RLImage(
+                            BytesIO(gis_map_bytes),
+                            width=doc.width,
+                            height=doc.width * 900 / 1400
+                        )
+
             print("✅ Ảnh đã được chèn thành công.")
         except Exception as image_error:
             print("❌ FIELD REPORT IMAGE ERROR:", repr(image_error))
