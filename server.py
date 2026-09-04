@@ -3744,8 +3744,37 @@ async def field_report_pdf(
                 "⚠️ Lỗi xác định GIS tự động:",
                 repr(e)
             )
-            gis_identification = None
-
+       # ============================================================
+    # TẠO ẢNH VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
+    # ============================================================
+            gis_map_bytes = None
+        
+            if latitude is not None and longitude is not None:
+                try:
+                    gis_map_bytes = await asyncio.to_thread(
+                        create_gis_location_map,
+                        latitude,
+                        longitude,
+                        gis_identification
+                    )
+        
+                    if gis_map_bytes:
+                        print(
+                            "🗺️ GIS MAP CREATED:",
+                            len(gis_map_bytes),
+                            "bytes"
+                        )
+                    else:
+                        print(
+                            "⚠️ GIS MAP: Không tạo được ảnh bản đồ."
+                        )
+        
+                except Exception as e:
+                    print(
+                        "⚠️ GIS MAP ERROR:",
+                        repr(e)
+                    )
+                    gis_map_bytes = None
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
@@ -3757,6 +3786,7 @@ async def field_report_pdf(
             latitude,
             longitude,
             gis_identification,
+            gis_map_bytes,
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
