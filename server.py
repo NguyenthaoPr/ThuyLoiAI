@@ -4200,8 +4200,6 @@ def create_field_report_pdf(
             field_image.hAlign = "CENTER"
             story.append(field_image)
             story.append(Spacer(1, 8))
-
-            # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
             # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
             if gis_map_bytes:
                 try:
