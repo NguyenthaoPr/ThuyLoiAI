@@ -704,7 +704,164 @@
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
     border-top: 12px solid var(--pin-color);
-}   
+} 
+/* =====================================================
+   POPUP BẢN ĐỒ AI — GIAO DIỆN KỸ THUẬT
+   ===================================================== */
+
+.leaflet-popup-content-wrapper {
+    padding: 0 !important;
+    border-radius: 16px !important;
+    overflow: hidden;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22) !important;
+}
+
+.leaflet-popup-content {
+    margin: 0 !important;
+    width: 280px !important;
+    max-width: 82vw !important;
+}
+
+.leaflet-popup-tip {
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.10);
+}
+
+.map-popup {
+    width: 100%;
+    font-family: Arial, sans-serif;
+    color: #183247;
+    background: #ffffff;
+}
+
+.map-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 14px;
+    background: #0b3153;
+    color: #ffffff;
+}
+
+.map-popup-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.16);
+    font-size: 19px;
+    flex-shrink: 0;
+}
+
+.map-popup-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.map-popup-title strong {
+    display: block;
+    font-size: 14px;
+    line-height: 1.25;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.map-popup-type {
+    margin-top: 3px;
+    font-size: 10px;
+    opacity: 0.78;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.map-popup-body {
+    padding: 11px 14px 13px;
+}
+
+.map-popup-row {
+    display: flex;
+    gap: 9px;
+    padding: 7px 0;
+    border-bottom: 1px solid #edf1f4;
+}
+
+.map-popup-row:last-child {
+    border-bottom: none;
+}
+
+.map-popup-row-icon {
+    width: 22px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 15px;
+}
+
+.map-popup-row-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.map-popup-label {
+    font-size: 10px;
+    color: #82909b;
+    margin-bottom: 2px;
+}
+
+.map-popup-value {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #17364c;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.map-popup-description {
+    margin-top: 8px;
+    padding: 9px 10px;
+    background: #f4f8fa;
+    border-radius: 9px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #526673;
+}
+
+.map-popup-chainage {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 7px;
+    background: #e8f4f7;
+    color: #126276;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* Tối ưu điện thoại */
+
+@media (max-width: 600px) {
+
+    .leaflet-popup-content {
+        width: 270px !important;
+        max-width: 80vw !important;
+    }
+
+    .map-popup-header {
+        padding: 12px;
+    }
+
+    .map-popup-body {
+        padding: 9px 12px 11px;
+    }
+
+    .map-popup-title strong {
+        font-size: 13px;
+    }
+
+    .map-popup-value {
+        font-size: 11.5px;
+    }
+}
 </style>
 </head>
 <body>
@@ -2085,150 +2242,390 @@ const geoLayer = L.geoJSON(
                     String(description);
             }
             // ============================================
-        // TẠO POPUP THÔNG TIN CÔNG TRÌNH
-        // ============================================
+   // ======================================================
+// TẠO POPUP THÔNG TIN CÔNG TRÌNH — PHIÊN BẢN MOBILE
+// ======================================================
 
-        let popup = `
+const popupIconMap = {
+    ho: '💧',
+    tram_bom: '⚙️',
+    dap: '🟠',
+    dap_dang: '🟠',
+    kenh: '〰️',
+    cong: '◆',
+    tran: '🌊',
+    cau: '🌉',
+    ong: '◉',
+    khu_tuoi: '🌱',
+    khac: '📍'
+};
+
+const popupIcon =
+    popupIconMap[type] || '📍';
+
+const popupTypeColors = {
+    ho: '#1565C0',
+    tram_bom: '#0277BD',
+    dap: '#E65100',
+    dap_dang: '#E65100',
+    kenh: '#00838F',
+    cong: '#3949AB',
+    tran: '#00838F',
+    cau: '#6D4C41',
+    ong: '#546E7A',
+    khu_tuoi: '#2E7D32',
+    khac: '#455A64'
+};
+
+const popupAccent =
+    popupTypeColors[type] || '#1565C0';
+
+let popup = `
+
+<div class="tl-map-popup"
+     style="
+        width:300px;
+        max-width:calc(100vw - 55px);
+        font-family:Arial,sans-serif;
+        color:#263238;
+        overflow:hidden;
+     ">
+
+    <!-- TIÊU ĐỀ -->
+    <div style="
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding:10px 10px 11px 10px;
+        margin:-2px -2px 0 -2px;
+        border-bottom:1px solid #e5e7eb;
+    ">
+
+        <div style="
+            width:38px;
+            height:38px;
+            min-width:38px;
+            border-radius:12px;
+            background:${popupAccent};
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:20px;
+            box-shadow:0 3px 8px rgba(0,0,0,.16);
+        ">
+            ${popupIcon}
+        </div>
+
+        <div style="
+            min-width:0;
+            flex:1;
+        ">
+
             <div style="
-                min-width:240px;
-                max-width:360px;
-                font-family:Arial,sans-serif;
-                font-size:13px;
-                line-height:1.4;
+                font-size:14px;
+                font-weight:800;
+                line-height:1.25;
+                color:#0B3558;
+                word-break:break-word;
             ">
-
-                <!-- TÊN CÔNG TRÌNH -->
-                <div style="
-                    font-size:15px;
-                    font-weight:700;
-                    margin-bottom:7px;
-                ">
-                    💧 ${escapeHtmlMap(name)}
-                </div>
-
-                <!-- LOẠI CÔNG TRÌNH -->
-                <div style="
-                    border-top:1px solid #ddd;
-                    padding-top:6px;
-                ">
-        `;
-
-        // --------------------------------------------
-        // LOẠI CÔNG TRÌNH
-        // --------------------------------------------
-        if (type) {
-            popup += `
-                <div style="
-                    margin:3px 0;
-                ">
-                    <b>Loại:</b>
-                    ${escapeHtmlMap(type)}
-                </div>
-            `;
-        }
-
-        // --------------------------------------------
-        // MÃ CÔNG TRÌNH
-        // --------------------------------------------
-        if (code) {
-            popup += `
-                <div style="
-                    margin:3px 0;
-                ">
-                    <b>Mã công trình:</b>
-                    ${escapeHtmlMap(code)}
-                </div>
-            `;
-        }
-
-        // --------------------------------------------
-        // LÝ TRÌNH / VỊ TRÍ
-        // --------------------------------------------
-        if (station) {
-            popup += `
-                <div style="
-                    margin:3px 0;
-                ">
-                    <b>Lý trình:</b>
-                    ${escapeHtmlMap(station)}
-                </div>
-            `;
-        }
-
-        popup += `
-                </div>
-        `;
-
-        // ============================================
-        // THÔNG SỐ KỸ THUẬT / BẢNG DỮ LIỆU GIS
-        // ============================================
-
-        if (description) {
-
-            const desc =
-                String(description).trim();
-
-            // ----------------------------------------
-            // NẾU DỮ LIỆU LÀ BẢNG HTML
-            // → GIỮ NGUYÊN HTML
-            // ----------------------------------------
-            if (
-                desc.includes('<table') ||
-                desc.includes('<TABLE')
-            ) {
-
-                popup += `
-                    <div style="
-                        margin-top:8px;
-                        max-height:260px;
-                        overflow:auto;
-                        border-top:1px solid #ddd;
-                        padding-top:6px;
-                    ">
-                        ${desc}
-                    </div>
-                `;
-
-            } else {
-
-                // ------------------------------------
-                // NẾU LÀ TEXT THƯỜNG
-                // → ESCAPE HTML
-                // ------------------------------------
-
-                popup += `
-                    <div style="
-                        margin-top:8px;
-                        line-height:1.45;
-                        border-top:1px solid #ddd;
-                        padding-top:6px;
-                    ">
-                        ${escapeHtmlMap(desc)}
-                    </div>
-                `;
-            }
-        }
-
-        // ============================================
-        // KẾT THÚC POPUP
-        // ============================================
-
-        popup += `
+                ${escapeHtmlMap(name)}
             </div>
+
+            <div style="
+                margin-top:3px;
+                font-size:10px;
+                font-weight:700;
+                letter-spacing:.4px;
+                text-transform:uppercase;
+                color:${popupAccent};
+            ">
+                ${escapeHtmlMap(label)}
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- THÔNG TIN NHANH -->
+    <div style="
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:7px;
+        padding:9px 2px 3px 2px;
+    ">
+`;
+
+
+// ======================================================
+// LOẠI CÔNG TRÌNH
+// ======================================================
+
+if (type) {
+
+    popup += `
+
+        <div style="
+            background:#F5F8FB;
+            border:1px solid #E3EAF0;
+            border-radius:9px;
+            padding:7px 9px;
+        ">
+            <div style="
+                font-size:9px;
+                color:#78909C;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:2px;
+            ">
+                Loại công trình
+            </div>
+
+            <div style="
+                font-size:11px;
+                font-weight:700;
+                color:#263238;
+            ">
+                ${escapeHtmlMap(label)}
+            </div>
+        </div>
+    `;
+
+}
+
+
+// ======================================================
+// MÃ CÔNG TRÌNH
+// ======================================================
+
+if (code) {
+
+    popup += `
+
+        <div style="
+            background:#F5F8FB;
+            border:1px solid #E3EAF0;
+            border-radius:9px;
+            padding:7px 9px;
+        ">
+            <div style="
+                font-size:9px;
+                color:#78909C;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:2px;
+            ">
+                Mã công trình
+            </div>
+
+            <div style="
+                font-size:11px;
+                font-weight:700;
+                color:#263238;
+                word-break:break-word;
+            ">
+                ${escapeHtmlMap(code)}
+            </div>
+        </div>
+    `;
+
+}
+
+popup += `</div>`;
+
+
+// ======================================================
+// LÝ TRÌNH / VỊ TRÍ
+// ======================================================
+
+if (station) {
+
+    popup += `
+
+    <div style="
+        display:flex;
+        align-items:center;
+        gap:9px;
+        margin:7px 2px 0 2px;
+        padding:9px 10px;
+        border-radius:9px;
+        background:#EAF6F7;
+        border:1px solid #C9E7EA;
+    ">
+
+        <div style="
+            width:30px;
+            height:30px;
+            min-width:30px;
+            border-radius:8px;
+            background:#00838F;
+            color:white;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:15px;
+        ">
+            📍
+        </div>
+
+        <div style="min-width:0;">
+
+            <div style="
+                font-size:9px;
+                font-weight:700;
+                color:#607D8B;
+                text-transform:uppercase;
+            ">
+                Lý trình / vị trí
+            </div>
+
+            <div style="
+                font-size:12px;
+                font-weight:800;
+                color:#006064;
+                margin-top:2px;
+                word-break:break-word;
+            ">
+                ${escapeHtmlMap(station)}
+            </div>
+
+        </div>
+
+    </div>
+    `;
+
+}
+
+
+// ======================================================
+// THÔNG SỐ KỸ THUẬT / BẢNG GIS
+// ======================================================
+
+if (description) {
+
+    const desc = String(description).trim();
+
+    if (
+        desc.includes('<table') ||
+        desc.includes('<TABLE')
+    ) {
+
+        popup += `
+
+        <div style="
+            margin-top:9px;
+            border-top:1px solid #E3EAF0;
+            padding-top:8px;
+        ">
+
+            <div style="
+                display:flex;
+                align-items:center;
+                gap:6px;
+                font-size:10px;
+                font-weight:800;
+                color:#0B3558;
+                text-transform:uppercase;
+                margin-bottom:6px;
+            ">
+                📋 Thông số kỹ thuật
+            </div>
+
+            <div style="
+                max-height:240px;
+                overflow:auto;
+                border:1px solid #DDE5EA;
+                border-radius:8px;
+                background:#fff;
+            ">
+                ${desc}
+            </div>
+
+        </div>
+
         `;
 
-        // Gắn popup vào đối tượng GIS
-        layer.bindPopup(popup);
-            // Ghi nhận để kiểm tra
-            console.log(
-                'CÔNG TRÌNH:',
-                type,
-                name
-            );
-        }
+    } else {
+
+        popup += `
+
+        <div style="
+            margin-top:9px;
+            border-top:1px solid #E3EAF0;
+            padding-top:8px;
+        ">
+
+            <div style="
+                display:flex;
+                align-items:center;
+                gap:6px;
+                font-size:10px;
+                font-weight:800;
+                color:#0B3558;
+                text-transform:uppercase;
+                margin-bottom:5px;
+            ">
+                📝 Mô tả
+            </div>
+
+            <div style="
+                padding:9px 10px;
+                background:#F8FAFB;
+                border:1px solid #E4E9ED;
+                border-radius:8px;
+                font-size:11px;
+                line-height:1.5;
+                color:#455A64;
+                max-height:150px;
+                overflow:auto;
+                word-break:break-word;
+            ">
+                ${escapeHtmlMap(desc)}
+            </div>
+
+        </div>
+
+        `;
+
+    }
+
+}
+
+
+// ======================================================
+// CHÂN POPUP
+// ======================================================
+
+popup += `
+
+    <div style="
+        margin-top:9px;
+        padding-top:7px;
+        border-top:1px solid #EEF1F3;
+        text-align:center;
+        font-size:9px;
+        color:#90A4AE;
+    ">
+        🗺️ Dữ liệu từ GIS Master • THỦY LỢI AI
+    </div>
+
+</div>
+`;
+
+
+// ======================================================
+// GẮN POPUP
+// ======================================================
+
+layer.bindPopup(
+    popup,
+    {
+        maxWidth: 340,
+        minWidth: 280,
+        closeButton: true,
+        autoPan: true,
+        autoPanPadding: [20, 20]
     }
 );
-
 
 // ======================================================
 // ĐƯA LỚP GIS LÊN BẢN ĐỒ
