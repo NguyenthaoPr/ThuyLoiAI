@@ -1637,7 +1637,7 @@ updateGISZoomStyle();
 // PHÂN LOẠI VÀ HIỂN THỊ CÔNG TRÌNH THỦY LỢI
 // ======================================================
 
-function getCongTrinhType(properties, geometry) {
+window.getCongTrinhType = function(properties, geometry) {
     const p = properties || {};
 
     const text = [
