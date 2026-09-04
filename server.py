@@ -8,6 +8,8 @@ import hashlib
 import base64
 import math
 import json
+import urllib.parse
+import urllib.request
 import qrcode
 from PIL import Image, ImageOps
 from io import BytesIO
@@ -3299,19 +3301,30 @@ def create_gis_location_map(
             identified_name = str(
                 gis_identification.get("name", "")
             ).strip()
-
-        # ----------------------------------------------------
+       
         # 4. CHỌN VÙNG BẢN ĐỒ
-        #
-        # Ưu tiên vùng quanh GPS.
-        # Không lấy toàn bộ GIS MASTER để tránh bản đồ quá nhỏ.
         # ----------------------------------------------------
-        map_radius = 0.0035
-
-        min_lng = gps_lng - map_radius
-        max_lng = gps_lng + map_radius
-        min_lat = gps_lat - map_radius
-        max_lat = gps_lat + map_radius
+        # Giữ vùng bản đồ tập trung quanh GPS.
+        # Tỷ lệ latitude/longitude được hiệu chỉnh
+        # để ảnh vệ tinh không bị méo.
+        map_radius_lng = 0.0035
+        
+        lat_scale = max(
+            0.5,
+            math.cos(math.radians(gps_lat))
+        )
+        
+        map_radius_lat = (
+            map_radius_lng
+            * 720 / 1260
+            / lat_scale
+        )
+        
+        min_lng = gps_lng - map_radius_lng
+        max_lng = gps_lng + map_radius_lng
+        
+        min_lat = gps_lat - map_radius_lat
+        max_lat = gps_lat + map_radius_lat
 
         # ----------------------------------------------------
         # 5. KÍCH THƯỚC ẢNH
@@ -3367,6 +3380,82 @@ def create_gis_location_map(
 
         map_width = width - margin_left - margin_right
         map_height = height - margin_top - margin_bottom
+        # ----------------------------------------------------
+        # 7B. TẢI NỀN VỆ TINH ESRI WORLD IMAGERY
+        # ----------------------------------------------------
+        try:
+            satellite_params = urllib.parse.urlencode({
+                "bbox": (
+                    f"{min_lng},"
+                    f"{min_lat},"
+                    f"{max_lng},"
+                    f"{max_lat}"
+                ),
+                "bboxSR": "4326",
+                "size": f"{map_width},{map_height}",
+                "imageSR": "4326",
+                "format": "png",
+                "f": "image"
+            })
+        
+            satellite_url = (
+                "https://services.arcgisonline.com/"
+                "ArcGIS/rest/services/World_Imagery/"
+                "MapServer/export?"
+                + satellite_params
+            )
+        
+            request = urllib.request.Request(
+                satellite_url,
+                headers={
+                    "User-Agent": "ThuyLoiAI/1.0"
+                }
+            )
+        
+            with urllib.request.urlopen(
+                request,
+                timeout=20
+            ) as response:
+        
+                satellite_bytes = response.read()
+        
+            satellite_image = Image.open(
+                BytesIO(satellite_bytes)
+            ).convert("RGB")
+        
+            satellite_image = satellite_image.resize(
+                (map_width, map_height),
+                Image.Resampling.LANCZOS
+            )
+        
+            image.paste(
+                satellite_image,
+                (margin_left, margin_top)
+            )
+        
+            print(
+                f"🛰️ ESRI SATELLITE LOADED: "
+                f"{len(satellite_bytes)} bytes"
+            )
+        
+        except Exception as satellite_error:
+        
+            print(
+                "⚠️ ESRI SATELLITE ERROR:",
+                repr(satellite_error)
+            )
+        
+            # Nếu không lấy được ảnh vệ tinh,
+            # vẫn giữ bản đồ GIS hoạt động như cũ.
+            draw.rectangle(
+                [
+                    margin_left,
+                    margin_top,
+                    width - margin_right,
+                    height - margin_bottom
+                ],
+                fill="white"
+            )
 
         def geo_to_pixel(lng, lat):
             x_ratio = (
@@ -3441,8 +3530,7 @@ def create_gis_location_map(
             if len(polygon_points) >= 3:
                 draw.polygon(
                     polygon_points,
-                    outline="lightgray",
-                    fill="#f3f3f3"
+                    outline="#f0c419"
                 )
 
         # ----------------------------------------------------
@@ -3477,10 +3565,17 @@ def create_gis_location_map(
 
             if len(line_points) >= 2:
 
+                )
                 draw.line(
-                    line_points,
-                    fill="#287f8f",
-                    width=5
+                line_points,
+                fill="white",
+                width=9
+                )
+                
+                draw.line(
+                line_points,
+                fill="#287f8f",
+                width=5
                 )
 
         # ----------------------------------------------------
@@ -3746,7 +3841,7 @@ def create_gis_location_map(
         # ----------------------------------------------------
         draw.text(
             (width - 500, height - 55),
-            "Nguồn: GIS MASTER / master.kmz",
+            "Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: Esri World Imagery"
             fill="gray",
             font=font_small
         )
