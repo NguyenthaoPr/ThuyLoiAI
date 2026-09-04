@@ -2626,6 +2626,7 @@ layer.bindPopup(
         autoPanPadding: [20, 20]
     }
 );
+}, // Đóng onEachFeature
 
 // ======================================================
 // ĐƯA LỚP GIS LÊN BẢN ĐỒ
@@ -3017,7 +3018,8 @@ matches.slice(0, 8).forEach(function(layer) {
 
 resultBox.style.display =
     matches.length ? 'block' : 'none';
-}      
+} // Kết thúc hàm searchAiMap
+
        mapAiBtn.addEventListener('click', async function() {
             mapAiPanel.classList.remove('hidden');
             mapAiPanel.scrollIntoView({
