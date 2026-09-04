@@ -3888,92 +3888,7 @@ def create_gis_location_map(
         )
 
         # ----------------------------------------------------
-        # 14. THÔNG TIN GIS
-        # ----------------------------------------------------
-        info_x = 930
-        info_y = 135
-
-        draw.rectangle(
-            [
-                info_x,
-                info_y,
-                width - 70,
-                380
-            ],
-            fill="white",
-            outline="gray",
-            width=2
-        )
-
-        draw.text(
-            (info_x + 20, info_y + 20),
-            "THÔNG TIN GIS",
-            fill="#0f5872",
-            font=font_title
-        )
-
-        if isinstance(gis_identification, dict):
-
-            gis_name = str(
-                gis_identification.get("name", "")
-            )
-
-            gis_type = str(
-                gis_identification.get(
-                    "construction_type",
-                    gis_identification.get(
-                        "geometry_type",
-                        ""
-                    )
-                )
-            )
-
-            chainage = str(
-                gis_identification.get(
-                    "chainage",
-                    ""
-                )
-            )
-
-            distance_m = gis_identification.get(
-                "distance_m"
-            )
-
-            info_lines = [
-                f"Công trình: {gis_name or 'Chưa xác định'}",
-                f"Loại: {gis_type or 'Chưa xác định'}",
-                f"Lý trình: {chainage or 'Chưa xác định'}",
-            ]
-
-            if distance_m is not None:
-                try:
-                    info_lines.append(
-                        f"Khoảng cách GPS: {float(distance_m):.1f} m"
-                    )
-                except Exception:
-                    pass
-
-        else:
-
-            info_lines = [
-                "Công trình: Chưa xác định",
-                "Loại: Chưa xác định",
-                "Lý trình: Chưa xác định",
-            ]
-
-        y = info_y + 80
-
-        for line in info_lines:
-
-            draw.text(
-                (info_x + 20, y),
-                line,
-                fill="black",
-                font=font_regular
-            )
-
-            y += 48
-
+       
         # ----------------------------------------------------
         # 15. CHÚ GIẢI
         # ----------------------------------------------------
@@ -4287,21 +4202,37 @@ def create_field_report_pdf(
             story.append(Spacer(1, 8))
 
             # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
+            # BẢN ĐỒ GIS - VỊ TRÍ THỰC TẾ
             if gis_map_bytes:
                 try:
-                    story.append(Paragraph("VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS", subheading_style))
-                    story.append(Spacer(1, 4))
                     gis_image = RLImage(
                         BytesIO(gis_map_bytes),
                         width=doc.width,
                         height=doc.width * 900 / 1400
                     )
                     gis_image.hAlign = "CENTER"
-                    story.append(gis_image)
-                    story.append(Spacer(1, 10))
+            
+                    # GỘP TIÊU ĐỀ + BẢN ĐỒ THÀNH MỘT KHỐI
+                    # Tránh tiêu đề bị nằm cuối trang
+                    gis_map_block = KeepTogether([
+                        Paragraph(
+                            "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
+                            subheading_style
+                        ),
+                        Spacer(1, 4),
+                        gis_image,
+                        Spacer(1, 10)
+                    ])
+            
+                    story.append(gis_map_block)
+            
                     print("🗺️ Đã chèn bản đồ GIS vào PDF thành công.")
+            
                 except Exception as map_error:
-                    print("❌ GIS MAP PDF IMAGE ERROR:", repr(map_error))
+                    print(
+                        "❌ GIS MAP PDF IMAGE ERROR:",
+                        repr(map_error)
+                    )
             else:
                 print("⚠️ Không có bản đồ GIS để chèn vào PDF.")
 
