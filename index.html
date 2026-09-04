@@ -2377,22 +2377,32 @@ function scanLayer(layer) {
         getCongTrinhLabel(type);
 
     const searchText =
-        normalizeMapSearch(
-            [
-                name,
-                description,
-                code,
-                station,
-                typeLabel,
-                type
-            ].join(' ')
-        );
+    normalizeMapSearch(
+        [
+            name,
+            description,
+            code,
+            station,
+            typeLabel,
+            type
+        ].join(' ')
+    );
 
-    if (
-        searchText.includes(keyword)
-    ) {
-        matches.push(layer);
-    }
+// Tách từ khóa thành từng từ
+const keywordParts =
+    keyword
+        .split(/\s+/)
+        .filter(Boolean);
+
+// Tất cả các từ khóa đều phải xuất hiện
+const isMatch =
+    keywordParts.every(function(part) {
+        return searchText.includes(part);
+    });
+
+if (isMatch) {
+    matches.push(layer);
+}
 }
 
 scanLayer(aiMapLayer);
