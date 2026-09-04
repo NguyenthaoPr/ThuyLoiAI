@@ -2573,6 +2573,47 @@ if (station) {
 
 
 // ======================================================
+// NÚT XEM CHI TIẾT
+// ======================================================
+
+popup += `
+    <button
+        type="button"
+        onclick="
+            const box = this.nextElementSibling;
+            const open = box.style.display !== 'none';
+
+            box.style.display = open ? 'none' : 'block';
+            this.innerHTML = open
+                ? '🔎 XEM CHI TIẾT'
+                : '🔼 THU GỌN';
+        "
+        style="
+            width:100%;
+            margin:10px 0 6px 0;
+            padding:10px 12px;
+            border:none;
+            border-radius:9px;
+            background:#1565C0;
+            color:#ffffff;
+            font-size:11px;
+            font-weight:800;
+            cursor:pointer;
+            box-shadow:0 3px 8px rgba(21,101,192,.22);
+        "
+    >
+        🔎 XEM CHI TIẾT
+    </button>
+
+    <div
+        style="
+            display:none;
+            margin-top:6px;
+        "
+    >
+`;
+
+// ======================================================
 // THÔNG SỐ KỸ THUẬT / BẢNG GIS
 // ======================================================
 
@@ -2666,7 +2707,13 @@ if (description) {
 
 }
 
+// ======================================================
+// ĐÓNG VÙNG CHI TIẾT
+// ======================================================
 
+popup += `
+    </div>
+`;
 // ======================================================
 // CHÂN POPUP
 // ======================================================
