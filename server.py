@@ -3589,4 +3589,145 @@ def create_field_report_pdf(
     story.append(Spacer(1, 6))
     content_flowables = _build_pdf_content_flowables(
         answer,
-        heading_style=heading_style
+        heading_style=heading_style,
+        subheading_style=subheading_style,
+        body_style=body_style,
+        bullet_style=bullet_style,
+        number_style=number_style,
+        note_style=note_style,
+    )
+    story.extend(content_flowables)
+
+    # CẢNH BÁO
+    story.append(Spacer(1, 6))
+    warn_rows = [
+        [Paragraph("⚠ LƯU Ý", warn_header_style)],
+        [Paragraph(
+            "Báo cáo là <b>dự thảo</b> được lập tự động với sự hỗ "
+            f"trợ của {esc_pdf(PDF_APP_NAME)}, dựa trên hình ảnh và "
+            "dữ liệu hồ sơ hiện có. Báo cáo không thay thế kết luận "
+            "kỹ thuật hoặc pháp lý chính thức; mọi kết luận cuối "
+            "cùng cần được cán bộ kỹ thuật hoặc người có thẩm quyền "
+            "xác nhận.",
+            warn_body_style
+        )],
+    ]
+    warn_table = Table(warn_rows, colWidths=[doc.width])
+    warn_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), PDF_COLOR_WARN_HEADER_BG),
+        ("BACKGROUND", (0, 1), (0, 1), PDF_COLOR_WARN_BODY_BG),
+        ("BOX", (0, 0), (-1, -1), 0.7, PDF_COLOR_WARN_BORDER),
+        ("LINEBELOW", (0, 0), (0, 0), 0.7, PDF_COLOR_WARN_BORDER),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (0, 0), 4),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+        ("TOPPADDING", (0, 1), (0, 1), 6),
+        ("BOTTOMPADDING", (0, 1), (0, 1), 6),
+    ]))
+    story.append(KeepTogether(warn_table))
+
+    # CHỮ KÝ - CHỈ CÓ NGƯỜI KIỂM TRA
+    story.append(Spacer(1, 12))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=PDF_COLOR_BORDER, spaceBefore=0, spaceAfter=8))
+    story.append(Paragraph("XÁC NHẬN HIỆN TRƯỜNG", signature_title_style))
+    reviewer_name = reviewer.strip() or "........................."
+    signature_cell = [
+        Paragraph(f"Người kiểm tra: {esc_pdf(reviewer_name)}", signature_label_style),
+        Spacer(1, 18 * mm),
+    ]
+    signature_table = Table([[signature_cell]], colWidths=[doc.width])
+    signature_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    story.append(KeepTogether(signature_table))
+
+    # DỰNG PDF
+    numbered_canvas_cls = make_numbered_canvas(font_regular, PDF_COLOR_MUTED)
+    doc.build(story, canvasmaker=numbered_canvas_cls)
+    buffer.seek(0)
+    return buffer
+
+# ============================================================
+# ENDPOINT FIELD REPORT PDF (đã sửa để nhận capture_time)
+# ============================================================
+@app.post("/field-report-pdf")
+async def field_report_pdf(
+    report_title: str = Form("BÁO CÁO NHANH HIỆN TRƯỜNG"),
+    answer: str = Form(""),
+    image: UploadFile | None = File(None),
+    reviewer: str = Form(""),
+    capture_time: str = Form(None),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
+):
+    if not answer.strip():
+        return {"success": False, "error": "Không có nội dung báo cáo để tạo PDF."}
+    image_bytes = None
+    if image:
+        image_bytes = await image.read()
+        print(f"📸 Nhận ảnh từ client: {image.filename}, kích thước: {len(image_bytes)} bytes")
+    else:
+        print("⚠️ Không nhận được ảnh từ client.")
+
+    # Tự động xác định GIS dựa trên tọa độ GPS
+    gis_identification = None
+
+    if latitude is not None and longitude is not None:
+        try:
+            gis_result = await kml_gps_test(
+                latitude=latitude,
+                longitude=longitude
+            )
+
+            if isinstance(gis_result, dict):
+                gis_identification = gis_result.get(
+                    "gis_identification"
+                )
+
+            print(
+                "📍 GIS IDENTIFICATION:",
+                gis_identification
+            )
+
+        except Exception as e:
+            print(
+                "⚠️ Lỗi xác định GIS tự động:",
+                repr(e)
+            )
+            gis_identification = None
+
+    try:
+        pdf_buffer = await asyncio.to_thread(
+            create_field_report_pdf,
+            report_title,
+            answer,
+            image_bytes,
+            reviewer,
+            capture_time,
+            latitude,
+            longitude,
+            gis_identification,
+        )
+        filename = "bao-cao-hien-truong.pdf"
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        print("❌ FIELD REPORT PDF ERROR:", repr(e))
+        return {"success": False, "error": str(e)}
+
+# ============================================================
+# MAIN
+# ============================================================
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "10000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
