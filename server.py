@@ -3565,7 +3565,7 @@ def create_gis_location_map(
 
             if len(line_points) >= 2:
 
-                )
+             
                 draw.line(
                 line_points,
                 fill="white",
