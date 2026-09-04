@@ -3692,11 +3692,7 @@ else:
                     story.append(Spacer(1, 8))
             
                 except Exception as e:
-                    print("❌ FIELD REPORT PDF ERROR:", repr(e))
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Lỗi tạo PDF: {str(e)}"
-                    )
+                    print("⚠️ GIS MAP ERROR:", repr(e))
 
     # NỘI DUNG BÁO CÁO
     story.append(_pdf_section_header_table(Paragraph("NỘI DUNG BÁO CÁO", section_heading_style), doc.width, PDF_COLOR_ACCENT))
