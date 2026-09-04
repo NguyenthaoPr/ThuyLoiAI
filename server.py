@@ -3722,7 +3722,38 @@ def create_gis_location_map(
                 fill="#287f8f",
                 width=5
                 )
-
+                        # -----------------------------------------------
+                # NHÃN + MŨI TÊN CHO TUYẾN KÊNH
+                # KHÔNG ÁP DỤNG CHO ĐƯỜNG BAO KHU TƯỚI
+                # -----------------------------------------------
+                gis_class = str(
+                    item.get("gis_class", "")
+                ).upper().strip()
+        
+                construction_type = str(
+                    item.get("construction_type", "")
+                ).upper().strip()
+        
+                if (
+                    gis_class != "KHU_TUOI"
+                    and construction_type == "KENH"
+                    and item.get("name")
+                    and len(line_points) >= 2
+                ):
+                    mid_index = len(line_points) // 2
+        
+                    target_x, target_y = line_points[mid_index]
+        
+                    draw_gis_callout(
+                        draw,
+                        target_x,
+                        target_y,
+                        item.get("name"),
+                        font_small,
+                        width,
+                        height,
+                        accent="#1769AA"
+                    )
         # ----------------------------------------------------
         # 11. VẼ CÁC CÔNG TRÌNH POINT
         # ----------------------------------------------------
