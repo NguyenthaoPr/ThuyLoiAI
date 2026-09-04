@@ -3745,7 +3745,6 @@ def create_gis_location_map(
         
                 if (
                     gis_class != "KHU_TUOI"
-                    and construction_type == "KENH"
                     and item.get("name")
                     and len(line_points) >= 2
                 ):
