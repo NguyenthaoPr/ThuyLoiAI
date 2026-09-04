@@ -1107,6 +1107,48 @@
           }
         });
       }
+      // ======================================================
+// GPS TƯƠI - ĐỘ CHÍNH XÁC CAO
+// ======================================================
+async function getFreshLocation() {
+    if (!navigator.geolocation) {
+        return null;
+    }
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    resolve,
+                    reject,
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 0,
+                        timeout: 20000
+                    }
+                );
+            });
+
+            return {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy
+            };
+
+        } catch (error) {
+            console.warn(
+                `GPS attempt ${attempt}/3 failed:`,
+                error.message
+            );
+
+            if (attempt === 3) {
+                return null;
+            }
+        }
+    }
+
+    return null;
+}
 // ======================================================
 // KIỂM TRA GPS VỚI TUYẾN KML/KMZ
 // ======================================================
@@ -1220,7 +1262,7 @@ async function checkGpsAgainstKml(locationOverride = null) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        const location = await getLocation();
+        const location = await getFreshLocation();
 
 let address = '';
 let kmlGpsResult = null;
@@ -1228,6 +1270,7 @@ let kmlGpsResult = null;
 if (location) {
     currentLocation = location;
     window.currentLocation = location;
+    window.gpsAccuracy = location.accuracy;
     address = await reverseGeocode(
         location.lat,
         location.lng
@@ -2575,18 +2618,7 @@ if (window.kmlGpsResult) {
           formData.append("latitude", String(window.currentLocation.lat));
           formData.append("longitude", String(window.currentLocation.lng));
           }
-          // ===== GỬI TỌA ĐỘ GPS CHO PDF =====
-          if (currentLocation) {
-              formData.append("latitude", String(currentLocation.lat));
-              formData.append("longitude", String(currentLocation.lng));
-          
-              console.log("📍 GPS gửi tạo PDF:", {
-                  latitude: currentLocation.lat,
-                  longitude: currentLocation.lng
-              });
-          } else {
-              console.warn("⚠️ Không có GPS khi tạo PDF - PDF sẽ không có QR vị trí.");
-          }
+        
           // Tạo File object với type rõ ràng
           const filename = window.preparedImageName || "image.jpg";
           const file = new File([window.preparedImageBlob], filename, { type: 'image/jpeg' });
