@@ -3248,6 +3248,7 @@ def create_field_report_pdf(
     latitude=None,
     longitude=None,
     gis_identification=None,
+    gis_map_bytes=None,
 ):
     # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
@@ -3582,7 +3583,50 @@ def create_field_report_pdf(
             )
 
             story.append(location_table)
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
+
+# ============================================================
+# BẢN ĐỒ VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
+# ============================================================
+
+            if gis_map_bytes:
+            
+                try:
+                    from reportlab.platypus import Image as RLImage
+            
+                    map_stream = BytesIO(gis_map_bytes)
+            
+                    map_width = doc.width
+                    map_height = map_width * 0.60
+            
+                    map_image = RLImage(
+                        map_stream,
+                        width=map_width,
+                        height=map_height
+                    )
+            
+                    map_image.hAlign = "CENTER"
+            
+                    story.append(
+                        _pdf_section_header_table(
+                            Paragraph(
+                                "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
+                                section_heading_style
+                            ),
+                            doc.width,
+                            PDF_COLOR_ACCENT
+                        )
+                    )
+            
+                    story.append(Spacer(1, 5))
+                    story.append(map_image)
+                    story.append(Spacer(1, 8))
+            
+                except Exception as e:
+                    print(
+                        "[PDF GIS MAP ERROR]",
+                        repr(e)
+                    )
 
     # NỘI DUNG BÁO CÁO
     story.append(_pdf_section_header_table(Paragraph("NỘI DUNG BÁO CÁO", section_heading_style), doc.width, PDF_COLOR_ACCENT))
