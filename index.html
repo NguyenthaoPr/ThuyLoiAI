@@ -973,6 +973,25 @@
       const closeMapAi = document.getElementById('closeMapAi');
       const aiMapElement = document.getElementById('aiMap');
       const mapAiStatus = document.getElementById('mapAiStatus');
+      const mapSearch = document.getElementById('mapSearch');
+      if (mapSearch) {
+    mapSearch.addEventListener(
+        'input',
+        function() {
+            searchAiMap(mapSearch.value);
+        }
+    );
+
+    mapSearch.addEventListener(
+        'keydown',
+        function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchAiMap(mapSearch.value);
+            }
+        }
+    );
+}
       // ===== BẢN ĐỒ AI STATE =====
       let aiMap = null;
       let aiMapLayer = null;
@@ -2274,6 +2293,199 @@ function escapeHtmlMap(value) {
         .replace(/'/g, '&#039;');
 
 }
+  // =====================================================
+// TÌM KIẾM ĐỐI TƯỢNG TRÊN BẢN ĐỒ AI
+// =====================================================
+function normalizeMapSearch(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+}
+
+function searchAiMap(keyword) {
+
+    keyword = normalizeMapSearch(keyword);
+
+    if (!keyword) {
+        mapAiStatus.textContent =
+            '✅ Đã tải dữ liệu hệ thống thủy lợi.';
+        return;
+    }
+
+    if (!aiMap || !aiMapLayer) {
+        mapAiStatus.textContent =
+            '⚠️ Bản đồ chưa sẵn sàng.';
+        return;
+    }
+    const matches = [];
+
+function scanLayer(layer) {
+
+    // Lớp GeoJSON tổng
+    if (
+        layer.eachLayer &&
+        !layer.feature
+    ) {
+        layer.eachLayer(function(child) {
+            scanLayer(child);
+        });
+        return;
+    }
+
+    const feature =
+        layer.feature || {};
+
+    const p =
+        feature.properties || {};
+
+    const name =
+        p.name ||
+        p.Name ||
+        p.NAME ||
+        '';
+
+    const description =
+        p.description ||
+        '';
+
+    const code =
+        p.code ||
+        p.Code ||
+        p.ma ||
+        p.Ma ||
+        p.id ||
+        p.ID ||
+        '';
+
+    const station =
+        p.station ||
+        p.Station ||
+        p.ly_trinh ||
+        p.LyTrinh ||
+        p.lyTrinh ||
+        '';
+
+    const type =
+        getCongTrinhType(
+            p,
+            feature.geometry
+        );
+
+    const typeLabel =
+        getCongTrinhLabel(type);
+
+    const searchText =
+        normalizeMapSearch(
+            [
+                name,
+                description,
+                code,
+                station,
+                typeLabel,
+                type
+            ].join(' ')
+        );
+
+    if (
+        searchText.includes(keyword)
+    ) {
+        matches.push(layer);
+    }
+}
+
+scanLayer(aiMapLayer);
+    
+
+    if (!matches.length) {
+
+        mapAiStatus.textContent =
+            '❌ Không tìm thấy: "' +
+            keyword +
+            '"';
+
+        return;
+    }
+
+    // =================================================
+    // CHỈ CÓ 1 KẾT QUẢ
+    // =================================================
+    if (matches.length === 1) {
+
+        const layer = matches[0];
+
+        if (
+            layer.getBounds &&
+            layer.getBounds().isValid()
+        ) {
+
+            aiMap.fitBounds(
+                layer.getBounds(),
+                {
+                    padding: [50, 50],
+                    maxZoom: 17
+                }
+            );
+
+        } else if (layer.getLatLng) {
+
+            aiMap.setView(
+                layer.getLatLng(),
+                17
+            );
+        }
+
+        if (layer.openPopup) {
+            setTimeout(function() {
+                layer.openPopup();
+            }, 300);
+        }
+
+    } else {
+
+        // =================================================
+        // NHIỀU KẾT QUẢ
+        // =================================================
+        const bounds = L.latLngBounds([]);
+
+        matches.forEach(function(layer) {
+
+            if (
+                layer.getBounds &&
+                layer.getBounds().isValid()
+            ) {
+                bounds.extend(
+                    layer.getBounds()
+                );
+
+            } else if (layer.getLatLng) {
+
+                bounds.extend(
+                    layer.getLatLng()
+                );
+            }
+        });
+
+        if (bounds.isValid()) {
+
+            aiMap.fitBounds(
+                bounds,
+                {
+                    padding: [50, 50],
+                    maxZoom: 15
+                }
+            );
+        }
+    }
+
+    mapAiStatus.textContent =
+        '🔎 Tìm thấy ' +
+        matches.length +
+        ' đối tượng phù hợp với "' +
+        keyword +
+        '".';
+}      
        mapAiBtn.addEventListener('click', async function() {
             mapAiPanel.classList.remove('hidden');
             mapAiPanel.scrollIntoView({
