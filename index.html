@@ -2468,7 +2468,124 @@ if (type) {
     `;
 
 }
+// ======================================================
+// THÔNG TIN NHANH - VỊ TRÍ GOOGLE MAPS
+// ======================================================
 
+const geometryCoords =
+    feature &&
+    feature.geometry &&
+    feature.geometry.coordinates;
+
+let mapLat = null;
+let mapLng = null;
+
+// Lấy tọa độ trực tiếp đối với đối tượng POINT
+if (
+    feature.geometry &&
+    feature.geometry.type === 'Point' &&
+    Array.isArray(geometryCoords) &&
+    geometryCoords.length >= 2
+) {
+    mapLng = Number(geometryCoords[0]);
+    mapLat = Number(geometryCoords[1]);
+}
+
+// Nếu không phải Point, thử lấy tọa độ từ properties
+if (
+    !Number.isFinite(mapLat) ||
+    !Number.isFinite(mapLng)
+) {
+    const latValue =
+        p.latitude ??
+        p.Latitude ??
+        p.lat ??
+        p.Lat ??
+        p.vi_do ??
+        p.ViDo;
+
+    const lngValue =
+        p.longitude ??
+        p.Longitude ??
+        p.lng ??
+        p.Lng ??
+        p.kinh_do ??
+        p.KinhDo;
+
+    if (
+        latValue !== undefined &&
+        lngValue !== undefined
+    ) {
+        mapLat = Number(latValue);
+        mapLng = Number(lngValue);
+    }
+}
+
+const hasMapPosition =
+    Number.isFinite(mapLat) &&
+    Number.isFinite(mapLng);
+
+if (hasMapPosition) {
+
+    const googleMapsUrl =
+        `https://www.google.com/maps?q=${mapLat},${mapLng}`;
+
+    popup += `
+        <div style="
+            margin:7px 2px 0 2px;
+            padding:9px 10px;
+            border-radius:10px;
+            background:#F8FAFB;
+            border:1px solid #E3EAF0;
+        ">
+
+            <div style="
+                font-size:9px;
+                font-weight:800;
+                color:#78909C;
+                text-transform:uppercase;
+                letter-spacing:.3px;
+                margin-bottom:5px;
+            ">
+                📍 Vị trí
+            </div>
+
+            <div style="
+                font-size:10px;
+                font-weight:700;
+                color:#263238;
+                line-height:1.4;
+                margin-bottom:7px;
+            ">
+                ${mapLat.toFixed(6)}, ${mapLng.toFixed(6)}
+            </div>
+
+            <a
+                href="${googleMapsUrl}"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    gap:6px;
+                    width:100%;
+                    box-sizing:border-box;
+                    padding:9px 10px;
+                    border-radius:8px;
+                    background:#1565C0;
+                    color:#ffffff;
+                    text-decoration:none;
+                    font-size:10px;
+                    font-weight:800;
+                "
+            >
+                🗺️ MỞ VỊ TRÍ GOOGLE MAPS
+            </a>
+
+        </div>
+    `;
+}
 // ======================================================
 // MÃ CÔNG TRÌNH
 // ======================================================
