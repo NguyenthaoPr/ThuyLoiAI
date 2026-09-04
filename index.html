@@ -2495,6 +2495,131 @@ scanLayer(aiMapLayer);
         ' đối tượng phù hợp với "' +
         keyword +
         '".';
+  // =====================================================
+// HIỂN THỊ DANH SÁCH KẾT QUẢ TÌM KIẾM
+// =====================================================
+
+let resultBox =
+    document.getElementById('mapSearchResults');
+
+if (!resultBox) {
+    resultBox = document.createElement('div');
+    resultBox.id = 'mapSearchResults';
+
+    resultBox.style.marginTop = '6px';
+    resultBox.style.background = '#ffffff';
+    resultBox.style.border = '1px solid #d8e2ec';
+    resultBox.style.borderRadius = '10px';
+    resultBox.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)';
+    resultBox.style.overflow = 'hidden';
+
+    const searchBox =
+        document.querySelector('.map-search-box');
+
+    if (searchBox) {
+        searchBox.insertAdjacentElement(
+            'afterend',
+            resultBox
+        );
+    }
+}
+
+// Xóa kết quả cũ
+resultBox.innerHTML = '';
+
+// Tối đa hiển thị 8 kết quả
+matches.slice(0, 8).forEach(function(layer) {
+
+    const feature =
+        layer.feature || {};
+
+    const p =
+        feature.properties || {};
+
+    const name =
+        p.name ||
+        p.Name ||
+        p.NAME ||
+        'Công trình chưa có tên';
+
+    const type =
+        getCongTrinhType(
+            p,
+            feature.geometry
+        );
+
+    const typeLabel =
+        getCongTrinhLabel(type);
+
+    const item =
+        document.createElement('div');
+
+    item.style.padding = '9px 12px';
+    item.style.borderBottom =
+        '1px solid #edf1f5';
+    item.style.cursor = 'pointer';
+    item.style.fontSize = '13px';
+
+    item.innerHTML =
+        '<div style="font-weight:700;color:#123b5d;">' +
+        escapeHtmlMap(name) +
+        '</div>' +
+        '<div style="font-size:11px;color:#6b7c8f;margin-top:2px;">' +
+        escapeHtmlMap(typeLabel) +
+        '</div>';
+
+    item.addEventListener(
+        'mouseenter',
+        function() {
+            item.style.background = '#f1f7fb';
+        }
+    );
+
+    item.addEventListener(
+        'mouseleave',
+        function() {
+            item.style.background = '#ffffff';
+        }
+    );
+
+    item.addEventListener(
+        'click',
+        function() {
+
+            if (
+                layer.getBounds &&
+                layer.getBounds().isValid()
+            ) {
+                aiMap.fitBounds(
+                    layer.getBounds(),
+                    {
+                        padding: [60, 60],
+                        maxZoom: 17
+                    }
+                );
+            } else if (layer.getLatLng) {
+                aiMap.setView(
+                    layer.getLatLng(),
+                    17
+                );
+            }
+
+            if (layer.openPopup) {
+                setTimeout(function() {
+                    layer.openPopup();
+                }, 300);
+            }
+
+            resultBox.innerHTML = '';
+            resultBox.style.display = 'none';
+        }
+    );
+
+    resultBox.appendChild(item);
+});
+
+resultBox.style.display =
+    matches.length ? 'block' : 'none';
 }      
        mapAiBtn.addEventListener('click', async function() {
             mapAiPanel.classList.remove('hidden');
