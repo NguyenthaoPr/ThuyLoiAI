@@ -3237,18 +3237,17 @@ def _pdf_section_header_table(text, doc_width, bg_color):
     return header_table
 
 # ============================================================
-# CREATE FIELD REPORT PDF (đã sửa để nhận capture_time)
+# CREATE FIELD REPORT PDF - ĐÃ SỬA LỖI CÚ PHÁP
 # ============================================================
 def create_field_report_pdf(
     report_title: str,
     answer: str,
     image_bytes=None,
     reviewer="",
-    capture_time=None,  # Thêm tham số
+    capture_time=None,
     latitude=None,
     longitude=None,
     gis_identification=None,
-    gis_map_bytes=None,
 ):
     # Lọc bỏ câu mở đầu của AI
     lines = answer.split('\n')
@@ -3277,7 +3276,6 @@ def create_field_report_pdf(
     answer = re.sub(r'\n{3,}', '\n\n', answer)
     buffer = BytesIO()
     font_regular, font_bold = register_pdf_fonts()
-    # Sử dụng capture_time nếu có, nếu không thì lấy thời gian hiện tại
     generated_at = capture_time or time.strftime("%H:%M %d/%m/%Y")
     report_title = (report_title or PDF_DOC_LABEL).strip()
 
@@ -3341,9 +3339,7 @@ def create_field_report_pdf(
     story.append(KeepTogether(meta_table))
     story.append(Spacer(1, 6))
 
-    # ============================================================
     # QR VỊ TRÍ CHỤP ẢNH
-    # ============================================================
     if latitude is not None and longitude is not None:
         try:
             latitude = float(latitude)
@@ -3415,110 +3411,37 @@ def create_field_report_pdf(
         except Exception as qr_error:
             print("⚠️ PDF QR ERROR:", repr(qr_error))
 
-    # ẢNH – Xử lý cẩn thận và log lỗi
-    # ============================================================
-# ẢNH HIỆN TRƯỜNG - CHÈN PDF AN TOÀN
-# ============================================================
-if image_bytes:
-    try:
-        from reportlab.platypus import Image as RLImage
+    # ẢNH
+    if image_bytes:
+        try:
+            from reportlab.platypus import Image as RLImage
+            img_stream = BytesIO(image_bytes)
+            pil_img = Image.open(img_stream)
+            img_width, img_height = pil_img.size
+            print(f"📸 Chèn ảnh vào PDF: {img_width}x{img_height}, {len(image_bytes)} bytes")
 
-        # Đọc ảnh bằng PIL
-        source_stream = BytesIO(image_bytes)
-        pil_img = Image.open(source_stream)
+            max_width = doc.width
+            max_height = 90 * mm
+            scale = min(max_width / img_width, max_height / img_height, 1.0)
+            display_width = img_width * scale
+            display_height = img_height * scale
 
-        print(
-            f"📸 Ảnh nhận từ client: "
-            f"{pil_img.size[0]}x{pil_img.size[1]}, "
-            f"{len(image_bytes)} bytes, "
-            f"format={pil_img.format}, mode={pil_img.mode}"
-        )
-
-        # Chuẩn hóa ảnh về RGB + JPEG
-        # Giúp ReportLab xử lý ổn định với JPG/PNG/WebP
-        if pil_img.mode not in ("RGB", "L"):
-            pil_img = pil_img.convert("RGB")
-        elif pil_img.mode == "L":
-            pil_img = pil_img.convert("RGB")
-
-        # Nén lại ảnh trước khi đưa vào PDF
-        image_buffer = BytesIO()
-
-        pil_img.save(
-            image_buffer,
-            format="JPEG",
-            quality=88,
-            optimize=True
-        )
-
-        image_buffer.seek(0)
-
-        pdf_image_bytes = image_buffer.getvalue()
-
-        print(
-            f"📦 Ảnh chuẩn hóa cho PDF: "
-            f"{len(pdf_image_bytes)} bytes"
-        )
-
-        # Kích thước hiển thị
-        img_width, img_height = pil_img.size
-
-        max_width = doc.width
-        max_height = 90 * mm
-
-        scale = min(
-            max_width / img_width,
-            max_height / img_height,
-            1.0
-        )
-
-        display_width = img_width * scale
-        display_height = img_height * scale
-
-        story.append(Spacer(1, 6))
-        story.append(
-            Paragraph(
-                "ẢNH HIỆN TRƯỜNG",
-                subheading_style
-            )
-        )
-        story.append(Spacer(1, 4))
-
-        field_image = RLImage(
-            BytesIO(pdf_image_bytes),
-            width=display_width,
-            height=display_height
-        )
-
-        field_image.hAlign = "CENTER"
-
-        story.append(field_image)
-        story.append(Spacer(1, 8))
-
-        print("✅ ẢNH HIỆN TRƯỜNG ĐÃ ĐƯỢC CHÈN VÀO PDF.")
-
-    except Exception as image_error:
-        print(
-            "❌ FIELD REPORT IMAGE ERROR:",
-            repr(image_error)
-        )
-
-        # Không âm thầm bỏ qua lỗi
-        story.append(
-            Paragraph(
-                "⚠ Không thể chèn ảnh hiện trường vào PDF.",
-                warn_body_style
-            )
-        )
-
-else:
-    print("⚠️ Không có ảnh để chèn vào PDF.")
+            story.append(Spacer(1, 6))
+            story.append(Paragraph("ẢNH HIỆN TRƯỜNG", subheading_style))
+            story.append(Spacer(1, 4))
+            field_image = RLImage(BytesIO(image_bytes), width=display_width, height=display_height)
+            field_image.hAlign = "CENTER"
+            story.append(field_image)
+            story.append(Spacer(1, 8))
+            print("✅ Ảnh đã được chèn thành công.")
+        except Exception as image_error:
+            print("❌ FIELD REPORT IMAGE ERROR:", repr(image_error))
+    else:
+        print("⚠️ Không có ảnh để chèn vào PDF.")
 
     story.append(Spacer(1, 4))
 
-    # ============================================================
     # VỊ TRÍ KỸ THUẬT XÁC ĐỊNH TỪ GPS
-    # ============================================================
     if gis_identification and gis_identification.get("identified"):
 
         gis_name = gis_identification.get("name", "")
@@ -3528,14 +3451,12 @@ else:
 
         location_rows = []
 
-        # Tên đối tượng GIS
         if gis_name:
             location_rows.append([
                 Paragraph("<b>Đối tượng</b>", body_style),
                 Paragraph(str(gis_name), body_style)
             ])
 
-        # Tuyến kênh
         if geometry_type == "LineString" and distance_along_line_m is not None:
 
             ly_trinh_m = float(distance_along_line_m)
@@ -3543,7 +3464,6 @@ else:
             km = int(ly_trinh_m // 1000)
             m = int(round(ly_trinh_m % 1000))
 
-            # Làm tròn tránh trường hợp K3+999.8 → K4+000
             if m >= 1000:
                 km += 1
                 m = 0
@@ -3557,10 +3477,7 @@ else:
 
             location_rows.append([
                 Paragraph("<b>Lý trình</b>", body_style),
-                Paragraph(
-                    f"<b>{ly_trinh}</b>",
-                    body_style
-                )
+                Paragraph(f"<b>{ly_trinh}</b>", body_style)
             ])
 
             if distance_m is not None:
@@ -3569,7 +3486,6 @@ else:
                     Paragraph(f"{float(distance_m):.1f} m", body_style)
                 ])
 
-        # Công trình đầu mối
         elif geometry_type == "Point":
 
             location_rows.append([
@@ -3652,47 +3568,7 @@ else:
             )
 
             story.append(location_table)
-            story.append(Spacer(1, 8))
-
-# ============================================================
-# BẢN ĐỒ VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
-# ============================================================
-
-            if gis_map_bytes:
-            
-                try:
-                    from reportlab.platypus import Image as RLImage
-            
-                    map_stream = BytesIO(gis_map_bytes)
-            
-                    map_width = doc.width
-                    map_height = map_width * 0.60
-            
-                    map_image = RLImage(
-                        map_stream,
-                        width=map_width,
-                        height=map_height
-                    )
-            
-                    map_image.hAlign = "CENTER"
-            
-                    story.append(
-                        _pdf_section_header_table(
-                            Paragraph(
-                                "VỊ TRÍ THỰC TẾ TRÊN BẢN ĐỒ GIS",
-                                section_heading_style
-                            ),
-                            doc.width,
-                            PDF_COLOR_ACCENT
-                        )
-                    )
-            
-                    story.append(Spacer(1, 5))
-                    story.append(map_image)
-                    story.append(Spacer(1, 8))
-            
-                except Exception as e:
-                    print("⚠️ GIS MAP ERROR:", repr(e))
+            story.append(Spacer(1, 10))
 
     # NỘI DUNG BÁO CÁO
     story.append(_pdf_section_header_table(Paragraph("NỘI DUNG BÁO CÁO", section_heading_style), doc.width, PDF_COLOR_ACCENT))
@@ -3737,7 +3613,7 @@ else:
     ]))
     story.append(KeepTogether(warn_table))
 
-    # CHỮ KÝ - CHỈ CÓ NGƯỜI KIỂM TRA
+    # CHỮ KÝ
     story.append(Spacer(1, 12))
     story.append(HRFlowable(width="100%", thickness=0.5, color=PDF_COLOR_BORDER, spaceBefore=0, spaceAfter=8))
     story.append(Paragraph("XÁC NHẬN HIỆN TRƯỜNG", signature_title_style))
@@ -3764,7 +3640,7 @@ else:
     return buffer
 
 # ============================================================
-# ENDPOINT FIELD REPORT PDF (đã sửa để nhận capture_time)
+# ENDPOINT FIELD REPORT PDF
 # ============================================================
 @app.post("/field-report-pdf")
 async def field_report_pdf(
@@ -3785,62 +3661,17 @@ async def field_report_pdf(
     else:
         print("⚠️ Không nhận được ảnh từ client.")
 
-    # Tự động xác định GIS dựa trên tọa độ GPS
     gis_identification = None
-
     if latitude is not None and longitude is not None:
         try:
-            gis_result = await kml_gps_test(
-                latitude=latitude,
-                longitude=longitude
-            )
-
+            gis_result = await kml_gps_test(latitude=latitude, longitude=longitude)
             if isinstance(gis_result, dict):
-                gis_identification = gis_result.get(
-                    "gis_identification"
-                )
-
-            print(
-                "📍 GIS IDENTIFICATION:",
-                gis_identification
-            )
-
+                gis_identification = gis_result.get("gis_identification")
+            print("📍 GIS IDENTIFICATION:", gis_identification)
         except Exception as e:
-            print(
-                "⚠️ Lỗi xác định GIS tự động:",
-                repr(e)
-            )
-       # ============================================================
-    # TẠO ẢNH VỊ TRÍ THỰC TẾ TRÊN NỀN GIS MASTER
-    # ============================================================
-            gis_map_bytes = None
-        
-            if latitude is not None and longitude is not None:
-                try:
-                    gis_map_bytes = await asyncio.to_thread(
-                        create_gis_location_map,
-                        latitude,
-                        longitude,
-                        gis_identification
-                    )
-        
-                    if gis_map_bytes:
-                        print(
-                            "🗺️ GIS MAP CREATED:",
-                            len(gis_map_bytes),
-                            "bytes"
-                        )
-                    else:
-                        print(
-                            "⚠️ GIS MAP: Không tạo được ảnh bản đồ."
-                        )
-        
-                except Exception as e:
-                    print(
-                        "⚠️ GIS MAP ERROR:",
-                        repr(e)
-                    )
-                    gis_map_bytes = None
+            print("⚠️ Lỗi xác định GIS tự động:", repr(e))
+            gis_identification = None
+
     try:
         pdf_buffer = await asyncio.to_thread(
             create_field_report_pdf,
@@ -3852,7 +3683,6 @@ async def field_report_pdf(
             latitude,
             longitude,
             gis_identification,
-            gis_map_bytes,
         )
         filename = "bao-cao-hien-truong.pdf"
         return StreamingResponse(
