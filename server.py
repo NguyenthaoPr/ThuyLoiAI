@@ -2656,45 +2656,118 @@ async def kml_gps_test(
 
         gis_identification = None
 
-        if results:
-            # Sắp xếp theo khoảng cách từ GPS đến tuyến
-            sorted_results = sorted(
-                results,
-                key=lambda x: x.get("distance_m", 999999)
-            )
+        # ==========================================================
+# NHẬN DIỆN ĐỐI TƯỢNG GIS TỪ KẾT QUẢ GPS
+#
+# NGUYÊN TẮC:
+# - <= 20 m  : xác nhận mạnh
+# - <= 50 m  : gần tuyến, có thể nhận diện
+# - > 50 m   : KHÔNG xác nhận công trình
+#
+# TUYỆT ĐỐI KHÔNG nhận diện tuyến khi GPS cách > 50 m.
+# ==========================================================
 
-            nearest = sorted_results[0]
+gis_identification = None
 
-            gis_identification = {
-                "identified": True,
-                "name": nearest.get("name", ""),
-                "geometry_type": nearest.get(
-                    "geometry_type",
-                    "LineString"
-                ),
-                "distance_m": nearest.get(
-                    "distance_m"
-                ),
-                "nearest_point": nearest.get(
-                    "nearest_point"
-                ),
-                "status": nearest.get(
-                    "status",
-                    "CHƯA XÁC ĐỊNH"
-                ),
-                "status_code": nearest.get(
-                    "status_code",
-                    "RED"
-                ),
-                "distance_along_line_m": nearest.get(
-                    "distance_along_line_m"
-                ),
-                "assessment": nearest.get(
-                    "assessment",
-                    ""
-                ),
-                "source": "GIS MASTER KMZ"
-            }
+if results:
+
+    # Sắp xếp theo khoảng cách GPS → tuyến
+    sorted_results = sorted(
+        results,
+        key=lambda x: x.get("distance_m", 999999)
+    )
+
+    nearest = sorted_results[0]
+
+    nearest_distance = nearest.get(
+        "distance_m",
+        999999
+    )
+
+    # ======================================================
+    # CHỈ XÁC NHẬN KHI GPS KHÔNG QUÁ 50 m
+    # ======================================================
+
+    if nearest_distance <= 50:
+
+        gis_identification = {
+            "identified": True,
+
+            "name": nearest.get(
+                "name",
+                ""
+            ),
+
+            "geometry_type": nearest.get(
+                "geometry_type",
+                "LineString"
+            ),
+
+            "construction_type": "KENH",
+
+            "distance_m": nearest_distance,
+
+            "nearest_point": nearest.get(
+                "nearest_point"
+            ),
+
+            "status": nearest.get(
+                "status",
+                "CHƯA XÁC ĐỊNH"
+            ),
+
+            "status_code": nearest.get(
+                "status_code",
+                "RED"
+            ),
+
+            "distance_along_line_m": nearest.get(
+                "distance_along_line_m"
+            ),
+
+            "assessment": nearest.get(
+                "assessment",
+                ""
+            ),
+
+            "source": "GIS MASTER KMZ"
+        }
+
+    else:
+
+        # ==================================================
+        # GPS QUÁ XA → KHÔNG NHẬN DIỆN CÔNG TRÌNH
+        # ==================================================
+
+        gis_identification = {
+            "identified": False,
+
+            "name": "",
+
+            "geometry_type": None,
+
+            "construction_type": None,
+
+            "distance_m": nearest_distance,
+
+            "nearest_point": nearest.get(
+                "nearest_point"
+            ),
+
+            "status": "NGOÀI PHẠM VI",
+
+            "status_code": "RED",
+
+            "distance_along_line_m": None,
+
+            "assessment": (
+                "GPS cách tuyến kênh gần nhất "
+                f"{nearest_distance:.1f} m, "
+                "không đủ cơ sở xác định công trình."
+            ),
+
+            "source": "GIS MASTER KMZ"
+        }
 
         return {
             "success": True,
