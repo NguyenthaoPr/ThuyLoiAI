@@ -2608,7 +2608,7 @@ popup += `
     <button
         type="button"
         onclick="
-            const box = this.nextElementSibling;
+            const box = this.closest('div').nextElementSibling;
             const open = box.style.display !== 'none';
 
             box.style.display = open ? 'none' : 'block';
