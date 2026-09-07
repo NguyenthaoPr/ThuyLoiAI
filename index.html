@@ -1713,13 +1713,30 @@
      
       <div class="compose">
   <div class="row">
-    <textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea>
-    <button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi">
+    <!-- Giữ input ảnh ẩn để bảo toàn logic xử lý ảnh -->
+    <input
+      id="imageInput"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      hidden
+      aria-label="Ảnh hiện trường"
+    >
+
+    <textarea
+      id="question"
+      placeholder="Nhập câu hỏi về thủy lợi..."
+    ></textarea>
+
+    <button
+      class="send"
+      id="send"
+      aria-label="Gửi câu hỏi"
+      title="Gửi câu hỏi"
+    >
       <span aria-hidden="true">➤</span>
     </button>
-  </div>
 
-  <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
 </div>
         <div id="imagePreview" class="image-preview" hidden aria-live="polite"></div>
         <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
