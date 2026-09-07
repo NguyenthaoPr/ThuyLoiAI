@@ -1253,46 +1253,32 @@
       color: #0875e1;
     }
 
-    /* Nút Google Maps */
-    .tl-popup-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .tl-popup-btn {
+    /* Nút Google Maps – nổi bật, dễ nhìn */
+    .tl-popup-btn-google {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
       width: 100%;
       padding: 11px 0;
-      border: 0;
+      border: 2px solid #1a73e8;
       border-radius: 14px;
       font-size: 13px;
       font-weight: 800;
       cursor: pointer;
       transition: all 0.15s ease;
       text-decoration: none;
-      color: #ffffff;
-      background: var(--btn-bg, #1565C0);
-      box-shadow: 0 3px 10px rgba(21, 101, 192, 0.20);
+      background: #ffffff;
+      color: #1a73e8;
+      box-shadow: 0 2px 8px rgba(26, 115, 232, 0.20);
     }
 
-    .tl-popup-btn:active {
+    .tl-popup-btn-google:active {
       transform: scale(0.97);
     }
 
-    .tl-popup-btn-outline {
-      background: transparent;
-      color: #1565C0;
-      box-shadow: none;
-      border: 2px solid #1565C0;
-    }
-
-    .tl-popup-btn-outline:active {
-      background: #eef6ff;
+    .tl-popup-btn-google:hover {
+      background: #f0f7ff;
     }
 
     /* Nút xem chi tiết (toggle) */
@@ -1428,7 +1414,7 @@
         font-size: 12px;
       }
 
-      .tl-popup-btn {
+      .tl-popup-btn-google {
         padding: 10px 0;
         font-size: 12px;
         border-radius: 12px;
@@ -1500,7 +1486,7 @@
         font-size: 11px;
       }
 
-      .tl-popup-btn {
+      .tl-popup-btn-google {
         font-size: 11px;
         padding: 8px 0;
       }
@@ -2373,7 +2359,7 @@
             }
 
             // =====================================================
-            // TẠO POPUP HIỆN ĐẠI – NÂNG CẤP
+            // TẠO POPUP HIỆN ĐẠI – NÂNG CẤP, BỎ TỌA ĐỘ, NÚT GMAPS RÕ
             // =====================================================
             function buildModernPopup(feature, layer) {
               const p = feature.properties || {};
@@ -2418,7 +2404,7 @@
                 statusVal.toLowerCase().includes('xấu') ? '#ef4444' :
                 statusVal.toLowerCase().includes('cảnh báo') ? '#f59e0b' : '#10b981';
 
-              // Xác định tọa độ cho Google Maps
+              // Xác định tọa độ cho Google Maps (không hiển thị)
               let mapLat = null,
                 mapLng = null;
               const coords = feature.geometry?.coordinates;
@@ -2437,7 +2423,6 @@
               const hasPosition = Number.isFinite(mapLat) && Number.isFinite(mapLng);
               const googleMapsUrl = hasPosition ? `https://www.google.com/maps?q=${mapLat},${mapLng}` : '#';
 
-              // Escape an toàn
               function e(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
 
@@ -2461,7 +2446,7 @@
                             <div class="tl-popup-status-text">${e(statusVal)}</div>
                           </div>
                         </div>
-                        <!-- Grid thông tin -->
+                        <!-- Grid thông tin (không có tọa độ) -->
                         <div class="tl-popup-grid">
                           ${ code ? `
                             <div class="tl-popup-item">
@@ -2475,17 +2460,11 @@
                               <div class="tl-popup-item-value">${e(station)}</div>
                             </div>
                           ` : '' }
-                          ${ hasPosition ? `
-                            <div class="tl-popup-item" style="grid-column:1/-1;">
-                              <div class="tl-popup-item-label">Tọa độ</div>
-                              <div class="tl-popup-item-value">${mapLat.toFixed(6)}°N, ${mapLng.toFixed(6)}°E</div>
-                            </div>
-                          ` : '' }
                         </div>
                         <!-- Hành động -->
                         <div class="tl-popup-actions">
                           ${ hasPosition ? `
-                            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="tl-popup-btn">
+                            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="tl-popup-btn-google">
                               🗺️ GOOGLE MAPS
                             </a>
                           ` : '' }
@@ -2626,7 +2605,6 @@
 
           mapAiStatus.textContent = '🔎 Tìm thấy ' + matches.length + ' đối tượng phù hợp với "' + keyword + '".';
 
-          // Hiển thị danh sách kết quả
           let resultBox = document.getElementById('mapSearchResults');
           if (!resultBox) {
             resultBox = document.createElement('div');
