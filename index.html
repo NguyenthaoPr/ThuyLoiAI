@@ -869,7 +869,7 @@
       align-items: center;
       gap: 8px;
       margin: 12px 14px 10px;
-      height: 46px;
+      height: 48px;
       padding: 0 8px 0 14px;
       border: 1px solid #d8e1eb;
       border-radius: 14px;
@@ -877,8 +877,9 @@
       box-shadow: 0 2px 8px rgba(8, 42, 74, .08);
     }
     .map-search-icon {
-      font-size: 25px;
+      font-size: 22px;
       color: #64748b;
+      flex-shrink: 0;
     }
     .map-search-box input {
       flex: 1;
@@ -888,50 +889,53 @@
       background: transparent;
       color: #0f172a;
       font-size: 15px;
+      padding: 8px 0;
     }
     .map-search-box input::placeholder {
       color: #94a3b8;
+      font-weight: 400;
+    }
+    #mapSearchBtn {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 10px;
+      background: #0875e1;
+      color: #ffffff;
+      font-size: 18px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #mapSearchBtn:hover {
+      background: #065bb5;
+    }
+    #mapSearchBtn:active {
+      transform: scale(0.95);
     }
     #mapLocateBtn {
-      width: 36px;
-      height: 36px;
+      width: 38px;
+      height: 38px;
       border: 0;
       border-radius: 10px;
       background: #eef6ff;
       color: #0875e1;
-      font-size: 22px;
+      font-size: 20px;
       cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #mapLocateBtn:hover {
+      background: #dbeafe;
     }
     .map-filter-scroll {
-      display: flex;
-      gap: 8px;
-      padding: 2px 14px 12px;
-      overflow-x: auto;
-      scrollbar-width: none;
-      -webkit-overflow-scrolling: touch;
-    }
-    .map-filter-scroll::-webkit-scrollbar {
-      display: none;
-    }
-    .map-filter {
-      flex: 0 0 auto;
-      height: 38px;
-      padding: 0 15px;
-      border: 1px solid #d8e1eb;
-      border-radius: 20px;
-      background: #ffffff;
-      color: #334155;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      white-space: nowrap;
-      touch-action: manipulation;
-      transition: all 0.2s;
-    }
-    .map-filter.active {
-      border-color: #0875e1;
-      background: #0875e1;
-      color: #ffffff;
+      display: none; /* Ẩn hoàn toàn các nút lọc */
     }
     .map-container {
       position: relative;
@@ -1066,6 +1070,20 @@
       .map-feature-card {
         margin-top: -82px;
       }
+      .map-search-box {
+        height: 44px;
+        margin: 8px 10px 6px;
+        padding: 0 6px 0 10px;
+      }
+      .map-search-box input {
+        font-size: 14px;
+      }
+      #mapSearchBtn,
+      #mapLocateBtn {
+        width: 34px;
+        height: 34px;
+        font-size: 16px;
+      }
     }
     @media (min-width: 601px) {
       .map-ai-panel {
@@ -1140,16 +1158,6 @@
         border-radius: 50%;
         background: transparent;
         touch-action: manipulation;
-      }
-      /* Thanh filter luôn cuộn ngang, không wrap */
-      .map-filter-scroll {
-        gap: 6px;
-        padding: 2px 10px 10px;
-      }
-      .map-filter {
-        height: 34px;
-        padding: 0 12px;
-        font-size: 12px;
       }
     }
 
@@ -1605,18 +1613,12 @@
           <button id="closeMapAi" type="button">×</button>
         </div>
         <div class="map-search-box">
-          <span class="map-search-icon">⌕</span>
-          <input id="mapSearch" type="search" placeholder="Tìm công trình..." autocomplete="off">
+          <span class="map-search-icon">🔍</span>
+          <input id="mapSearch" type="search" placeholder="Tìm kiếm công trình thủy lợi..." autocomplete="off">
+          <button id="mapSearchBtn" type="button" title="Tìm kiếm">🔎</button>
           <button id="mapLocateBtn" type="button" title="Vị trí hiện tại">⌖</button>
         </div>
-        <div class="map-filter-scroll">
-          <button class="map-filter active" data-filter="all">Tất cả</button>
-          <button class="map-filter" data-filter="hồ">💧 Hồ chứa</button>
-          <button class="map-filter" data-filter="trạm bơm">🔵 Trạm bơm</button>
-          <button class="map-filter" data-filter="đập">🟠 Đập dâng</button>
-          <button class="map-filter" data-filter="cống">🔷 Cống</button>
-          <button class="map-filter" data-filter="kênh">━ Kênh</button>
-        </div>
+        <!-- Đã xóa các nút lọc (map-filter-scroll) -->
         <div class="map-container">
           <div id="aiMap"></div>
           <button id="mapLayerBtn" class="map-floating-btn" type="button" title="Lớp bản đồ">▱</button>
@@ -1721,15 +1723,34 @@
       const aiMapElement = document.getElementById('aiMap');
       const mapAiStatus = document.getElementById('mapAiStatus');
       const mapSearch = document.getElementById('mapSearch');
+      const mapSearchBtn = document.getElementById('mapSearchBtn');
+
+      // Gắn sự kiện tìm kiếm
+      function triggerSearch() {
+        if (mapSearch) {
+          searchAiMap(mapSearch.value);
+        }
+      }
+
       if (mapSearch) {
         mapSearch.addEventListener('input', function() {
-          searchAiMap(mapSearch.value);
+          // Tìm kiếm tự động khi gõ (có debounce nhẹ)
+          clearTimeout(window._searchTimer);
+          window._searchTimer = setTimeout(function() {
+            searchAiMap(mapSearch.value);
+          }, 300);
         });
         mapSearch.addEventListener('keydown', function(event) {
           if (event.key === 'Enter') {
             event.preventDefault();
+            clearTimeout(window._searchTimer);
             searchAiMap(mapSearch.value);
           }
+        });
+      }
+      if (mapSearchBtn) {
+        mapSearchBtn.addEventListener('click', function() {
+          triggerSearch();
         });
       }
 
@@ -2525,6 +2546,12 @@
           keyword = normalizeMapSearch(keyword);
           if (!keyword) {
             mapAiStatus.textContent = '✅ Đã tải dữ liệu hệ thống thủy lợi.';
+            // Ẩn kết quả tìm kiếm
+            const resultBox = document.getElementById('mapSearchResults');
+            if (resultBox) {
+              resultBox.innerHTML = '';
+              resultBox.style.display = 'none';
+            }
             return;
           }
           if (!aiMap || !aiMapLayer) {
@@ -2554,6 +2581,12 @@
 
           if (!matches.length) {
             mapAiStatus.textContent = '❌ Không tìm thấy: "' + keyword + '"';
+            // Ẩn kết quả
+            const resultBox = document.getElementById('mapSearchResults');
+            if (resultBox) {
+              resultBox.innerHTML = '';
+              resultBox.style.display = 'none';
+            }
             return;
           }
 
