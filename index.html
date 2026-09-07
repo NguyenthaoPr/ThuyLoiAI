@@ -1710,13 +1710,17 @@
         </div>
       </div>
 
+     
       <div class="compose">
-        <div class="row">
-          <input id="imageInput" type="file" accept="image/*" capture="environment" hidden aria-label="Chụp hoặc chọn ảnh hiện trường">
-          <button id="cameraBtn" class="camera-btn" type="button" aria-label="Chụp hoặc chọn ảnh" title="Chụp hoặc chọn ảnh">📷</button>
-          <textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea>
-          <button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi"><span aria-hidden="true">➤</span></button>
-        </div>
+  <div class="row">
+    <textarea id="question" placeholder="Nhập câu hỏi về thủy lợi..."></textarea>
+    <button class="send" id="send" aria-label="Gửi câu hỏi" title="Gửi câu hỏi">
+      <span aria-hidden="true">➤</span>
+    </button>
+  </div>
+
+  <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
+</div>
         <div id="imagePreview" class="image-preview" hidden aria-live="polite"></div>
         <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
       </div>
