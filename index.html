@@ -2159,12 +2159,17 @@
         return this;
       };
 
-      // =========================================================
-      // 3. CAMERA & ẢNH (giữ nguyên)
-      // =========================================================
-      cameraBtn.addEventListener('click', function() {
-        imageInput.click();
-      });
+     // =========================================================
+// 3. CAMERA & ẢNH
+// Camera đã bỏ khỏi giao diện Chat AI.
+// Giữ nguyên logic xử lý ảnh để không ảnh hưởng
+// đến Báo cáo hiện trường.
+// =========================================================
+if (cameraBtn && imageInput) {
+  cameraBtn.addEventListener('click', function() {
+    imageInput.click();
+  });
+}
 
       imageInput.addEventListener('change', async function() {
         const file = imageInput.files?.[0];
@@ -3248,7 +3253,7 @@
         isCooldown = true;
         sendBtn.disabled = true;
         question.disabled = true;
-        cameraBtn.disabled = true;
+        if (cameraBtn) cameraBtn.disabled = true;
         let left = Math.ceil(seconds || 30);
         sendBtn.textContent = left + 's';
         const timer = setInterval(function() {
@@ -3258,7 +3263,7 @@
             isCooldown = false;
             sendBtn.disabled = false;
             question.disabled = false;
-            cameraBtn.disabled = false;
+            if (cameraBtn) cameraBtn.disabled = true;
             sendBtn.innerHTML = '<span aria-hidden="true">➤</span>';
             question.focus();
           } else {
@@ -3275,7 +3280,7 @@
         question.value = '';
         sendBtn.disabled = true;
         question.disabled = true;
-        cameraBtn.disabled = true;
+        if (cameraBtn) cameraBtn.disabled = true;
         typing.classList.add('show');
         try {
           let d;
@@ -3307,7 +3312,7 @@
           if (!isCooldown) {
             sendBtn.disabled = false;
             question.disabled = false;
-            cameraBtn.disabled = false;
+            if (cameraBtn) cameraBtn.disabled = true;
             sendBtn.innerHTML = '<span aria-hidden="true">➤</span>';
             question.focus();
           }
