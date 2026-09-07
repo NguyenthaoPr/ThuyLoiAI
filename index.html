@@ -477,13 +477,33 @@
       background: rgba(14, 159, 110, .06);
     }
     .map-ai-panel {
-      padding: 14px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-    }
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    margin: 0;
+    background: var(--surface);
+    z-index: 9999;
+    overflow: hidden;
+}
     .map-ai-panel.hidden {
       display: none;
     }
+    .map-ai-panel:not(.hidden) .map-container {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+}
+
+.map-ai-panel:not(.hidden) #aiMap {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
     .map-ai-header {
       display: flex;
       justify-content: space-between;
@@ -1639,40 +1659,7 @@
           <button id="mapAiBtn" type="button">🗺️ BẢN ĐỒ AI</button>
         </div>
       </div>
-      <div id="mapAiPanel" class="map-ai-panel hidden">
-        <div class="map-ai-header">
-          <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
-          <button id="closeMapAi" type="button">×</button>
-        </div>
-        <!-- Ô TÌM KIẾM MỚI -->
-        <div class="map-search-box">
-          <span class="map-search-icon">🔍</span>
-          <input id="mapSearch" type="search" placeholder="Tìm công trình, mã, kênh, địa điểm hoặc trạng thái..." autocomplete="off">
-          <button id="mapSearchBtn" type="button" title="Tìm kiếm">🔎</button>
-          <button id="mapLocateBtn" type="button" title="Vị trí hiện tại">⌖</button>
-        </div>
-        <!-- Kết quả tìm kiếm -->
-        <div id="searchResults"></div>
-
-        <div class="map-container">
-          <div id="aiMap"></div>
-          <button id="mapLayerBtn" class="map-floating-btn" type="button" title="Lớp bản đồ">▱</button>
-          <button id="mapGpsBtn" class="map-floating-btn map-gps-btn" type="button" title="Vị trí của tôi">➤</button>
-        </div>
-        <div id="mapFeatureCard" class="map-feature-card hidden">
-          <div class="map-feature-top">
-            <div>
-              <div id="mapFeatureType" class="map-feature-type">💧 CÔNG TRÌNH</div>
-              <div id="mapFeatureName" class="map-feature-name">Chưa chọn công trình</div>
-            </div>
-            <button id="mapFeatureClose" type="button">×</button>
-          </div>
-          <div id="mapFeatureSummary" class="map-feature-summary">Chọn một công trình trên bản đồ để xem thông tin.</div>
-          <button id="mapFeatureDetail" class="map-detail-btn" type="button">Xem chi tiết</button>
-        </div>
-        <div id="mapAiStatus" class="map-ai-status">Đang chuẩn bị bản đồ...</div>
-      </div>
-
+     
       <div id="fieldReportPanel" class="field-report-panel hidden">
         <div class="field-report-title">
           <strong>📋 Lập báo cáo hiện trường</strong>
@@ -1742,6 +1729,42 @@
         <div class="hint">Enter để gửi • Shift + Enter để xuống dòng</div>
       </div>
     </section>
+   <div id="mapAiPanel" class="map-ai-panel hidden">
+        <div class="map-ai-header">
+          <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
+          <button id="closeMapAi" type="button" class="map-back-btn">
+  ← Quay lại Chat AI
+</button>
+        </div>
+        <!-- Ô TÌM KIẾM MỚI -->
+        <div class="map-search-box">
+          <span class="map-search-icon">🔍</span>
+          <input id="mapSearch" type="search" placeholder="Tìm công trình, mã, kênh, địa điểm hoặc trạng thái..." autocomplete="off">
+          <button id="mapSearchBtn" type="button" title="Tìm kiếm">🔎</button>
+          <button id="mapLocateBtn" type="button" title="Vị trí hiện tại">⌖</button>
+        </div>
+        <!-- Kết quả tìm kiếm -->
+        <div id="searchResults"></div>
+
+        <div class="map-container">
+          <div id="aiMap"></div>
+          <button id="mapLayerBtn" class="map-floating-btn" type="button" title="Lớp bản đồ">▱</button>
+          <button id="mapGpsBtn" class="map-floating-btn map-gps-btn" type="button" title="Vị trí của tôi">➤</button>
+        </div>
+        <div id="mapFeatureCard" class="map-feature-card hidden">
+          <div class="map-feature-top">
+            <div>
+              <div id="mapFeatureType" class="map-feature-type">💧 CÔNG TRÌNH</div>
+              <div id="mapFeatureName" class="map-feature-name">Chưa chọn công trình</div>
+            </div>
+            <button id="mapFeatureClose" type="button">×</button>
+          </div>
+          <div id="mapFeatureSummary" class="map-feature-summary">Chọn một công trình trên bản đồ để xem thông tin.</div>
+          <button id="mapFeatureDetail" class="map-detail-btn" type="button">Xem chi tiết</button>
+        </div>
+        <div id="mapAiStatus" class="map-ai-status">Đang chuẩn bị bản đồ...</div>
+      </div>
+
     <div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
   </main>
 
@@ -3075,16 +3098,27 @@ if (cameraBtn && imageInput) {
       // 15. SỰ KIỆN MỞ/ĐÓNG BẢN ĐỒ, FIELD REPORT (giữ nguyên)
       // =========================================================
       mapAiBtn.addEventListener('click', async function() {
-        mapAiPanel.classList.remove('hidden');
-        mapAiPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await initAiMap();
-        // Focus vào ô tìm kiếm
-        if (mapSearch) setTimeout(function() { mapSearch.focus(); }, 500);
-      });
+    mapAiPanel.classList.remove('hidden');
 
-      closeMapAi.addEventListener('click', function() {
-        mapAiPanel.classList.add('hidden');
-      });
+    // Khóa cuộn giao diện Chat AI khi mở Bản đồ AI
+    document.body.style.overflow = 'hidden';
+
+    await initAiMap();
+
+    // Tự động đưa con trỏ vào ô tìm kiếm
+    if (mapSearch) {
+        setTimeout(function() {
+            mapSearch.focus();
+        }, 500);
+    }
+});
+
+closeMapAi.addEventListener('click', function() {
+    mapAiPanel.classList.add('hidden');
+
+    // Trả lại khả năng cuộn cho giao diện Chat AI
+    document.body.style.overflow = '';
+});
 
       // Field report (giữ nguyên)
       (function() {
