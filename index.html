@@ -10,6 +10,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
   </script>
+  <!-- ===== THÊM MARKER CLUSTER ===== -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js">
+  </script>
   <style>
     /* =========================================================
        CSS GỐC – GIỮ NGUYÊN
@@ -903,6 +908,7 @@
       padding: 2px 14px 12px;
       overflow-x: auto;
       scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
     }
     .map-filter-scroll::-webkit-scrollbar {
       display: none;
@@ -919,6 +925,8 @@
       font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
+      touch-action: manipulation;
+      transition: all 0.2s;
     }
     .map-filter.active {
       border-color: #0875e1;
@@ -952,6 +960,7 @@
       box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
       font-size: 22px;
       cursor: pointer;
+      touch-action: manipulation;
     }
     #mapLayerBtn {
       top: 16px;
@@ -1079,6 +1088,7 @@
       justify-content: center;
       align-items: flex-start;
       filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35));
+      transition: filter 0.15s;
     }
     .thuyloi-pin-icon {
       width: 36px;
@@ -1114,9 +1124,36 @@
       border-top: 12px solid var(--pin-color);
     }
 
-    /* =========================================================
-       POPUP NÂNG CẤP – HIỆN ĐẠI, CÂN XỨNG, TỐI ƯU MOBILE
-       ========================================================= */
+    /* ===== TỐI ƯU MOBILE: giảm bóng đổ & tăng vùng chạm ===== */
+    @media (max-width: 600px) {
+      .thuyloi-pin {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+      }
+      /* Tăng vùng chạm bằng padding trong suốt quanh icon */
+      .thuyloi-pin::after {
+        content: '';
+        position: absolute;
+        top: -10px;
+        left: -10px;
+        right: -10px;
+        bottom: -10px;
+        border-radius: 50%;
+        background: transparent;
+        touch-action: manipulation;
+      }
+      /* Thanh filter luôn cuộn ngang, không wrap */
+      .map-filter-scroll {
+        gap: 6px;
+        padding: 2px 10px 10px;
+      }
+      .map-filter {
+        height: 34px;
+        padding: 0 12px;
+        font-size: 12px;
+      }
+    }
+
+    /* ===== POPUP NÂNG CẤP ===== */
     .tl-popup-container {
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       width: 100%;
@@ -1183,7 +1220,6 @@
       padding: 12px 16px 14px;
     }
 
-    /* Trạng thái */
     .tl-popup-status {
       display: flex;
       align-items: center;
@@ -1218,7 +1254,6 @@
       letter-spacing: 0.3px;
     }
 
-    /* Grid thông tin */
     .tl-popup-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1249,11 +1284,6 @@
       word-break: break-word;
     }
 
-    .tl-popup-item-value .highlight {
-      color: #0875e1;
-    }
-
-    /* Nút Google Maps – nổi bật, dễ nhìn */
     .tl-popup-btn-google {
       display: flex;
       align-items: center;
@@ -1281,7 +1311,6 @@
       background: #f0f7ff;
     }
 
-    /* Nút xem chi tiết (toggle) */
     .tl-popup-toggle {
       width: 100%;
       padding: 9px 0;
@@ -1300,7 +1329,6 @@
       background: #dbeafe;
     }
 
-    /* Vùng chi tiết mở rộng */
     .tl-popup-detail {
       display: none;
       margin-top: 10px;
@@ -1514,125 +1542,31 @@
     }
 
     /* =========================================================
-       ẨN CÁC CLASS CŨ (nếu có)
+       MARKER CLUSTER – TÙY CHỈNH GIAO DIỆN
        ========================================================= */
-    .map-popup,
-    .map-popup-header,
-    .map-popup-icon,
-    .map-popup-title,
-    .map-popup-body,
-    .map-popup-row,
-    .map-popup-label,
-    .map-popup-value,
-    .map-popup-description,
-    .map-popup-chainage {
-      /* giữ lại để không ảnh hưởng, nhưng không dùng nữa */
+    .marker-cluster-small {
+      background-color: rgba(8, 42, 74, 0.7);
     }
-
-    @media (max-width: 760px) {
-      main {
-        padding-left: 9px;
-        padding-right: 9px;
-      }
-      .header {
-        padding-left: max(12px, env(safe-area-inset-left));
-        padding-right: max(12px, env(safe-area-inset-right));
-      }
-      .compose {
-        padding-left: max(10px, env(safe-area-inset-left));
-        padding-right: max(10px, env(safe-area-inset-right));
-        padding-bottom: max(10px, env(safe-area-inset-bottom));
-      }
-      .messages {
-        height: auto;
-        flex: 1;
-        min-height: 0;
-        max-height: none;
-      }
+    .marker-cluster-small div {
+      background-color: rgba(8, 42, 74, 0.85);
+      color: #fff;
+      font-weight: 700;
     }
-    @media (max-width: 480px) {
-      .header-inner {
-        gap: 9px;
-      }
-      .logo {
-        width: 40px;
-        height: 40px;
-        border-radius: 12px;
-        font-size: 23px;
-      }
-      .brand h1 {
-        font-size: 18px;
-      }
-      .brand p {
-        font-size: 10.5px;
-      }
-      .status {
-        font-size: 10px;
-        padding: 5px 7px;
-      }
-      .hero {
-        padding: 17px;
-      }
-      .hero h2 {
-        font-size: 21px;
-      }
-      .quick {
-        grid-template-columns: 1fr 1fr;
-        gap: 7px;
-      }
-      .quick button {
-        min-height: 44px;
-        font-size: 12px;
-      }
-      .messages {
-        height: auto;
-        flex: 1;
-        min-height: 0;
-        max-height: none;
-        padding: 14px 11px;
-      }
-      .bubble {
-        max-width: 94%;
-        font-size: 16px;
-        line-height: 1.65;
-      }
-      .compose {
-        padding-top: 9px;
-        position: sticky;
-        bottom: 0;
-        z-index: 2;
-      }
-      textarea {
-        height: 50px;
-      }
-      .send {
-        width: 52px;
-        min-width: 52px;
-        height: 52px;
-      }
-      .field-report-types {
-        grid-template-columns: 1fr 1fr;
-      }
+    .marker-cluster-medium {
+      background-color: rgba(21, 101, 192, 0.7);
     }
-    @media (max-width: 380px) {
-      .brand h1 {
-        font-size: 17px;
-      }
-      .status {
-        font-size: 9px;
-      }
-      .hero h2 {
-        font-size: 19px;
-      }
-      .bubble {
-        font-size: 16px;
-      }
-      .quick button {
-        font-size: 11px;
-      }
-      .messages {
-        min-height: 290px;
-      }
+    .marker-cluster-medium div {
+      background-color: rgba(21, 101, 192, 0.85);
+      color: #fff;
+      font-weight: 700;
+    }
+    .marker-cluster-large {
+      background-color: rgba(183, 28, 28, 0.7);
+    }
+    .marker-cluster-large div {
+      background-color: rgba(183, 28, 28, 0.85);
+      color: #fff;
+      font-weight: 700;
     }
   </style>
 </head>
@@ -2251,7 +2185,7 @@
         });
 
         // =====================================================
-        // BẢN ĐỒ AI - KHỞI TẠO VÀ TẢI DỮ LIỆU GIS
+        // BẢN ĐỒ AI - KHỞI TẠO VÀ TẢI DỮ LIỆU GIS VỚI MARKER CLUSTER
         // =====================================================
 
         async function initAiMap() {
@@ -2359,7 +2293,7 @@
             }
 
             // =====================================================
-            // TẠO POPUP HIỆN ĐẠI – NÂNG CẤP, BỎ TỌA ĐỘ, NÚT GMAPS RÕ
+            // TẠO POPUP HIỆN ĐẠI (giữ nguyên)
             // =====================================================
             function buildModernPopup(feature, layer) {
               const p = feature.properties || {};
@@ -2404,7 +2338,6 @@
                 statusVal.toLowerCase().includes('xấu') ? '#ef4444' :
                 statusVal.toLowerCase().includes('cảnh báo') ? '#f59e0b' : '#10b981';
 
-              // Xác định tọa độ cho Google Maps (không hiển thị)
               let mapLat = null,
                 mapLng = null;
               const coords = feature.geometry?.coordinates;
@@ -2428,7 +2361,6 @@
 
               let html = `
                     <div class="tl-popup-container">
-                      <!-- HEADER -->
                       <div class="tl-popup-header" style="--header-bg:${headerColor};">
                         <div class="tl-popup-icon">${iconChar}</div>
                         <div class="tl-popup-title-group">
@@ -2436,9 +2368,7 @@
                           <span class="tl-popup-badge">${e(label)}</span>
                         </div>
                       </div>
-                      <!-- BODY -->
                       <div class="tl-popup-body">
-                        <!-- Trạng thái -->
                         <div class="tl-popup-status" style="--status-color:${statusColor};">
                           <div class="tl-popup-status-dot"></div>
                           <div>
@@ -2446,7 +2376,6 @@
                             <div class="tl-popup-status-text">${e(statusVal)}</div>
                           </div>
                         </div>
-                        <!-- Grid thông tin (không có tọa độ) -->
                         <div class="tl-popup-grid">
                           ${ code ? `
                             <div class="tl-popup-item">
@@ -2461,7 +2390,6 @@
                             </div>
                           ` : '' }
                         </div>
-                        <!-- Hành động -->
                         <div class="tl-popup-actions">
                           ${ hasPosition ? `
                             <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="tl-popup-btn-google">
@@ -2488,21 +2416,33 @@
             }
 
             // =====================================================
-            // TẠO LỚP GIS VỚI POPUP MỚI
+            // TẠO LỚP GIS VỚI MARKER CLUSTER CHO ĐIỂM
             // =====================================================
-            const geoLayer = L.geoJSON(geojson, {
-              filter: function(feature) {
-                const geometryType = feature?.geometry?.type;
-                if (geometryType !== "Point") return true;
-                const type = getCongTrinhType(feature.properties, feature.geometry);
-                return ["ho", "tram_bom", "dap"].includes(type);
-              },
-              pointToLayer: function(feature, latlng) {
-                const type = getCongTrinhType(feature.properties, feature.geometry);
-                return L.marker(latlng, { icon: getCongTrinhIcon(type), zIndexOffset: 1000, riseOnHover: true });
-              },
+
+            // Tạo marker cluster group
+            const markerCluster = L.markerClusterGroup({
+              maxClusterRadius: 60,
+              spiderfyOnMaxZoom: true,
+              disableClusteringAtZoom: 14,
+              zoomToBoundsOnClick: true,
+              animateAddingMarkers: false,
+              iconCreateFunction: function(cluster) {
+                const count = cluster.getChildCount();
+                let size = 'small';
+                if (count > 100) size = 'large';
+                else if (count > 20) size = 'medium';
+                return new L.DivIcon({
+                  html: `<div style="background-color:rgba(8,42,74,0.85);color:#fff;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.3);">${count}</div>`,
+                  className: 'marker-cluster-' + size,
+                  iconSize: [40, 40],
+                  iconAnchor: [20, 20]
+                });
+              }
+            });
+
+            // Tách riêng layer line/polygon
+            const nonPointLayer = L.geoJSON(null, {
               style: function(feature) {
-                const type = getCongTrinhType(feature.properties, feature.geometry);
                 const geometryType = feature.geometry?.type || "";
                 if (geometryType === "LineString" || geometryType === "MultiLineString") {
                   return { color: "#1677ff", weight: 2, opacity: 0.85, fill: false };
@@ -2511,22 +2451,61 @@
                   return { color: "#1677ff", weight: 1.5, opacity: 0.65, fillColor: "#1677ff", fillOpacity: 0.06 };
                 }
                 return { color: "#1677ff", weight: 1.5, opacity: 0.7, fillOpacity: 0.05 };
-              },
-              onEachFeature: function(feature, layer) {
-                buildModernPopup(feature, layer);
               }
             });
 
-            aiMapLayer.addLayer(geoLayer);
+            // Duyệt qua từng feature để phân loại
+            geojson.features.forEach(function(feature) {
+              const geomType = feature.geometry?.type;
+              const isPoint = geomType === "Point" || geomType === "MultiPoint";
 
-            const bounds = geoLayer.getBounds();
-            if (bounds.isValid()) {
-              aiMap.fitBounds(bounds, { padding: [20, 20], maxZoom: 14 });
+              if (isPoint) {
+                // Chỉ lọc các điểm thuộc loại ho, tram_bom, dap (như filter cũ)
+                const type = getCongTrinhType(feature.properties, feature.geometry);
+                if (["ho", "tram_bom", "dap"].includes(type)) {
+                  // Tạo marker riêng lẻ
+                  const latlng = L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]);
+                  const marker = L.marker(latlng, {
+                    icon: getCongTrinhIcon(type),
+                    zIndexOffset: 1000,
+                    riseOnHover: true
+                  });
+                  // Gắn popup
+                  buildModernPopup(feature, marker);
+                  markerCluster.addLayer(marker);
+                }
+              } else {
+                // Đường, vùng thêm vào nonPointLayer
+                nonPointLayer.addData(feature);
+              }
+            });
+
+            // Thêm các layer vào aiMapLayer
+            aiMapLayer.addLayer(nonPointLayer);
+            aiMapLayer.addLayer(markerCluster);
+
+            // Zoom to bounds của tất cả dữ liệu
+            const allBounds = L.latLngBounds([]);
+            // Lấy bounds của nonPointLayer
+            if (nonPointLayer.getBounds().isValid()) {
+              allBounds.extend(nonPointLayer.getBounds());
             }
+            // Lấy bounds của cluster (lấy từ markerCluster)
+            const clusterBounds = markerCluster.getBounds();
+            if (clusterBounds.isValid()) {
+              allBounds.extend(clusterBounds);
+            }
+            if (allBounds.isValid()) {
+              aiMap.fitBounds(allBounds, { padding: [20, 20], maxZoom: 14 });
+            }
+
+            // Lưu tham chiếu để tìm kiếm
+            window._aiMapCluster = markerCluster;
+            window._aiMapNonPoint = nonPointLayer;
 
             aiMapLoaded = true;
             mapAiStatus.textContent = '✅ Đã tải ' + geojson.features.length.toLocaleString('vi-VN') +
-              ' đối tượng thủy lợi.';
+              ' đối tượng thủy lợi. (Gom cụm ' + markerCluster.getLayers().length + ' điểm)';
             setTimeout(function() { aiMap.invalidateSize(); }, 300);
 
           } catch (error) {
@@ -2536,7 +2515,7 @@
         }
 
         // =====================================================
-        // TÌM KIẾM
+        // TÌM KIẾM (cập nhật để tìm trong cluster)
         // =====================================================
         function normalizeMapSearch(value) {
           return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -2552,27 +2531,26 @@
             mapAiStatus.textContent = '⚠️ Bản đồ chưa sẵn sàng.';
             return;
           }
-          const matches = [];
 
-          function scanLayer(layer) {
-            if (layer.eachLayer && !layer.feature) {
-              layer.eachLayer(function(child) { scanLayer(child); });
-              return;
-            }
-            const feature = layer.feature || {};
-            const p = feature.properties || {};
-            const name = p.name || p.Name || p.NAME || '';
-            const description = p.description || '';
-            const code = p.code || p.Code || p.ma || p.Ma || p.id || p.ID || '';
-            const station = p.station || p.Station || p.ly_trinh || p.LyTrinh || p.lyTrinh || '';
-            const type = getCongTrinhType(p, feature.geometry);
-            const typeLabel = getCongTrinhLabel(type);
-            const searchText = normalizeMapSearch([name, description, code, station, typeLabel, type].join(' '));
-            const keywordParts = keyword.split(/\s+/).filter(Boolean);
-            const isMatch = keywordParts.every(function(part) { return searchText.includes(part); });
-            if (isMatch) { matches.push(layer); }
+          const matches = [];
+          // Duyệt tất cả marker trong cluster
+          const cluster = window._aiMapCluster;
+          if (cluster) {
+            cluster.eachLayer(function(layer) {
+              const feature = layer.feature || {};
+              const p = feature.properties || {};
+              const name = p.name || p.Name || p.NAME || '';
+              const description = p.description || '';
+              const code = p.code || p.Code || p.ma || p.Ma || p.id || p.ID || '';
+              const station = p.station || p.Station || p.ly_trinh || p.LyTrinh || p.lyTrinh || '';
+              const type = getCongTrinhType(p, feature.geometry);
+              const typeLabel = getCongTrinhLabel(type);
+              const searchText = normalizeMapSearch([name, description, code, station, typeLabel, type].join(' '));
+              const keywordParts = keyword.split(/\s+/).filter(Boolean);
+              const isMatch = keywordParts.every(function(part) { return searchText.includes(part); });
+              if (isMatch) { matches.push(layer); }
+            });
           }
-          scanLayer(aiMapLayer);
 
           if (!matches.length) {
             mapAiStatus.textContent = '❌ Không tìm thấy: "' + keyword + '"';
@@ -2581,9 +2559,7 @@
 
           if (matches.length === 1) {
             const layer = matches[0];
-            if (layer.getBounds && layer.getBounds().isValid()) {
-              aiMap.fitBounds(layer.getBounds(), { padding: [50, 50], maxZoom: 17 });
-            } else if (layer.getLatLng) {
+            if (layer.getLatLng) {
               aiMap.setView(layer.getLatLng(), 17);
             }
             if (layer.openPopup) {
@@ -2592,9 +2568,7 @@
           } else {
             const bounds = L.latLngBounds([]);
             matches.forEach(function(layer) {
-              if (layer.getBounds && layer.getBounds().isValid()) {
-                bounds.extend(layer.getBounds());
-              } else if (layer.getLatLng) {
+              if (layer.getLatLng) {
                 bounds.extend(layer.getLatLng());
               }
             });
@@ -2605,6 +2579,7 @@
 
           mapAiStatus.textContent = '🔎 Tìm thấy ' + matches.length + ' đối tượng phù hợp với "' + keyword + '".';
 
+          // Hiển thị danh sách kết quả
           let resultBox = document.getElementById('mapSearchResults');
           if (!resultBox) {
             resultBox = document.createElement('div');
@@ -2635,9 +2610,7 @@
             item.addEventListener('mouseenter', function() { item.style.background = '#f1f7fb'; });
             item.addEventListener('mouseleave', function() { item.style.background = '#ffffff'; });
             item.addEventListener('click', function() {
-              if (layer.getBounds && layer.getBounds().isValid()) {
-                aiMap.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 17 });
-              } else if (layer.getLatLng) {
+              if (layer.getLatLng) {
                 aiMap.setView(layer.getLatLng(), 17);
               }
               if (layer.openPopup) {
