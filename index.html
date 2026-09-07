@@ -5,17 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
- />
-
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
-</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+  </script>
   <style>
-    /* ... CSS giữ nguyên như cũ, không thay đổi ... */
+    /* =========================================================
+       CSS GỐC – GIỮ NGUYÊN
+       ========================================================= */
     :root {
       --primary: #2563EB;
       --deep-navy: #0F2742;
@@ -32,843 +30,1634 @@
       --surface-soft: #F8FAFC;
       --focus-ring: rgba(37, 99, 235, .16);
     }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0; padding: 0; width: 100%; min-height: 100%;
-      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-      background: var(--background); color: var(--text);
+    * {
+      box-sizing: border-box;
     }
-    body { overflow-x: hidden; }
-    button, textarea { font: inherit; }
-    button { cursor: pointer; }
-    button:focus-visible, textarea:focus-visible {
-      outline: 3px solid var(--focus-ring); outline-offset: 1px;
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background: var(--background);
+      color: var(--text);
+    }
+    body {
+      overflow-x: hidden;
+    }
+    button,
+    textarea {
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 1px;
     }
     textarea.auto-grow {
-      width: 100%; min-height: 260px; height: auto; overflow-y: hidden; resize: none;
-      line-height: 1.6; box-sizing: border-box;
+      width: 100%;
+      min-height: 260px;
+      height: auto;
+      overflow-y: hidden;
+      resize: none;
+      line-height: 1.6;
+      box-sizing: border-box;
     }
     .header {
-      background: var(--deep-navy); color: #fff; padding: 13px 14px;
-      position: sticky; top: 0; z-index: 10;
-      box-shadow: 0 2px 10px rgba(15,39,66,.14);
+      background: var(--deep-navy);
+      color: #fff;
+      padding: 13px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 10px rgba(15, 39, 66, .14);
     }
     .header-inner {
-      max-width: 760px; margin: auto; display: flex; align-items: center;
-      gap: 11px; min-height: 44px;
+      max-width: 760px;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 44px;
     }
     .logo {
-      width: 42px; height: 42px; border-radius: 13px; background: #fff;
-      display: flex; align-items: center; justify-content: center; font-size: 24px;
-      flex: none; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
     }
-    .brand { min-width: 0; }
-    .brand h1 { font-size: 19px; line-height: 1.2; margin: 0; font-weight: 800; letter-spacing: .1px; }
-    .brand p { font-size: 11px; line-height: 1.35; margin: 3px 0 0; opacity: .82; }
+    .brand {
+      min-width: 0;
+    }
+    .brand h1 {
+      font-size: 19px;
+      line-height: 1.2;
+      margin: 0;
+      font-weight: 800;
+      letter-spacing: .1px;
+    }
+    .brand p {
+      font-size: 11px;
+      line-height: 1.35;
+      margin: 3px 0 0;
+      opacity: .82;
+    }
     .status {
-      margin-left: auto; font-size: 11px; white-space: nowrap; display: flex;
-      align-items: center; padding: 5px 8px; border: 1px solid rgba(255,255,255,.18);
-      border-radius: 999px; background: rgba(255,255,255,.07);
+      margin-left: auto;
+      font-size: 11px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      padding: 5px 8px;
+      border: 1px solid rgba(255, 255, 255, .18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .07);
     }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warning); margin-right: 5px; box-shadow: 0 0 0 2px rgba(245,158,11,.12); }
-    .dot.ok { background: var(--success); box-shadow: 0 0 0 2px rgba(16,185,129,.14); }
-    .dot.bad { background: var(--error); box-shadow: 0 0 0 2px rgba(239,68,68,.14); }
-
-    main { width: 100%; max-width: 960px; margin: auto; padding: 12px 10px 28px; }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+      margin-right: 5px;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, .12);
+    }
+    .dot.ok {
+      background: var(--success);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, .14);
+    }
+    .dot.bad {
+      background: var(--error);
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, .14);
+    }
+    main {
+      width: 100%;
+      max-width: 960px;
+      margin: auto;
+      padding: 12px 10px 28px;
+    }
     .card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
-      margin-bottom: 11px; box-shadow: 0 5px 18px rgba(15,39,66,.06);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      margin-bottom: 11px;
+      box-shadow: 0 5px 18px rgba(15, 39, 66, .06);
     }
-    .hero { padding: 19px; }
-    .hero h2 { font-size: 22px; line-height: 1.3; margin: 0 0 8px; font-weight: 800; letter-spacing: -.2px; }
-    .hero p { font-size: 15px; line-height: 1.65; color: var(--text-secondary); margin: 0; max-width: 680px; }
-    .info { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 13px; }
-    .info span { font-size: 12px; color: #496075; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 10px; padding: 7px 9px; }
-
-    .quick-title { font-size: 13px; font-weight: 700; padding: 13px 13px 8px; color: var(--text); }
-    .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 10px 11px; }
-    .quick button { min-height: 44px; border: 1px solid var(--border); background: var(--surface-soft); border-radius: 11px; padding: 8px; font-size: 13px; color: #344b5e; }
-    .quick button:hover { border-color: #B9CCE0; background: #F5F9FF; }
-    .quick button:active { background: #EAF3FF; }
-
-    .chat { overflow: hidden; width: 100%; display: flex; flex-direction: column; min-height: calc(100dvh - 84px); }
-    .chat-title { height: 49px; padding: 0 13px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; }
-    .clear { border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 6px 9px; font-size: 11px; color: var(--text-secondary); }
-    .clear:hover { background: var(--surface-soft); color: var(--text); }
-
-    .messages { height: 52vh; min-height: 330px; max-height: 600px; overflow-y: auto; padding: 16px 14px; background: #F8FAFC; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
-    .msg { display: flex; margin-bottom: 13px; }
-    .msg.user { justify-content: flex-end; }
-    .bubble { max-width: 92%; border-radius: 16px; padding: 12px 14px; font-size: 16px; line-height: 1.65; word-break: break-word; overflow-wrap: anywhere; }
-    .user .bubble { background: var(--primary); color: #fff; border-top-right-radius: 5px; box-shadow: 0 2px 7px rgba(37,99,235,.12); }
-    .assistant .bubble { background: var(--surface); border: 1px solid var(--border); border-top-left-radius: 5px; box-shadow: 0 2px 7px rgba(15,39,66,.04); }
-    .bubble p { margin: 0 0 8px; }
-    .bubble p:last-child { margin-bottom: 0; }
-    .bubble strong { font-weight: 750; color: inherit; }
-    .bubble ul, .bubble ol { margin: 6px 0 6px 19px; padding: 0; }
-    .bubble li { margin: 3px 0; }
-
-    .source { margin-top: 12px; padding: 12px 12px 11px; border-radius: 12px; background: #F8FAFC; border: 1px solid var(--border); border-left: 4px solid var(--primary); font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
-    .source b { display: block; color: var(--text); font-size: 14px; font-weight: 750; margin-bottom: 5px; }
-
-    .typing { display: none; padding: 10px 13px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 13px; line-height: 1.45; background: var(--surface); }
-    .typing.show { display: block; }
-
-    .compose { background: var(--surface); border-top: 1px solid var(--border); padding: 11px; }
-    .row { display: flex; gap: 8px; align-items: stretch; }
-    textarea { flex: 1; min-width: 0; height: 52px; max-height: 130px; border: 1px solid #C5D3E0; border-radius: 14px; padding: 12px 13px; font-size: 16px; line-height: 1.45; resize: none; outline: none; background: var(--surface); color: var(--text); }
-    textarea::placeholder { color: var(--text-secondary); opacity: 1; }
-    textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
-
-    .camera-btn { width: 48px; min-width: 48px; height: 52px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); font-size: 21px; display: flex; align-items: center; justify-content: center; }
-    .camera-btn:hover { background: var(--surface-soft); border-color: #B9CCE0; }
-    .camera-btn:active { background: #EAF3FF; }
-
-    .image-preview { margin-top: 8px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-soft); font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
-    .image-preview strong { color: var(--text); }
-    .image-preview .thumb { width: 58px; height: 58px; object-fit: cover; border-radius: 9px; border: 1px solid var(--border); vertical-align: middle; margin-right: 8px; }
-
-    .send { width: 52px; min-width: 52px; height: 52px; border: 0; border-radius: 14px; background: var(--primary); color: #fff; font-weight: 700; font-size: 21px; display: flex; align-items: center; justify-content: center; transition: background .15s ease, transform .05s ease; }
-    .send:hover { background: #1D4ED8; }
-    .send:active { background: #1E40AF; transform: translateY(1px); }
-    .send:disabled { opacity: .55; cursor: not-allowed; }
-
-    .hint { display: none; }
-    .footer { display: none; }
-    .uiCompat { display: none; }
-
+    .hero {
+      padding: 19px;
+    }
+    .hero h2 {
+      font-size: 22px;
+      line-height: 1.3;
+      margin: 0 0 8px;
+      font-weight: 800;
+      letter-spacing: -.2px;
+    }
+    .hero p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin: 0;
+      max-width: 680px;
+    }
+    .info {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 13px;
+    }
+    .info span {
+      font-size: 12px;
+      color: #496075;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 9px;
+    }
+    .quick-title {
+      font-size: 13px;
+      font-weight: 700;
+      padding: 13px 13px 8px;
+      color: var(--text);
+    }
+    .quick {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 0 10px 11px;
+    }
+    .quick button {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      border-radius: 11px;
+      padding: 8px;
+      font-size: 13px;
+      color: #344b5e;
+    }
+    .quick button:hover {
+      border-color: #B9CCE0;
+      background: #F5F9FF;
+    }
+    .quick button:active {
+      background: #EAF3FF;
+    }
+    .chat {
+      overflow: hidden;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100dvh - 84px);
+    }
+    .chat-title {
+      height: 49px;
+      padding: 0 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .clear {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 9px;
+      padding: 6px 9px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .clear:hover {
+      background: var(--surface-soft);
+      color: var(--text);
+    }
+    .messages {
+      height: 52vh;
+      min-height: 330px;
+      max-height: 600px;
+      overflow-y: auto;
+      padding: 16px 14px;
+      background: #F8FAFC;
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+    .msg {
+      display: flex;
+      margin-bottom: 13px;
+    }
+    .msg.user {
+      justify-content: flex-end;
+    }
+    .bubble {
+      max-width: 92%;
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-size: 16px;
+      line-height: 1.65;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .user .bubble {
+      background: var(--primary);
+      color: #fff;
+      border-top-right-radius: 5px;
+      box-shadow: 0 2px 7px rgba(37, 99, 235, .12);
+    }
+    .assistant .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-left-radius: 5px;
+      box-shadow: 0 2px 7px rgba(15, 39, 66, .04);
+    }
+    .bubble p {
+      margin: 0 0 8px;
+    }
+    .bubble p:last-child {
+      margin-bottom: 0;
+    }
+    .bubble strong {
+      font-weight: 750;
+      color: inherit;
+    }
+    .bubble ul,
+    .bubble ol {
+      margin: 6px 0 6px 19px;
+      padding: 0;
+    }
+    .bubble li {
+      margin: 3px 0;
+    }
+    .source {
+      margin-top: 12px;
+      padding: 12px 12px 11px;
+      border-radius: 12px;
+      background: #F8FAFC;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+    }
+    .source b {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 750;
+      margin-bottom: 5px;
+    }
+    .typing {
+      display: none;
+      padding: 10px 13px;
+      border-top: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.45;
+      background: var(--surface);
+    }
+    .typing.show {
+      display: block;
+    }
+    .compose {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 11px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    textarea {
+      flex: 1;
+      min-width: 0;
+      height: 52px;
+      max-height: 130px;
+      border: 1px solid #C5D3E0;
+      border-radius: 14px;
+      padding: 12px 13px;
+      font-size: 16px;
+      line-height: 1.45;
+      resize: none;
+      outline: none;
+      background: var(--surface);
+      color: var(--text);
+    }
+    textarea::placeholder {
+      color: var(--text-secondary);
+      opacity: 1;
+    }
+    textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+    .camera-btn {
+      width: 48px;
+      min-width: 48px;
+      height: 52px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 21px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .camera-btn:hover {
+      background: var(--surface-soft);
+      border-color: #B9CCE0;
+    }
+    .camera-btn:active {
+      background: #EAF3FF;
+    }
+    .image-preview {
+      margin-top: 8px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--surface-soft);
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+    }
+    .image-preview strong {
+      color: var(--text);
+    }
+    .image-preview .thumb {
+      width: 58px;
+      height: 58px;
+      object-fit: cover;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    .send {
+      width: 52px;
+      min-width: 52px;
+      height: 52px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      font-size: 21px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .15s ease, transform .05s ease;
+    }
+    .send:hover {
+      background: #1D4ED8;
+    }
+    .send:active {
+      background: #1E40AF;
+      transform: translateY(1px);
+    }
+    .send:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+    .hint {
+      display: none;
+    }
+    .footer {
+      display: none;
+    }
+    .uiCompat {
+      display: none;
+    }
     .field-report-entry {
-    padding: 8px 14px 12px;
-    border-top: 1px solid var(--border);
-    background: var(--surface-soft);
+      padding: 8px 14px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-soft);
     }
-    
     .ai-action-buttons {
-        display: flex;
-        width: 100%;
-        gap: 8px;
+      display: flex;
+      width: 100%;
+      gap: 8px;
     }
-    
     #fieldReportBtn,
     #mapAiBtn {
-        flex: 1;
-        min-width: 0;
-        border: 1px dashed var(--primary);
-        background: transparent;
-        border-radius: 12px;
-        padding: 10px 6px;
-        font-weight: 600;
-        color: var(--primary);
-        font-size: 15px;
-        line-height: 1.25;
-        transition: background .15s;
+      flex: 1;
+      min-width: 0;
+      border: 1px dashed var(--primary);
+      background: transparent;
+      border-radius: 12px;
+      padding: 10px 6px;
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 15px;
+      line-height: 1.25;
+      transition: background .15s;
     }
-    
     #fieldReportBtn:hover {
-        background: rgba(37,99,235,.06);
+      background: rgba(37, 99, 235, .06);
     }
-    
     #mapAiBtn {
-        border-color: #0E9F6E;
-        color: #0E9F6E;
+      border-color: #0E9F6E;
+      color: #0E9F6E;
     }
-    
     #mapAiBtn:hover {
-        background: rgba(14,159,110,.06);
+      background: rgba(14, 159, 110, .06);
     }
-    /* =========================================
-   BẢN ĐỒ AI - KHỐI BỔ SUNG
-   Không thay đổi CSS hiện hữu
-   ========================================= */
-
     .map-ai-panel {
-        padding: 14px;
-        background: var(--surface);
-        border-top: 1px solid var(--border);
+      padding: 14px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
     }
-    
     .map-ai-panel.hidden {
-        display: none;
+      display: none;
     }
-    
     .map-ai-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 16px;
-        margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 16px;
+      margin-bottom: 8px;
     }
-    
     .map-ai-header strong {
-        font-weight: 700;
+      font-weight: 700;
     }
-    
     #closeMapAi {
-        background: transparent;
-        border: 0;
-        font-size: 22px;
-        line-height: 1;
-        color: var(--text-secondary);
-        cursor: pointer;
-        padding: 4px 8px;
+      background: transparent;
+      border: 0;
+      font-size: 22px;
+      line-height: 1;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
     }
-    
     #closeMapAi:hover {
-        color: var(--text);
+      color: var(--text);
     }
-    
     .map-ai-info {
-        font-size: 13px;
-        color: var(--text-secondary);
-        margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
     }
-    
     #aiMap {
-        width: 100%;
-        height: 420px;
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        overflow: hidden;
-        background: #eef3f5;
+      width: 100%;
+      height: 420px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #eef3f5;
     }
-    
     .map-ai-status {
-        margin-top: 8px;
-        padding: 8px 12px;
-        border-radius: 10px;
-        background: var(--success-bg);
-        color: #065F46;
-        font-size: 13px;
+      margin-top: 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--success-bg);
+      color: #065F46;
+      font-size: 13px;
     }
-
-    .field-report-panel { padding: 14px; background: var(--surface); border-top: 1px solid var(--border); }
-    .field-report-panel.hidden { display: none; }
-    .field-report-title { display: flex; justify-content: space-between; align-items: center; font-size: 16px; margin-bottom: 8px; }
-    .field-report-title strong { font-weight: 700; }
-    #closeFieldReport { background: transparent; border: 0; font-size: 20px; line-height: 1; color: var(--text-secondary); padding: 0 4px; }
-    #closeFieldReport:hover { color: var(--text); }
-
-    .field-report-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: 14px; }
+    .field-report-panel {
+      padding: 14px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .field-report-panel.hidden {
+      display: none;
+    }
+    .field-report-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .field-report-title strong {
+      font-weight: 700;
+    }
+    #closeFieldReport {
+      background: transparent;
+      border: 0;
+      font-size: 20px;
+      line-height: 1;
+      color: var(--text-secondary);
+      padding: 0 4px;
+    }
+    #closeFieldReport:hover {
+      color: var(--text);
+    }
+    .field-report-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+    }
     .ai-action-buttons {
-    gap: 7px;
+      gap: 7px;
     }
-    
     #fieldReportBtn,
     #mapAiBtn {
-        font-size: 13px;
-        padding: 10px 4px;
+      font-size: 13px;
+      padding: 10px 4px;
     }
-    .field-report-types { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
-    .field-report-types button { border: 1px solid var(--border); background: var(--surface-soft); border-radius: 10px; padding: 10px 6px; font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: border-color .15s, background .15s; }
-    .field-report-types button:hover { border-color: var(--primary); background: #F0F7FF; }
-    .field-report-types button.selected { border-color: var(--primary); background: #E0EDFF; }
-
-    .field-report-camera { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 12px; font-size: 15px; margin-bottom: 10px; }
-    .field-report-camera:hover { background: var(--surface-soft); }
-
-    .field-report-preview { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); margin-bottom: 10px; font-size: 13px; color: var(--text-secondary); }
-    .field-report-preview .thumb { width: 58px; height: 58px; object-fit: cover; border-radius: 9px; border: 1px solid var(--border); vertical-align: middle; margin-right: 8px; }
-    .field-report-preview-inner { display: flex; align-items: center; gap: 8px; }
-
-    .field-report-question { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-size: 14px; resize: vertical; min-height: 48px; margin-bottom: 10px; background: var(--surface); }
-    .field-report-question:focus { border-color: var(--primary); outline: 0; box-shadow: 0 0 0 3px var(--focus-ring); }
-
-    .create-field-report { width: 100%; border: 0; border-radius: 12px; background: var(--primary); color: #fff; padding: 12px; font-weight: 600; font-size: 16px; transition: background .15s; }
-    .create-field-report:hover:not(:disabled) { background: #1D4ED8; }
-    .create-field-report:disabled { opacity: .5; cursor: not-allowed; }
-    .field-report-status { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--success-bg); color: #065F46; font-size: 14px; }
-    .field-report-status.error { background: var(--error-bg); color: #991B1B; }
-
-    .pdf-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
-    .pdf-actions.hidden { display: none; }
-    .pdf-main-button { background: var(--success); color: #fff; border: 0; border-radius: 10px; padding: 10px 16px; font-weight: 600; font-size: 14px; flex: 1 1 auto; }
-    .pdf-main-button:disabled { opacity: .5; cursor: not-allowed; }
-    .pdf-status { width: 100%; font-size: 13px; color: var(--text-secondary); padding: 6px 0; }
-    .pdf-status.hidden { display: none; }
-    .pdf-result { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 4px; }
-    .pdf-result.hidden { display: none; }
-    .pdf-result button { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
-    .pdf-result button:hover { background: #eef2f6; }
-
+    .field-report-types {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .field-report-types button {
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      border-radius: 10px;
+      padding: 10px 6px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: border-color .15s, background .15s;
+    }
+    .field-report-types button:hover {
+      border-color: var(--primary);
+      background: #F0F7FF;
+    }
+    .field-report-types button.selected {
+      border-color: var(--primary);
+      background: #E0EDFF;
+    }
+    .field-report-camera {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      padding: 12px;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+    .field-report-camera:hover {
+      background: var(--surface-soft);
+    }
+    .field-report-preview {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-soft);
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .field-report-preview .thumb {
+      width: 58px;
+      height: 58px;
+      object-fit: cover;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    .field-report-preview-inner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .field-report-question {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 48px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+    .field-report-question:focus {
+      border-color: var(--primary);
+      outline: 0;
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+    .create-field-report {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      background: var(--primary);
+      color: #fff;
+      padding: 12px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: background .15s;
+    }
+    .create-field-report:hover:not(:disabled) {
+      background: #1D4ED8;
+    }
+    .create-field-report:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .field-report-status {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--success-bg);
+      color: #065F46;
+      font-size: 14px;
+    }
+    .field-report-status.error {
+      background: var(--error-bg);
+      color: #991B1B;
+    }
+    .pdf-actions {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .pdf-actions.hidden {
+      display: none;
+    }
+    .pdf-main-button {
+      background: var(--success);
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      flex: 1 1 auto;
+    }
+    .pdf-main-button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .pdf-status {
+      width: 100%;
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 6px 0;
+    }
+    .pdf-status.hidden {
+      display: none;
+    }
+    .pdf-result {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .pdf-result.hidden {
+      display: none;
+    }
+    .pdf-result button {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    .pdf-result button:hover {
+      background: #eef2f6;
+    }
     @media (max-width: 760px) {
-      main { padding-left: 9px; padding-right: 9px; }
-      .header { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
-      .compose { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-      .messages { height: auto; flex: 1; min-height: 0; max-height: none; }
+      main {
+        padding-left: 9px;
+        padding-right: 9px;
+      }
+      .header {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+      }
+      .compose {
+        padding-left: max(10px, env(safe-area-inset-left));
+        padding-right: max(10px, env(safe-area-inset-right));
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+      }
+      .messages {
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+      }
     }
     @media (max-width: 480px) {
-      .header-inner { gap: 9px; }
-      .logo { width: 40px; height: 40px; border-radius: 12px; font-size: 23px; }
-      .brand h1 { font-size: 18px; }
-      .brand p { font-size: 10.5px; }
-      .status { font-size: 10px; padding: 5px 7px; }
-      .hero { padding: 17px; }
-      .hero h2 { font-size: 21px; }
-      .quick { grid-template-columns: 1fr 1fr; gap: 7px; }
-      .quick button { min-height: 44px; font-size: 12px; }
-      .messages { height: auto; flex: 1; min-height: 0; max-height: none; padding: 14px 11px; }
-      .bubble { max-width: 94%; font-size: 16px; line-height: 1.65; }
-      .compose { padding-top: 9px; position: sticky; bottom: 0; z-index: 2; }
-      textarea { height: 50px; }
-      .send { width: 52px; min-width: 52px; height: 52px; }
-      .field-report-types { grid-template-columns: 1fr 1fr; }
+      .header-inner {
+        gap: 9px;
+      }
+      .logo {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-size: 23px;
+      }
+      .brand h1 {
+        font-size: 18px;
+      }
+      .brand p {
+        font-size: 10.5px;
+      }
+      .status {
+        font-size: 10px;
+        padding: 5px 7px;
+      }
+      .hero {
+        padding: 17px;
+      }
+      .hero h2 {
+        font-size: 21px;
+      }
+      .quick {
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+      .quick button {
+        min-height: 44px;
+        font-size: 12px;
+      }
+      .messages {
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+        padding: 14px 11px;
+      }
+      .bubble {
+        max-width: 94%;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      .compose {
+        padding-top: 9px;
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+      }
+      textarea {
+        height: 50px;
+      }
+      .send {
+        width: 52px;
+        min-width: 52px;
+        height: 52px;
+      }
+      .field-report-types {
+        grid-template-columns: 1fr 1fr;
+      }
     }
     @media (max-width: 380px) {
-      .brand h1 { font-size: 17px; }
-      .status { font-size: 9px; }
-      .hero h2 { font-size: 19px; }
-      .bubble { font-size: 16px; }
-      .quick button { font-size: 11px; }
-      .messages { min-height: 290px; }
+      .brand h1 {
+        font-size: 17px;
+      }
+      .status {
+        font-size: 9px;
+      }
+      .hero h2 {
+        font-size: 19px;
+      }
+      .bubble {
+        font-size: 16px;
+      }
+      .quick button {
+        font-size: 11px;
+      }
+      .messages {
+        min-height: 290px;
+      }
     }
+    .map-ai-panel {
+      position: relative;
+      width: 100%;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    .map-ai-header {
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: #082a4a;
+      color: #ffffff;
+    }
+    .map-ai-header strong {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+    #closeMapAi {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .12);
+      color: #ffffff;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .map-search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 14px 10px;
+      height: 46px;
+      padding: 0 8px 0 14px;
+      border: 1px solid #d8e1eb;
+      border-radius: 14px;
+      background: #ffffff;
+      box-shadow: 0 2px 8px rgba(8, 42, 74, .08);
+    }
+    .map-search-icon {
+      font-size: 25px;
+      color: #64748b;
+    }
+    .map-search-box input {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: #0f172a;
+      font-size: 15px;
+    }
+    .map-search-box input::placeholder {
+      color: #94a3b8;
+    }
+    #mapLocateBtn {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 10px;
+      background: #eef6ff;
+      color: #0875e1;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .map-filter-scroll {
+      display: flex;
+      gap: 8px;
+      padding: 2px 14px 12px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .map-filter-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .map-filter {
+      flex: 0 0 auto;
+      height: 38px;
+      padding: 0 15px;
+      border: 1px solid #d8e1eb;
+      border-radius: 20px;
+      background: #ffffff;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .map-filter.active {
+      border-color: #0875e1;
+      background: #0875e1;
+      color: #ffffff;
+    }
+    .map-container {
+      position: relative;
+      width: 100%;
+      height: min(62vh, 560px);
+      min-height: 420px;
+      overflow: hidden;
+      background: #dbeafe;
+    }
+    #aiMap {
+      width: 100%;
+      height: 100%;
+      min-height: 420px;
+      z-index: 1;
+    }
+    .map-floating-btn {
+      position: absolute;
+      right: 14px;
+      z-index: 500;
+      width: 46px;
+      height: 46px;
+      border: 0;
+      border-radius: 14px;
+      background: #ffffff;
+      color: #0f3b63;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+      font-size: 22px;
+      cursor: pointer;
+    }
+    #mapLayerBtn {
+      top: 16px;
+    }
+    .map-gps-btn {
+      top: 70px;
+      color: #0875e1;
+    }
+    .map-feature-card {
+      position: relative;
+      z-index: 20;
+      margin: -74px 14px 14px;
+      padding: 16px;
+      border-radius: 18px;
+      background: #082a4a;
+      color: #ffffff;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, .25);
+    }
+    .map-feature-card.hidden {
+      display: none;
+    }
+    .map-feature-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .map-feature-type {
+      margin-bottom: 5px;
+      color: #60d394;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .map-feature-name {
+      font-size: 19px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+    #mapFeatureClose {
+      flex: 0 0 auto;
+      width: 30px;
+      height: 30px;
+      border: 0;
+      background: transparent;
+      color: #ffffff;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .map-feature-summary {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, .14);
+      color: #dbeafe;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .map-detail-btn {
+      width: 100%;
+      height: 44px;
+      margin-top: 14px;
+      border: 0;
+      border-radius: 12px;
+      background: #0875e1;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .map-ai-status {
+      margin: 0;
+      padding: 10px 14px;
+      background: #ecfdf5;
+      color: #15803d;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .map-container .leaflet-control-zoom {
+      margin-top: 14px;
+      margin-left: 14px;
+      border: 0;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, .18);
+    }
+    .map-container .leaflet-control-zoom a {
+      width: 38px;
+      height: 38px;
+      line-height: 38px;
+      color: #0f3b63;
+      font-weight: 700;
+    }
+    @media (max-width: 600px) {
+      .map-ai-header {
+        height: 56px;
+      }
+      .map-ai-header strong {
+        font-size: 15px;
+      }
+      .map-container {
+        height: 58vh;
+        min-height: 430px;
+      }
+      #aiMap {
+        min-height: 430px;
+      }
+      .map-feature-card {
+        margin-top: -82px;
+      }
+    }
+    @media (min-width: 601px) {
+      .map-ai-panel {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      .map-container {
+        height: 600px;
+      }
+    }
+    .thuyloi-cong-trinh-icon {
+      background: transparent !important;
+      border: none !important;
+    }
+    .thuyloi-pin {
+      position: relative;
+      width: 42px;
+      height: 52px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35));
+    }
+    .thuyloi-pin-icon {
+      width: 36px;
+      height: 36px;
+      margin-top: 1px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      background: var(--pin-color);
+      border: 3px solid #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #ffffff;
+      font-size: 19px;
+      font-weight: 700;
+    }
+    .thuyloi-pin-icon::first-letter {
+      transform: rotate(45deg);
+    }
+    .thuyloi-pin-icon {
+      text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+    }
+    .thuyloi-pin-icon {
+      line-height: 1;
+    }
+    .thuyloi-pin-tail {
+      position: absolute;
+      top: 35px;
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 12px solid var(--pin-color);
+    }
+
     /* =========================================================
-   BẢN ĐỒ AI - GIAO DIỆN MOBILE
-   ========================================================= */
-.map-ai-panel {
-  position: relative;
-  width: 100%;
-  background: #ffffff;
-  overflow: hidden;
-}
-
-.map-ai-header {
-  height: 58px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  background: #082a4a;
-  color: #ffffff;
-}
-
-.map-ai-header strong {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: .2px;
-}
-
-#closeMapAi {
-  width: 34px;
-  height: 34px;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255,255,255,.12);
-  color: #ffffff;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-/* =========================
-   TÌM KIẾM
-   ========================= */
-
-.map-search-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 14px 10px;
-  height: 46px;
-  padding: 0 8px 0 14px;
-  border: 1px solid #d8e1eb;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(8,42,74,.08);
-}
-
-.map-search-icon {
-  font-size: 25px;
-  color: #64748b;
-}
-
-.map-search-box input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: #0f172a;
-  font-size: 15px;
-}
-
-.map-search-box input::placeholder {
-  color: #94a3b8;
-}
-
-#mapLocateBtn {
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 10px;
-  background: #eef6ff;
-  color: #0875e1;
-  font-size: 22px;
-  cursor: pointer;
-}
-
-/* =========================
-   BỘ LỌC
-   ========================= */
-
-.map-filter-scroll {
-  display: flex;
-  gap: 8px;
-  padding: 2px 14px 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.map-filter-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.map-filter {
-  flex: 0 0 auto;
-  height: 38px;
-  padding: 0 15px;
-  border: 1px solid #d8e1eb;
-  border-radius: 20px;
-  background: #ffffff;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.map-filter.active {
-  border-color: #0875e1;
-  background: #0875e1;
-  color: #ffffff;
-}
-
-/* =========================
-   KHUNG BẢN ĐỒ
-   ========================= */
-
-.map-container {
-  position: relative;
-  width: 100%;
-  height: min(62vh, 560px);
-  min-height: 420px;
-  overflow: hidden;
-  background: #dbeafe;
-}
-
-#aiMap {
-  width: 100%;
-  height: 100%;
-  min-height: 420px;
-  z-index: 1;
-}
-
-/* =========================
-   NÚT NỔI TRÊN BẢN ĐỒ
-   ========================= */
-
-.map-floating-btn {
-  position: absolute;
-  right: 14px;
-  z-index: 500;
-  width: 46px;
-  height: 46px;
-  border: 0;
-  border-radius: 14px;
-  background: #ffffff;
-  color: #0f3b63;
-  box-shadow: 0 4px 14px rgba(0,0,0,.18);
-  font-size: 22px;
-  cursor: pointer;
-}
-
-#mapLayerBtn {
-  top: 16px;
-}
-
-.map-gps-btn {
-  top: 70px;
-  color: #0875e1;
-}
-
-/* =========================
-   THẺ CÔNG TRÌNH
-   ========================= */
-
-.map-feature-card {
-  position: relative;
-  z-index: 20;
-  margin: -74px 14px 14px;
-  padding: 16px;
-  border-radius: 18px;
-  background: #082a4a;
-  color: #ffffff;
-  box-shadow: 0 8px 28px rgba(0,0,0,.25);
-}
-
-.map-feature-card.hidden {
-  display: none;
-}
-
-.map-feature-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.map-feature-type {
-  margin-bottom: 5px;
-  color: #60d394;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.map-feature-name {
-  font-size: 19px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-#mapFeatureClose {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  background: transparent;
-  color: #ffffff;
-  font-size: 22px;
-  cursor: pointer;
-}
-
-.map-feature-summary {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,.14);
-  color: #dbeafe;
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.map-detail-btn {
-  width: 100%;
-  height: 44px;
-  margin-top: 14px;
-  border: 0;
-  border-radius: 12px;
-  background: #0875e1;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-/* =========================
-   TRẠNG THÁI
-   ========================= */
-
-.map-ai-status {
-  margin: 0;
-  padding: 10px 14px;
-  background: #ecfdf5;
-  color: #15803d;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-/* =========================
-   LEAFLET
-   ========================= */
-
-.map-container .leaflet-control-zoom {
-  margin-top: 14px;
-  margin-left: 14px;
-  border: 0;
-  box-shadow: 0 3px 12px rgba(0,0,0,.18);
-}
-
-.map-container .leaflet-control-zoom a {
-  width: 38px;
-  height: 38px;
-  line-height: 38px;
-  color: #0f3b63;
-  font-weight: 700;
-}
-
-/* =========================
-   MOBILE
-   ========================= */
-
-@media (max-width: 600px) {
-
-  .map-ai-header {
-    height: 56px;
-  }
-
-  .map-ai-header strong {
-    font-size: 15px;
-  }
-
-  .map-container {
-    height: 58vh;
-    min-height: 430px;
-  }
-
-  #aiMap {
-    min-height: 430px;
-  }
-
-  .map-feature-card {
-    margin-top: -82px;
-  }
-
-}
-
-/* =========================
-   DESKTOP
-   ========================= */
-
-@media (min-width: 601px) {
-
-  .map-ai-panel {
-    max-width: 900px;
-    margin: 0 auto;
-  }
-
-  .map-container {
-    height: 600px;
-  }
-
-}
- /* ========================================
-   BIỂU TƯỢNG CÔNG TRÌNH THỦY LỢI
-   ======================================== */
-
-.thuyloi-cong-trinh-icon {
-    background: transparent !important;
-    border: none !important;
-}
-
-.thuyloi-pin {
-    position: relative;
-    width: 42px;
-    height: 52px;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
-}
-
-.thuyloi-pin-icon {
-    width: 36px;
-    height: 36px;
-
-    margin-top: 1px;
-
-    border-radius: 50% 50% 50% 0;
-
-    transform: rotate(-45deg);
-
-    background: var(--pin-color);
-
-    border: 3px solid #ffffff;
-
-    display: flex;
-    justify-content: center;
-    align-items: center;
-
-    color: #ffffff;
-
-    font-size: 19px;
-    font-weight: 700;
-}
-
-.thuyloi-pin-icon::first-letter {
-    transform: rotate(45deg);
-}
-
-.thuyloi-pin-icon {
-    text-shadow: 0 1px 2px rgba(0,0,0,.25);
-}
-
-.thuyloi-pin-icon {
-    line-height: 1;
-}
-
-.thuyloi-pin-tail {
-    position: absolute;
-
-    top: 35px;
-
-    width: 0;
-    height: 0;
-
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 12px solid var(--pin-color);
-} 
-/* =====================================================
-   POPUP BẢN ĐỒ AI — GIAO DIỆN KỸ THUẬT
-   ===================================================== */
-
-.leaflet-popup-content-wrapper {
-    padding: 0 !important;
-    border-radius: 16px !important;
-    overflow: hidden;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22) !important;
-}
-
-.leaflet-popup-content {
-    margin: 0 !important;
-    width: 280px !important;
-    max-width: 82vw !important;
-}
-
-.leaflet-popup-tip {
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.10);
-}
-
-.map-popup {
-    width: 100%;
-    font-family: Arial, sans-serif;
-    color: #183247;
-    background: #ffffff;
-}
-
-.map-popup-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 13px 14px;
-    background: #0b3153;
-    color: #ffffff;
-}
-
-.map-popup-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255,255,255,0.16);
-    font-size: 19px;
-    flex-shrink: 0;
-}
-
-.map-popup-title {
-    flex: 1;
-    min-width: 0;
-}
-
-.map-popup-title strong {
-    display: block;
-    font-size: 14px;
-    line-height: 1.25;
-    font-weight: 700;
-    word-break: break-word;
-}
-
-.map-popup-type {
-    margin-top: 3px;
-    font-size: 10px;
-    opacity: 0.78;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-
-.map-popup-body {
-    padding: 11px 14px 13px;
-}
-
-.map-popup-row {
-    display: flex;
-    gap: 9px;
-    padding: 7px 0;
-    border-bottom: 1px solid #edf1f4;
-}
-
-.map-popup-row:last-child {
-    border-bottom: none;
-}
-
-.map-popup-row-icon {
-    width: 22px;
-    text-align: center;
-    flex-shrink: 0;
-    font-size: 15px;
-}
-
-.map-popup-row-content {
-    flex: 1;
-    min-width: 0;
-}
-
-.map-popup-label {
-    font-size: 10px;
-    color: #82909b;
-    margin-bottom: 2px;
-}
-
-.map-popup-value {
-    font-size: 12px;
-    line-height: 1.4;
-    color: #17364c;
-    font-weight: 600;
-    word-break: break-word;
-}
-
-.map-popup-description {
-    margin-top: 8px;
-    padding: 9px 10px;
-    background: #f4f8fa;
-    border-radius: 9px;
-    font-size: 11px;
-    line-height: 1.45;
-    color: #526673;
-}
-
-.map-popup-chainage {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-radius: 7px;
-    background: #e8f4f7;
-    color: #126276;
-    font-size: 11px;
-    font-weight: 700;
-}
-
-/* Tối ưu điện thoại */
-
-@media (max-width: 600px) {
+       POPUP NÂNG CẤP – HIỆN ĐẠI, CÂN XỨNG, TỐI ƯU MOBILE
+       ========================================================= */
+    .tl-popup-container {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      width: 100%;
+      max-width: 340px;
+      min-width: 260px;
+      background: #ffffff;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+      line-height: 1.5;
+      color: #0b2a44;
+      transition: all 0.2s ease;
+    }
+
+    .tl-popup-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px 12px;
+      background: var(--header-bg, #0b3153);
+      color: #ffffff;
+    }
+
+    .tl-popup-icon {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+    }
+
+    .tl-popup-title-group {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tl-popup-name {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.25;
+      word-break: break-word;
+      letter-spacing: 0.2px;
+    }
+
+    .tl-popup-badge {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      opacity: 0.75;
+      background: rgba(255, 255, 255, 0.12);
+      padding: 2px 10px;
+      border-radius: 12px;
+    }
+
+    .tl-popup-body {
+      padding: 12px 16px 14px;
+    }
+
+    /* Trạng thái */
+    .tl-popup-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #f1f6fa;
+      margin-bottom: 12px;
+      border-left: 4px solid var(--status-color, #10b981);
+    }
+
+    .tl-popup-status-dot {
+      width: 12px;
+      height: 12px;
+      min-width: 12px;
+      border-radius: 50%;
+      background: var(--status-color, #10b981);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+    }
+
+    .tl-popup-status-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0b2a44;
+    }
+
+    .tl-popup-status-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #6b7f8f;
+      letter-spacing: 0.3px;
+    }
+
+    /* Grid thông tin */
+    .tl-popup-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .tl-popup-item {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 8px 10px;
+      border: 1px solid #edf2f6;
+    }
+
+    .tl-popup-item-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #78909c;
+      letter-spacing: 0.3px;
+    }
+
+    .tl-popup-item-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0b2a44;
+      margin-top: 2px;
+      word-break: break-word;
+    }
+
+    .tl-popup-item-value .highlight {
+      color: #0875e1;
+    }
+
+    /* Nút Google Maps */
+    .tl-popup-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .tl-popup-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 11px 0;
+      border: 0;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      color: #ffffff;
+      background: var(--btn-bg, #1565C0);
+      box-shadow: 0 3px 10px rgba(21, 101, 192, 0.20);
+    }
+
+    .tl-popup-btn:active {
+      transform: scale(0.97);
+    }
+
+    .tl-popup-btn-outline {
+      background: transparent;
+      color: #1565C0;
+      box-shadow: none;
+      border: 2px solid #1565C0;
+    }
+
+    .tl-popup-btn-outline:active {
+      background: #eef6ff;
+    }
+
+    /* Nút xem chi tiết (toggle) */
+    .tl-popup-toggle {
+      width: 100%;
+      padding: 9px 0;
+      border: 0;
+      border-radius: 12px;
+      background: #eef6ff;
+      color: #1565C0;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 4px;
+    }
+
+    .tl-popup-toggle:active {
+      background: #dbeafe;
+    }
+
+    /* Vùng chi tiết mở rộng */
+    .tl-popup-detail {
+      display: none;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e9edf2;
+    }
+
+    .tl-popup-detail.open {
+      display: block;
+    }
+
+    .tl-popup-detail-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #78909c;
+      letter-spacing: 0.4px;
+      margin-bottom: 6px;
+    }
+
+    .tl-popup-detail-content {
+      padding: 10px 12px;
+      background: #f8fafc;
+      border-radius: 12px;
+      border: 1px solid #e9edf2;
+      font-size: 12px;
+      line-height: 1.55;
+      color: #334e66;
+      max-height: 180px;
+      overflow-y: auto;
+      word-break: break-word;
+    }
+
+    .tl-popup-detail-content table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    .tl-popup-detail-content table td,
+    .tl-popup-detail-content table th {
+      padding: 4px 6px;
+      border: 1px solid #dce3ea;
+      text-align: left;
+    }
+
+    .tl-popup-detail-content table th {
+      background: #eef3f7;
+      font-weight: 700;
+    }
+
+    .tl-popup-footer {
+      padding: 8px 16px 10px;
+      background: #f8fafc;
+      border-top: 1px solid #edf2f6;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 600;
+      color: #8a9aa8;
+      letter-spacing: 0.2px;
+    }
+
+    /* ===== ĐIỀU CHỈNH POPUP TRÊN MOBILE ===== */
+    @media (max-width: 600px) {
+      .tl-popup-container {
+        max-width: 280px;
+        min-width: 220px;
+        border-radius: 16px;
+      }
+
+      .tl-popup-header {
+        padding: 12px 14px 10px;
+        gap: 10px;
+      }
+
+      .tl-popup-icon {
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        font-size: 18px;
+        border-radius: 12px;
+      }
+
+      .tl-popup-name {
+        font-size: 13px;
+      }
+
+      .tl-popup-body {
+        padding: 10px 12px 12px;
+      }
+
+      .tl-popup-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .tl-popup-item {
+        padding: 6px 8px;
+      }
+
+      .tl-popup-item-value {
+        font-size: 11px;
+      }
+
+      .tl-popup-status {
+        padding: 8px 10px;
+        gap: 8px;
+      }
+
+      .tl-popup-status-text {
+        font-size: 12px;
+      }
+
+      .tl-popup-btn {
+        padding: 10px 0;
+        font-size: 12px;
+        border-radius: 12px;
+      }
+
+      .tl-popup-toggle {
+        font-size: 11px;
+        padding: 8px 0;
+      }
+
+      .tl-popup-detail-content {
+        font-size: 11px;
+        padding: 8px 10px;
+        max-height: 140px;
+      }
+
+      .tl-popup-footer {
+        font-size: 8px;
+        padding: 6px 12px 8px;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .tl-popup-container {
+        max-width: 240px;
+        min-width: 180px;
+        border-radius: 14px;
+      }
+
+      .tl-popup-header {
+        padding: 10px 10px 8px;
+        gap: 8px;
+      }
+
+      .tl-popup-icon {
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        font-size: 15px;
+      }
+
+      .tl-popup-name {
+        font-size: 12px;
+      }
+
+      .tl-popup-badge {
+        font-size: 8px;
+        padding: 1px 8px;
+      }
+
+      .tl-popup-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+      }
+
+      .tl-popup-item {
+        padding: 4px 6px;
+      }
+
+      .tl-popup-item-value {
+        font-size: 10px;
+      }
+
+      .tl-popup-status {
+        padding: 6px 8px;
+      }
+
+      .tl-popup-status-text {
+        font-size: 11px;
+      }
+
+      .tl-popup-btn {
+        font-size: 11px;
+        padding: 8px 0;
+      }
+    }
+
+    /* =========================================================
+       LEAFLET POPUP WRAPPER – XÓA PADDING MẶC ĐỊNH
+       ========================================================= */
+    .leaflet-popup-content-wrapper {
+      padding: 0 !important;
+      border-radius: 20px !important;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.20) !important;
+    }
 
     .leaflet-popup-content {
-        width: 270px !important;
-        max-width: 80vw !important;
+      margin: 0 !important;
+      width: auto !important;
+      min-width: 180px;
+      max-width: 92vw !important;
     }
 
-    .map-popup-header {
-        padding: 12px;
+    .leaflet-popup-tip {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
     }
 
-    .map-popup-body {
-        padding: 9px 12px 11px;
+    /* =========================================================
+       ẨN CÁC CLASS CŨ (nếu có)
+       ========================================================= */
+    .map-popup,
+    .map-popup-header,
+    .map-popup-icon,
+    .map-popup-title,
+    .map-popup-body,
+    .map-popup-row,
+    .map-popup-label,
+    .map-popup-value,
+    .map-popup-description,
+    .map-popup-chainage {
+      /* giữ lại để không ảnh hưởng, nhưng không dùng nữa */
     }
 
-    .map-popup-title strong {
-        font-size: 13px;
+    @media (max-width: 760px) {
+      main {
+        padding-left: 9px;
+        padding-right: 9px;
+      }
+      .header {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+      }
+      .compose {
+        padding-left: max(10px, env(safe-area-inset-left));
+        padding-right: max(10px, env(safe-area-inset-right));
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+      }
+      .messages {
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+      }
     }
-
-    .map-popup-value {
-        font-size: 11.5px;
+    @media (max-width: 480px) {
+      .header-inner {
+        gap: 9px;
+      }
+      .logo {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-size: 23px;
+      }
+      .brand h1 {
+        font-size: 18px;
+      }
+      .brand p {
+        font-size: 10.5px;
+      }
+      .status {
+        font-size: 10px;
+        padding: 5px 7px;
+      }
+      .hero {
+        padding: 17px;
+      }
+      .hero h2 {
+        font-size: 21px;
+      }
+      .quick {
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+      .quick button {
+        min-height: 44px;
+        font-size: 12px;
+      }
+      .messages {
+        height: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+        padding: 14px 11px;
+      }
+      .bubble {
+        max-width: 94%;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      .compose {
+        padding-top: 9px;
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+      }
+      textarea {
+        height: 50px;
+      }
+      .send {
+        width: 52px;
+        min-width: 52px;
+        height: 52px;
+      }
+      .field-report-types {
+        grid-template-columns: 1fr 1fr;
+      }
     }
-}
-</style>
+    @media (max-width: 380px) {
+      .brand h1 {
+        font-size: 17px;
+      }
+      .status {
+        font-size: 9px;
+      }
+      .hero h2 {
+        font-size: 19px;
+      }
+      .bubble {
+        font-size: 16px;
+      }
+      .quick button {
+        font-size: 11px;
+      }
+      .messages {
+        min-height: 290px;
+      }
+    }
+  </style>
 </head>
 <body>
   <header class="header">
     <div class="header-inner">
       <div class="logo">💧</div>
-      <div class="brand"><h1>THỦY LỢI AI</h1><p>Trợ lý AI chuyên ngành Thủy lợi</p></div>
+      <div class="brand">
+        <h1>THỦY LỢI AI</h1>
+        <p>Trợ lý AI chuyên ngành Thủy lợi</p>
+      </div>
       <div class="status"><span id="dot" class="dot"></span><span id="status">Đang kiểm tra...</span></div>
     </div>
   </header>
@@ -877,161 +1666,55 @@
     <section class="card chat">
       <div class="chat-title"><span>💬 Trao đổi với THỦY LỢI AI</span><button class="clear" id="clear">Xóa</button></div>
       <div class="messages" id="messages">
-        <div class="msg assistant"><div class="bubble"><strong>Chào bạn! 🌿</strong><p>Tôi là trợ lý AI chuyên ngành Thủy lợi. Hãy đặt câu hỏi hoặc gửi ảnh hiện trường để tôi phân tích.</p></div></div>
+        <div class="msg assistant">
+          <div class="bubble"><strong>Chào bạn! 🌿</strong>
+            <p>Tôi là trợ lý AI chuyên ngành Thủy lợi. Hãy đặt câu hỏi hoặc gửi ảnh hiện trường để tôi phân tích.</p>
+          </div>
+        </div>
       </div>
       <div class="typing" id="typing">⏳ Đang tra cứu hồ sơ và phân tích...</div>
       <div class="field-report-entry">
-
-      <div class="ai-action-buttons">
-      
-      <button id="fieldReportBtn" type="button">
-      📋 Báo cáo hiện trường
-      </button>
-      
-      <button id="mapAiBtn" type="button">
-      🗺️ BẢN ĐỒ AI
-      </button>
-      
-      </div>   
-      </div>
-    <div id="mapAiPanel" class="map-ai-panel hidden">
-
-  <div class="map-ai-header">
-    <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
-    <button id="closeMapAi" type="button">×</button>
-  </div>
-
-  <!-- TÌM KIẾM -->
-  <div class="map-search-box">
-    <span class="map-search-icon">⌕</span>
-
-    <input
-      id="mapSearch"
-      type="search"
-      placeholder="Tìm công trình..."
-      autocomplete="off"
-    >
-
-    <button
-      id="mapLocateBtn"
-      type="button"
-      title="Vị trí hiện tại"
-    >
-      ⌖
-    </button>
-  </div>
-
-  <!-- BỘ LỌC -->
-  <div class="map-filter-scroll">
-
-    <button class="map-filter active" data-filter="all">
-      Tất cả
-    </button>
-
-    <button class="map-filter" data-filter="hồ">
-      💧 Hồ chứa
-    </button>
-
-    <button class="map-filter" data-filter="trạm bơm">
-      🔵 Trạm bơm
-    </button>
-
-    <button class="map-filter" data-filter="đập">
-      🟠 Đập dâng
-    </button>
-
-    <button class="map-filter" data-filter="cống">
-      🔷 Cống
-    </button>
-
-    <button class="map-filter" data-filter="kênh">
-      ━ Kênh
-    </button>
-
-  </div>
-
-  <!-- BẢN ĐỒ -->
-  <div class="map-container">
-
-    <div id="aiMap"></div>
-
-    <button
-      id="mapLayerBtn"
-      class="map-floating-btn"
-      type="button"
-      title="Lớp bản đồ"
-    >
-      ▱
-    </button>
-
-    <button
-      id="mapGpsBtn"
-      class="map-floating-btn map-gps-btn"
-      type="button"
-      title="Vị trí của tôi"
-    >
-      ➤
-    </button>
-
-  </div>
-
-  <!-- THẺ THÔNG TIN CÔNG TRÌNH -->
-  <div id="mapFeatureCard" class="map-feature-card hidden">
-
-    <div class="map-feature-top">
-
-      <div>
-
-        <div
-          id="mapFeatureType"
-          class="map-feature-type"
-        >
-          💧 CÔNG TRÌNH
+        <div class="ai-action-buttons">
+          <button id="fieldReportBtn" type="button">📋 Báo cáo hiện trường</button>
+          <button id="mapAiBtn" type="button">🗺️ BẢN ĐỒ AI</button>
         </div>
-
-        <div
-          id="mapFeatureName"
-          class="map-feature-name"
-        >
-          Chưa chọn công trình
-        </div>
-
       </div>
-
-      <button
-        id="mapFeatureClose"
-        type="button"
-      >
-        ×
-      </button>
-
-    </div>
-
-    <div
-      id="mapFeatureSummary"
-      class="map-feature-summary"
-    >
-      Chọn một công trình trên bản đồ để xem thông tin.
-    </div>
-
-    <button
-      id="mapFeatureDetail"
-      class="map-detail-btn"
-      type="button"
-    >
-      Xem chi tiết
-    </button>
-
-  </div>
-
-  <div
-    id="mapAiStatus"
-    class="map-ai-status"
-  >
-    Đang chuẩn bị bản đồ...
-  </div>
-
-</div>
+      <div id="mapAiPanel" class="map-ai-panel hidden">
+        <div class="map-ai-header">
+          <strong>🗺️ BẢN ĐỒ HỆ THỐNG THỦY LỢI</strong>
+          <button id="closeMapAi" type="button">×</button>
+        </div>
+        <div class="map-search-box">
+          <span class="map-search-icon">⌕</span>
+          <input id="mapSearch" type="search" placeholder="Tìm công trình..." autocomplete="off">
+          <button id="mapLocateBtn" type="button" title="Vị trí hiện tại">⌖</button>
+        </div>
+        <div class="map-filter-scroll">
+          <button class="map-filter active" data-filter="all">Tất cả</button>
+          <button class="map-filter" data-filter="hồ">💧 Hồ chứa</button>
+          <button class="map-filter" data-filter="trạm bơm">🔵 Trạm bơm</button>
+          <button class="map-filter" data-filter="đập">🟠 Đập dâng</button>
+          <button class="map-filter" data-filter="cống">🔷 Cống</button>
+          <button class="map-filter" data-filter="kênh">━ Kênh</button>
+        </div>
+        <div class="map-container">
+          <div id="aiMap"></div>
+          <button id="mapLayerBtn" class="map-floating-btn" type="button" title="Lớp bản đồ">▱</button>
+          <button id="mapGpsBtn" class="map-floating-btn map-gps-btn" type="button" title="Vị trí của tôi">➤</button>
+        </div>
+        <div id="mapFeatureCard" class="map-feature-card hidden">
+          <div class="map-feature-top">
+            <div>
+              <div id="mapFeatureType" class="map-feature-type">💧 CÔNG TRÌNH</div>
+              <div id="mapFeatureName" class="map-feature-name">Chưa chọn công trình</div>
+            </div>
+            <button id="mapFeatureClose" type="button">×</button>
+          </div>
+          <div id="mapFeatureSummary" class="map-feature-summary">Chọn một công trình trên bản đồ để xem thông tin.</div>
+          <button id="mapFeatureDetail" class="map-detail-btn" type="button">Xem chi tiết</button>
+        </div>
+        <div id="mapAiStatus" class="map-ai-status">Đang chuẩn bị bản đồ...</div>
+      </div>
 
       <div id="fieldReportPanel" class="field-report-panel hidden">
         <div class="field-report-title">
@@ -1047,28 +1730,18 @@
           <button type="button" data-report-type="dry_area">🌾<span>Diện tích khô</span></button>
           <button type="button" data-report-type="water_level">💧<span>Mực nước</span></button>
         </div>
-
         <input id="fieldReportImage" type="file" accept="image/*" capture="environment" hidden>
-       
         <button id="fieldReportCamera" class="field-report-camera" type="button">📷 Chụp ảnh hiện trường</button>
-
         <div id="fieldReportPreview" class="field-report-preview" hidden></div>
-
         <textarea id="fieldReportQuestion" class="field-report-question" placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"></textarea>
-
-        <button id="createFieldReport" class="create-field-report" type="button" disabled>
-          📄 Phân tích và lập báo cáo
-        </button>
-
+        <button id="createFieldReport" class="create-field-report" type="button" disabled>📄 Phân tích và lập báo cáo</button>
         <div id="fieldReportStatus" class="field-report-status" hidden></div>
-
         <div id="reportEditor" hidden style="margin-top: 12px;">
           <label for="reportContent" style="font-weight: 600; font-size: 14px;">📝 Chỉnh sửa nội dung báo cáo</label>
           <textarea id="reportContent" rows="10" placeholder="Bạn có thể chỉnh sửa toàn bộ nội dung dự thảo báo cáo tại đây..." style="width:100%; height:420px; min-height:300px; max-height:520px; overflow-y:auto; overflow-x:hidden; resize:vertical; box-sizing:border-box; border:1px solid var(--border); border-radius:10px; padding:12px; font-size:14px; line-height:1.6; margin-top:4px;"></textarea>
           <label for="reviewerName" style="font-weight: 600; font-size: 14px; margin-top: 8px; display: block;">👤 Người kiểm tra</label>
           <input id="reviewerName" type="text" placeholder="Nhập họ tên người kiểm tra" style="width:100%; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:14px; margin-top:4px;">
         </div>
-
         <div id="pdfActions" class="pdf-actions" hidden>
           <button id="exportFieldReportPDF" class="pdf-main-button" type="button">📄 XUẤT BÁO CÁO PDF</button>
           <div id="pdfStatus" class="pdf-status" hidden></div>
@@ -1094,9 +1767,6 @@
     <div class="footer">THỦY LỢI AI • FastAPI • Gemini File Search</div>
   </main>
 
-  <!-- ============================================================ -->
-  <!-- SCRIPT CHÍNH – ĐÓNG DẤU ẢNH + QR + GỬI ẢNH RÕ RÀNG       -->
-  <!-- ============================================================ -->
   <script>
     (function() {
       'use strict';
@@ -1124,7 +1794,7 @@
       const createFieldReport = document.getElementById('createFieldReport');
       const fieldReportStatus = document.getElementById('fieldReportStatus');
       const reportTypeButtons = document.querySelectorAll('[data-report-type]');
-      // ===== BẢN ĐỒ AI - DOM REFS =====
+
       const mapAiBtn = document.getElementById('mapAiBtn');
       const mapAiPanel = document.getElementById('mapAiPanel');
       const closeMapAi = document.getElementById('closeMapAi');
@@ -1132,29 +1802,21 @@
       const mapAiStatus = document.getElementById('mapAiStatus');
       const mapSearch = document.getElementById('mapSearch');
       if (mapSearch) {
-    mapSearch.addEventListener(
-        'input',
-        function() {
+        mapSearch.addEventListener('input', function() {
+          searchAiMap(mapSearch.value);
+        });
+        mapSearch.addEventListener('keydown', function(event) {
+          if (event.key === 'Enter') {
+            event.preventDefault();
             searchAiMap(mapSearch.value);
-        }
-    );
+          }
+        });
+      }
 
-    mapSearch.addEventListener(
-        'keydown',
-        function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                searchAiMap(mapSearch.value);
-            }
-        }
-    );
-}
-      // ===== BẢN ĐỒ AI STATE =====
       let aiMap = null;
       let aiMapLayer = null;
       let aiMapLoaded = false;
 
-      // ===== STATE =====
       window.preparedImageBlob = null;
       window.preparedImageName = 'image.jpg';
       window.reportTitle = '';
@@ -1166,7 +1828,6 @@
       let currentAddress = '';
       let qrAvailable = false;
 
-      // ===== HELPERS =====
       function esc(s) {
         return String(s ?? '').replace(/[&<>"']/g, function(c) {
           return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
@@ -1263,7 +1924,6 @@
         }).join('');
       }
 
-      // ===== GPS & ĐỊA CHỈ =====
       function getLocation() {
         return new Promise((resolve) => {
           if (navigator.geolocation) {
@@ -1275,106 +1935,71 @@
               (err) => {
                 console.warn('Geolocation error:', err.message);
                 resolve(null);
-              },
-              { timeout: 10000, maximumAge: 60000 }
+              }, { timeout: 10000, maximumAge: 60000 }
             );
           } else {
             resolve(null);
           }
         });
       }
-      // ======================================================
-// GPS TƯƠI - ĐỘ CHÍNH XÁC CAO
-// ======================================================
-async function getFreshLocation() {
-    if (!navigator.geolocation) {
-        return null;
-    }
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
+      async function getFreshLocation() {
+        if (!navigator.geolocation) {
+          return null;
+        }
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
             const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    resolve,
-                    reject,
-                    {
-                        enableHighAccuracy: true,
-                        maximumAge: 0,
-                        timeout: 20000
-                    }
-                );
+              navigator.geolocation.getCurrentPosition(
+                resolve,
+                reject, {
+                  enableHighAccuracy: true,
+                  maximumAge: 0,
+                  timeout: 20000
+                }
+              );
             });
-
             return {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                accuracy: position.coords.accuracy
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy
             };
-
-        } catch (error) {
-            console.warn(
-                `GPS attempt ${attempt}/3 failed:`,
-                error.message
-            );
-
+          } catch (error) {
+            console.warn(`GPS attempt ${attempt}/3 failed:`, error.message);
             if (attempt === 3) {
-                return null;
+              return null;
             }
+          }
         }
-    }
+        return null;
+      }
 
-    return null;
-}
-// ======================================================
-// KIỂM TRA GPS VỚI TUYẾN KML/KMZ
-// ======================================================
-async function checkGpsAgainstKml(locationOverride = null) {
-    try {
-        const location = locationOverride || await getLocation();
-
-        if (!location) {
-            return {
-                success: false,
-                message: "Không lấy được vị trí GPS."
-            };
-        }
-      
-        const { lat, lng } = location;
-
-        const response = await fetch(
-            `/kml-gps-test?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}`
-        );
-
-        if (!response.ok) {
+      async function checkGpsAgainstKml(locationOverride = null) {
+        try {
+          const location = locationOverride || await getLocation();
+          if (!location) {
+            return { success: false, message: "Không lấy được vị trí GPS." };
+          }
+          const { lat, lng } = location;
+          const response = await fetch(`/kml-gps-test?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}`);
+          if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          if (!data.success) {
+            return { success: false, message: data.message || "Không kiểm tra được GPS với tuyến." };
+          }
+          return data;
+        } catch (error) {
+          console.error("KML GPS ERROR:", error);
+          return { success: false, message: "Lỗi kiểm tra GPS với tuyến." };
         }
+      }
 
-        const data = await response.json();
-
-        if (!data.success) {
-            return {
-                success: false,
-                message: data.message || "Không kiểm tra được GPS với tuyến."
-            };
-        }
-
-        return data;
-
-    } catch (error) {
-        console.error("KML GPS ERROR:", error);
-
-        return {
-            success: false,
-            message: "Lỗi kiểm tra GPS với tuyến."
-        };
-    }
-}
       async function reverseGeocode(lat, lng) {
         try {
           const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
-          const response = await fetch(url, {
-            headers: { 'User-Agent': 'ThuyLoiAI/1.0' }
-          });
+          const response = await fetch(url, { headers: { 'User-Agent': 'ThuyLoiAI/1.0' } });
           if (!response.ok) return '';
           const data = await response.json();
           if (data && data.display_name) {
@@ -1387,7 +2012,6 @@ async function checkGpsAgainstKml(locationOverride = null) {
         }
       }
 
-      // ===== TẠO QR CODE =====
       function generateQRCanvas(text, size) {
         return new Promise((resolve) => {
           const canvas = document.createElement('canvas');
@@ -1410,7 +2034,6 @@ async function checkGpsAgainstKml(locationOverride = null) {
         });
       }
 
-      // ===== HÀM ĐÓNG DẤU ẢNH =====
       async function prepareImageWithStamp(file) {
         const img = await new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -1439,40 +2062,25 @@ async function checkGpsAgainstKml(locationOverride = null) {
         ctx.drawImage(img, 0, 0, width, height);
 
         const location = await getFreshLocation();
+        let address = '';
+        let kmlGpsResult = null;
 
-let address = '';
-let kmlGpsResult = null;
-
-if (location) {
-    currentLocation = location;
-    window.currentLocation = location;
-    window.gpsAccuracy = location.accuracy;
-    address = await reverseGeocode(
-        location.lat,
-        location.lng
-    );
-
-    currentAddress = address;
-
-    qrAvailable = true;
-
-    // Kiểm tra GPS với tuyến KML/KMZ
-    kmlGpsResult = await checkGpsAgainstKml(location);
-
-    // Lưu kết quả để dùng cho ảnh và báo cáo
-    window.kmlGpsResult = kmlGpsResult;
-
-} else {
-    currentLocation = null;
-    window.currentLocation = null;
-    currentAddress = '';
-    qrAvailable = false;
-
-    window.kmlGpsResult = {
-        success: false,
-        message: "Không có GPS để kiểm tra tuyến."
-    };
-}
+        if (location) {
+          currentLocation = location;
+          window.currentLocation = location;
+          window.gpsAccuracy = location.accuracy;
+          address = await reverseGeocode(location.lat, location.lng);
+          currentAddress = address;
+          qrAvailable = true;
+          kmlGpsResult = await checkGpsAgainstKml(location);
+          window.kmlGpsResult = kmlGpsResult;
+        } else {
+          currentLocation = null;
+          window.currentLocation = null;
+          currentAddress = '';
+          qrAvailable = false;
+          window.kmlGpsResult = { success: false, message: "Không có GPS để kiểm tra tuyến." };
+        }
 
         const now = new Date();
         const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -1496,7 +2104,8 @@ if (location) {
           { text: dayOfWeek, size: baseFontSize * 0.9, weight: 'normal', color: '#475569' },
           { text: address || 'Đang cập nhật địa điểm', size: baseFontSize * 0.9, weight: 'normal', color: '#1E293B' },
           { text: 'THỦY LỢI AI', size: baseFontSize * 0.9, weight: 'bold', color: '#0F2742' },
-          { text: (lat && lng) ? `Tọa độ: ${lat.toFixed(6)}°N, ${lng.toFixed(6)}°E` : 'Tọa độ: Chưa xác định', size: baseFontSize * 0.85, weight: 'normal', color: '#64748B' },
+          { text: (lat && lng) ? `Tọa độ: ${lat.toFixed(6)}°N, ${lng.toFixed(6)}°E` : 'Tọa độ: Chưa xác định', size: baseFontSize *
+              0.85, weight: 'normal', color: '#64748B' },
           { text: '© THỦY LỢI AI • Xác thực', size: baseFontSize * 0.75, weight: 'normal', color: '#94A3B8' },
         ];
 
@@ -1574,7 +2183,7 @@ if (location) {
         });
       }
 
-      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
         this.moveTo(x + r, y);
@@ -1590,7 +2199,6 @@ if (location) {
         return this;
       };
 
-      // ===== XỬ LÝ ẢNH CHAT =====
       cameraBtn.addEventListener('click', function() {
         imageInput.click();
       });
@@ -1627,7 +2235,6 @@ if (location) {
         }
       });
 
-      // ===== FIELD REPORT =====
       (function() {
         let selectedReportType = '';
         let fieldReportFile = null;
@@ -1656,1547 +2263,429 @@ if (location) {
           fieldReportPanel.classList.remove('hidden');
           fieldReportPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
-        // ===== BẢN ĐỒ AI - MỞ / ĐÓNG =====
+
         // =====================================================
-// BẢN ĐỒ AI - KHỞI TẠO VÀ TẢI DỮ LIỆU GIS
-// =====================================================
+        // BẢN ĐỒ AI - KHỞI TẠO VÀ TẢI DỮ LIỆU GIS
+        // =====================================================
 
-async function initAiMap() {
+        async function initAiMap() {
+          if (aiMap) {
+            setTimeout(function() { aiMap.invalidateSize(); }, 200);
+            return;
+          }
+          if (typeof L === 'undefined') {
+            mapAiStatus.textContent = '❌ Không tải được thư viện bản đồ.';
+            return;
+          }
+          try {
+            mapAiStatus.textContent = '⏳ Đang khởi tạo bản đồ...';
+            aiMap = L.map('aiMap', { zoomControl: true, preferCanvas: true });
+            L.tileLayer(
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19,
+                attribution: 'Tiles © Esri' }
+            ).addTo(aiMap);
+            aiMap.setView([15.75, 108.30], 9);
+            aiMapLayer = L.layerGroup().addTo(aiMap);
 
-    // Bản đồ đã được tạo rồi thì chỉ cập nhật kích thước
-    if (aiMap) {
-        setTimeout(function() {
-            aiMap.invalidateSize();
-        }, 200);
-        return;
-    }
+            function updateGISZoomStyle() {
+              if (!aiMapLayer) return;
+              const zoom = aiMap.getZoom();
+              let lineWeight, lineOpacity;
+              if (zoom <= 8) { lineWeight = 1;
+                lineOpacity = 0.45; } else if (zoom <= 10) { lineWeight = 1.5;
+                lineOpacity = 0.60; } else if (zoom <= 12) { lineWeight = 2;
+                lineOpacity = 0.75; } else { lineWeight = 3;
+                lineOpacity = 0.90; }
+              aiMapLayer.eachLayer(function(layer) {
+                if (layer.setStyle) {
+                  layer.setStyle({ weight: lineWeight, opacity: lineOpacity });
+                }
+              });
+            }
+            aiMap.on('zoomend', updateGISZoomStyle);
+            updateGISZoomStyle();
 
-    // Kiểm tra Leaflet
-    if (typeof L === 'undefined') {
-        mapAiStatus.textContent =
-            '❌ Không tải được thư viện bản đồ.';
-        return;
-    }
+            mapAiStatus.textContent = '⏳ Đang tải dữ liệu hệ thống thủy lợi...';
+            const response = await fetch('/gis/data');
+            if (!response.ok) {
+              throw new Error('Không thể truy cập /gis/data (' + response.status + ')');
+            }
+            const result = await response.json();
+            if (!result.success) {
+              throw new Error(result.message || 'API GIS trả về lỗi.');
+            }
+            const geojson = result.geojson;
+            if (!geojson || !Array.isArray(geojson.features)) {
+              throw new Error('Dữ liệu GeoJSON không hợp lệ.');
+            }
 
-    try {
+            // ===== CÁC HÀM XỬ LÝ CÔNG TRÌNH =====
+            window.getCongTrinhType = function(properties, geometry) {
+              const p = properties || {};
+              const text = [p.name, p.description].filter(Boolean).join(' ').toLowerCase();
+              const geometryType = geometry?.type || p.geometry_type || '';
+              if (text.includes('cống') || text.includes('cong ') || text.includes('cống tưới') || text.includes('cống tiêu'))
+                return 'cong';
+              if (text.includes('trạm bơm') || text.includes('tram bom') || text.includes('tb ')) return 'tram_bom';
+              if (text.includes('hồ ') || text.startsWith('hồ') || text.includes('ho chua') || text.includes('hồ chứa'))
+                return 'ho';
+              if (text.includes('đập ') || text.startsWith('đập') || text.includes('dap ')) return 'dap';
+              if (text.includes('kênh') || text.includes('kenh ') || text.includes('kênh chính') || text.includes('kênh nhánh'))
+                return 'kenh';
+              if (text.includes('khu tưới') || text.includes('khu tuoi')) return 'khu_tuoi';
+              if (text.includes('tràn') || text.includes('tran ')) return 'tran';
+              if (text.includes('cầu ') || text.startsWith('cầu')) return 'cau';
+              if (text.includes('ống') || text.includes('ong ')) return 'ong';
+              if (geometryType === 'LineString') return 'kenh';
+              return 'khac';
+            };
 
-        mapAiStatus.textContent =
-            '⏳ Đang khởi tạo bản đồ...';
+            window.getCongTrinhLabel = function(type) {
+              const labels = { cong: 'CỐNG', tram_bom: 'TRẠM BƠM', ho: 'HỒ', dap: 'ĐẬP', tran: 'TRÀN', cau: 'CẦU', ong: 'ĐƯỜNG ỐNG',
+                khu_tuoi: 'KHU TƯỚI', kenh: 'KÊNH', khac: 'CÔNG TRÌNH' };
+              return labels[type] || 'CÔNG TRÌNH';
+            };
 
-       // 1. Tạo bản đồ
-aiMap = L.map('aiMap', {
-    zoomControl: true,
-    preferCanvas: true
-});
+            function getCongTrinhIcon(type) {
+              const icons = {
+                ho: { icon: '💧', color: '#1683ff', label: 'Hồ chứa' },
+                tram_bom: { icon: '⚙', color: '#1683ff', label: 'Trạm bơm' },
+                dap: { icon: '▥', color: '#ff7a00', label: 'Đập dâng' },
+                cong: { icon: '▣', color: '#8e44ad', label: 'Cống' },
+                kenh: { icon: '⌁', color: '#16a34a', label: 'Kênh' },
+                tran: { icon: '≋', color: '#f59e0b', label: 'Tràn' },
+                cau: { icon: '╬', color: '#795548', label: 'Cầu' },
+                ong: { icon: '●', color: '#dc2626', label: 'Đường ống' }
+              };
+              const cfg = icons[type] || { icon: '●', color: '#1677ff', label: 'Công trình' };
+              return L.divIcon({
+                className: 'thuyloi-cong-trinh-icon',
+                html: `
+                    <div class="thuyloi-pin" style="--pin-color:${cfg.color};" title="${cfg.label}">
+                      <div class="thuyloi-pin-icon">${cfg.icon}</div>
+                      <div class="thuyloi-pin-tail"></div>
+                    </div>
+                  `,
+                iconSize: [42, 52],
+                iconAnchor: [21, 50],
+                popupAnchor: [0, -48]
+              });
+            }
 
-// 2. Bản đồ nền vệ tinh Esri
-L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    {
-        maxZoom: 19,
-        attribution: 'Tiles © Esri'
-    }
-).addTo(aiMap);
+            // =====================================================
+            // TẠO POPUP HIỆN ĐẠI – NÂNG CẤP
+            // =====================================================
+            function buildModernPopup(feature, layer) {
+              const p = feature.properties || {};
+              const type = getCongTrinhType(p, feature.geometry);
+              const label = getCongTrinhLabel(type);
+              const name = p.name || p.Name || p.NAME || 'Chưa xác định';
+              const description = p.description || '';
+              const code = p.code || p.Code || p.ma || p.Ma || p.id || p.ID || '';
+              const station = p.station || p.Station || p.ly_trinh || p.LyTrinh || p.lyTrinh || '';
 
-        // 3. Vị trí ban đầu
-        aiMap.setView(
-            [15.75, 108.30],
-            9
-        );
+              const popupIconMap = {
+                ho: '💧',
+                tram_bom: '⚙️',
+                dap: '🟠',
+                dap_dang: '🟠',
+                kenh: '〰️',
+                cong: '◆',
+                tran: '🌊',
+                cau: '🌉',
+                ong: '◉',
+                khu_tuoi: '🌱',
+                khac: '📍'
+              };
+              const iconChar = popupIconMap[type] || '📍';
+              const headerColor = {
+                ho: '#0b3153',
+                tram_bom: '#0a4b6e',
+                dap: '#b4511a',
+                dap_dang: '#b4511a',
+                kenh: '#0f6b6b',
+                cong: '#3d3d8a',
+                tran: '#0f6b6b',
+                cau: '#5d4037',
+                ong: '#4b5e6b',
+                khu_tuoi: '#2e7d32',
+                khac: '#2c3e50'
+              } [type] || '#0b3153';
 
-        // 4. Lớp dữ liệu GIS
-        aiMapLayer = L.layerGroup().addTo(aiMap);
-      // ==========================================
-// TỰ ĐỘNG ĐIỀU CHỈNH GIS THEO MỨC ZOOM
-// ==========================================
+              const statusVal = p.status || p.Status || p.trang_thai || p.TrangThai || p.tinh_trang || p.TinhTrang ||
+              'Chưa cập nhật';
+              const statusColor = statusVal.toLowerCase().includes('tốt') ? '#10b981' :
+                statusVal.toLowerCase().includes('xấu') ? '#ef4444' :
+                statusVal.toLowerCase().includes('cảnh báo') ? '#f59e0b' : '#10b981';
 
-function updateGISZoomStyle() {
+              // Xác định tọa độ cho Google Maps
+              let mapLat = null,
+                mapLng = null;
+              const coords = feature.geometry?.coordinates;
+              if (feature.geometry?.type === 'Point' && Array.isArray(coords) && coords.length >= 2) {
+                mapLng = Number(coords[0]);
+                mapLat = Number(coords[1]);
+              }
+              if (!Number.isFinite(mapLat) || !Number.isFinite(mapLng)) {
+                const latVal = p.latitude ?? p.Latitude ?? p.lat ?? p.Lat ?? p.vi_do ?? p.ViDo;
+                const lngVal = p.longitude ?? p.Longitude ?? p.lng ?? p.Lng ?? p.kinh_do ?? p.KinhDo;
+                if (latVal !== undefined && lngVal !== undefined) {
+                  mapLat = Number(latVal);
+                  mapLng = Number(lngVal);
+                }
+              }
+              const hasPosition = Number.isFinite(mapLat) && Number.isFinite(mapLng);
+              const googleMapsUrl = hasPosition ? `https://www.google.com/maps?q=${mapLat},${mapLng}` : '#';
 
-    if (!aiMapLayer) return;
+              // Escape an toàn
+              function e(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
 
-    const zoom = aiMap.getZoom();
+              let html = `
+                    <div class="tl-popup-container">
+                      <!-- HEADER -->
+                      <div class="tl-popup-header" style="--header-bg:${headerColor};">
+                        <div class="tl-popup-icon">${iconChar}</div>
+                        <div class="tl-popup-title-group">
+                          <div class="tl-popup-name">${e(name)}</div>
+                          <span class="tl-popup-badge">${e(label)}</span>
+                        </div>
+                      </div>
+                      <!-- BODY -->
+                      <div class="tl-popup-body">
+                        <!-- Trạng thái -->
+                        <div class="tl-popup-status" style="--status-color:${statusColor};">
+                          <div class="tl-popup-status-dot"></div>
+                          <div>
+                            <div class="tl-popup-status-label">Trạng thái</div>
+                            <div class="tl-popup-status-text">${e(statusVal)}</div>
+                          </div>
+                        </div>
+                        <!-- Grid thông tin -->
+                        <div class="tl-popup-grid">
+                          ${ code ? `
+                            <div class="tl-popup-item">
+                              <div class="tl-popup-item-label">Mã công trình</div>
+                              <div class="tl-popup-item-value">${e(code)}</div>
+                            </div>
+                          ` : '' }
+                          ${ station ? `
+                            <div class="tl-popup-item">
+                              <div class="tl-popup-item-label">Lý trình / vị trí</div>
+                              <div class="tl-popup-item-value">${e(station)}</div>
+                            </div>
+                          ` : '' }
+                          ${ hasPosition ? `
+                            <div class="tl-popup-item" style="grid-column:1/-1;">
+                              <div class="tl-popup-item-label">Tọa độ</div>
+                              <div class="tl-popup-item-value">${mapLat.toFixed(6)}°N, ${mapLng.toFixed(6)}°E</div>
+                            </div>
+                          ` : '' }
+                        </div>
+                        <!-- Hành động -->
+                        <div class="tl-popup-actions">
+                          ${ hasPosition ? `
+                            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="tl-popup-btn">
+                              🗺️ GOOGLE MAPS
+                            </a>
+                          ` : '' }
+                          <button class="tl-popup-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('open'); this.textContent = this.nextElementSibling.classList.contains('open') ? '🔼 THU GỌN' : '🔎 XEM CHI TIẾT';">
+                            🔎 XEM CHI TIẾT
+                          </button>
+                          <div class="tl-popup-detail">
+                            <div class="tl-popup-detail-title">📋 Thông số kỹ thuật</div>
+                            <div class="tl-popup-detail-content">
+                              ${ description ? (description.includes('<table') || description.includes('<TABLE') ? description : e(description)) : 'Không có dữ liệu chi tiết.' }
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="tl-popup-footer">🗺️ Dữ liệu từ GIS Master • THỦY LỢI AI</div>
+                    </div>
+                  `;
 
-    let lineWeight;
-    let lineOpacity;
+              layer.bindPopup(html, { maxWidth: 360, minWidth: 220, closeButton: true, autoPan: true,
+                autoPanPadding: [20, 20] });
+            }
 
-    if (zoom <= 8) {
-        lineWeight = 1;
-        lineOpacity = 0.45;
-    }
-    else if (zoom <= 10) {
-        lineWeight = 1.5;
-        lineOpacity = 0.60;
-    }
-    else if (zoom <= 12) {
-        lineWeight = 2;
-        lineOpacity = 0.75;
-    }
-    else {
-        lineWeight = 3;
-        lineOpacity = 0.90;
-    }
-
-    aiMapLayer.eachLayer(function(layer) {
-
-        if (layer.setStyle) {
-            layer.setStyle({
-                weight: lineWeight,
-                opacity: lineOpacity
+            // =====================================================
+            // TẠO LỚP GIS VỚI POPUP MỚI
+            // =====================================================
+            const geoLayer = L.geoJSON(geojson, {
+              filter: function(feature) {
+                const geometryType = feature?.geometry?.type;
+                if (geometryType !== "Point") return true;
+                const type = getCongTrinhType(feature.properties, feature.geometry);
+                return ["ho", "tram_bom", "dap"].includes(type);
+              },
+              pointToLayer: function(feature, latlng) {
+                const type = getCongTrinhType(feature.properties, feature.geometry);
+                return L.marker(latlng, { icon: getCongTrinhIcon(type), zIndexOffset: 1000, riseOnHover: true });
+              },
+              style: function(feature) {
+                const type = getCongTrinhType(feature.properties, feature.geometry);
+                const geometryType = feature.geometry?.type || "";
+                if (geometryType === "LineString" || geometryType === "MultiLineString") {
+                  return { color: "#1677ff", weight: 2, opacity: 0.85, fill: false };
+                }
+                if (geometryType === "Polygon" || geometryType === "MultiPolygon") {
+                  return { color: "#1677ff", weight: 1.5, opacity: 0.65, fillColor: "#1677ff", fillOpacity: 0.06 };
+                }
+                return { color: "#1677ff", weight: 1.5, opacity: 0.7, fillOpacity: 0.05 };
+              },
+              onEachFeature: function(feature, layer) {
+                buildModernPopup(feature, layer);
+              }
             });
-        }
 
-    });
-}
+            aiMapLayer.addLayer(geoLayer);
 
-// Cập nhật khi thay đổi mức zoom
-aiMap.on('zoomend', updateGISZoomStyle);
-
-// Áp dụng ngay khi bản đồ được khởi tạo
-updateGISZoomStyle();
-
-        mapAiStatus.textContent =
-            '⏳ Đang tải dữ liệu hệ thống thủy lợi...';
-
-        // 5. Gọi API GIS
-        const response = await fetch('/gis/data');
-
-        if (!response.ok) {
-            throw new Error(
-                'Không thể truy cập /gis/data (' +
-                response.status +
-                ')'
-            );
-        }
-
-        const result = await response.json();
-
-        // 6. Kiểm tra dữ liệu trả về
-        if (!result.success) {
-            throw new Error(
-                result.message ||
-                'API GIS trả về lỗi.'
-            );
-        }
-
-        const geojson = result.geojson;
-
-        if (
-            !geojson ||
-            !Array.isArray(geojson.features)
-        ) {
-            throw new Error(
-                'Dữ liệu GeoJSON không hợp lệ.'
-            );
-        }
-
-        // 7. Đưa dữ liệu lên bản đồ
-// ======================================================
-// PHÂN LOẠI VÀ HIỂN THỊ CÔNG TRÌNH THỦY LỢI
-// ======================================================
-
-window.getCongTrinhType = function(properties, geometry) {
-    const p = properties || {};
-
-    const text = [
-        p.name,
-        p.description
-    ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-    const geometryType =
-        geometry?.type ||
-        p.geometry_type ||
-        '';
-
-    // ---- CỐNG ----
-    if (
-        text.includes('cống') ||
-        text.includes('cong ') ||
-        text.includes('cống tưới') ||
-        text.includes('cống tiêu')
-    ) {
-        return 'cong';
-    }
-
-    // ---- TRẠM BƠM ----
-    if (
-        text.includes('trạm bơm') ||
-        text.includes('tram bom') ||
-        text.includes('tb ')
-    ) {
-        return 'tram_bom';
-    }
-
-    // ---- HỒ ----
-    if (
-        text.includes('hồ ') ||
-        text.startsWith('hồ') ||
-        text.includes('ho chua') ||
-        text.includes('hồ chứa')
-    ) {
-        return 'ho';
-    }
-
-    // ---- ĐẬP ----
-    if (
-        text.includes('đập ') ||
-        text.startsWith('đập') ||
-        text.includes('dap ')
-    ) {
-        return 'dap';
-    }
-
-    // ---- KÊNH ----
-    if (
-        text.includes('kênh') ||
-        text.includes('kenh ') ||
-        text.includes('kênh chính') ||
-        text.includes('kênh nhánh')
-    ) {
-        return 'kenh';
-    }
-
-    // ---- KHU TƯỚI ----
-    if (
-        text.includes('khu tưới') ||
-        text.includes('khu tuoi')
-    ) {
-        return 'khu_tuoi';
-    }
-
-    // ---- TRÀN ----
-    if (
-        text.includes('tràn') ||
-        text.includes('tran ')
-    ) {
-        return 'tran';
-    }
-
-    // ---- CẦU ----
-    if (
-        text.includes('cầu ') ||
-        text.startsWith('cầu')
-    ) {
-        return 'cau';
-    }
-
-    // ---- ĐƯỜNG ỐNG ----
-    if (
-        text.includes('ống') ||
-        text.includes('ong ')
-    ) {
-        return 'ong';
-    }
-
-    // Nếu là đường mà chưa nhận diện được
-    if (geometryType === 'LineString') {
-        return 'kenh';
-    }
-
-    return 'khac';
-}
-
-
-// ======================================================
-// KÝ HIỆU CÔNG TRÌNH
-// ======================================================
-
-function getCongTrinhStyle(type) {
-
-    const styles = {
-
-        cong: {
-            radius: 6,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        tram_bom: {
-            radius: 7,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        ho: {
-            radius: 7,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        dap: {
-            radius: 7,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        tran: {
-            radius: 6,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        cau: {
-            radius: 5,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        ong: {
-            radius: 5,
-            weight: 2,
-            fillOpacity: 0.95
-        },
-
-        khu_tuoi: {
-            radius: 5,
-            weight: 2,
-            fillOpacity: 0.85
-        },
-
-        kenh: {
-            weight: 3,
-            opacity: 0.9
-        },
-
-        khac: {
-            radius: 4,
-            weight: 1,
-            fillOpacity: 0.75
-        }
-    };
-
-    return styles[type] || styles.khac;
-}
-
-
-// ======================================================
-// TÊN HIỂN THỊ
-// ======================================================
-
-window.getCongTrinhLabel = function(type) {
-
-    const labels = {
-        cong: 'CỐNG',
-        tram_bom: 'TRẠM BƠM',
-        ho: 'HỒ',
-        dap: 'ĐẬP',
-        tran: 'TRÀN',
-        cau: 'CẦU',
-        ong: 'ĐƯỜNG ỐNG',
-        khu_tuoi: 'KHU TƯỚI',
-        kenh: 'KÊNH',
-        khac: 'CÔNG TRÌNH'
-    };
-
-    return labels[type] || 'CÔNG TRÌNH';
-}
-
-// ========================================
-// BIỂU TƯỢNG CÔNG TRÌNH TRÊN BẢN ĐỒ
-// ========================================
-
-function getCongTrinhIcon(type) {
-
-    const icons = {
-        ho: {
-            icon: '💧',
-            color: '#1683ff',
-            label: 'Hồ chứa'
-        },
-
-        tram_bom: {
-            icon: '⚙',
-            color: '#1683ff',
-            label: 'Trạm bơm'
-        },
-
-        dap: {
-            icon: '▥',
-            color: '#ff7a00',
-            label: 'Đập dâng'
-        },
-
-        cong: {
-            icon: '▣',
-            color: '#8e44ad',
-            label: 'Cống'
-        },
-
-        kenh: {
-            icon: '⌁',
-            color: '#16a34a',
-            label: 'Kênh'
-        },
-
-        tran: {
-            icon: '≋',
-            color: '#f59e0b',
-            label: 'Tràn'
-        },
-
-        cau: {
-            icon: '╬',
-            color: '#795548',
-            label: 'Cầu'
-        },
-
-        ong: {
-            icon: '●',
-            color: '#dc2626',
-            label: 'Đường ống'
-        }
-    };
-
-    const cfg = icons[type] || {
-        icon: '●',
-        color: '#1677ff',
-        label: 'Công trình'
-    };
-
-    return L.divIcon({
-        className: 'thuyloi-cong-trinh-icon',
-
-        html: `
-            <div
-                class="thuyloi-pin"
-                style="--pin-color:${cfg.color};"
-                title="${cfg.label}"
-            >
-                <div class="thuyloi-pin-icon">
-                    ${cfg.icon}
-                </div>
-                <div class="thuyloi-pin-tail"></div>
-            </div>
-        `,
-
-        iconSize: [42, 52],
-        iconAnchor: [21, 50],
-        popupAnchor: [0, -48]
-    });
-}
-
-
-// ========================================
-// TẠO LỚP GIS
-// ========================================
-
-const geoLayer = L.geoJSON(
-    geojson,
-    {
-        // CHỈ HIỂN THỊ BIỂU TƯỢNG 3 CÔNG TRÌNH ĐẦU MỐI
-        filter: function(feature) {
-            const geometryType = feature?.geometry?.type;
-
-            // Không lọc các đối tượng đường/vùng GIS
-            if (geometryType !== "Point") {
-                return true;
+            const bounds = geoLayer.getBounds();
+            if (bounds.isValid()) {
+              aiMap.fitBounds(bounds, { padding: [20, 20], maxZoom: 14 });
             }
 
-            const type = getCongTrinhType(
-                feature.properties,
-                feature.geometry
-            );
+            aiMapLoaded = true;
+            mapAiStatus.textContent = '✅ Đã tải ' + geojson.features.length.toLocaleString('vi-VN') +
+              ' đối tượng thủy lợi.';
+            setTimeout(function() { aiMap.invalidateSize(); }, 300);
 
-            // Chỉ giữ lại: Hồ chứa - Trạm bơm - Đập dâng
-            return ["ho", "tram_bom", "dap"].includes(type);
-        },
-
-        pointToLayer: function(feature, latlng) {
-    const properties =
-        feature.properties || {};
-
-    const type =
-        getCongTrinhType(
-            properties,
-            feature.geometry
-        );
-
-    // ====================================
-    // HIỂN THỊ BIỂU TƯỢNG CÔNG TRÌNH
-    // ====================================
-
-    return L.marker(
-        latlng,
-        {
-            icon: getCongTrinhIcon(type),
-
-            zIndexOffset: 1000,
-
-            riseOnHover: true
+          } catch (error) {
+            console.error('AI MAP ERROR:', error);
+            mapAiStatus.textContent = '❌ Lỗi bản đồ: ' + error.message;
+          }
         }
-    );
-},
 
+        // =====================================================
+        // TÌM KIẾM
+        // =====================================================
+        function normalizeMapSearch(value) {
+          return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        }
 
-        // -------------------------------
-        // ĐỐI TƯỢNG ĐƯỜNG / KÊNH
-        // -------------------------------
+        window.searchAiMap = function(keyword) {
+          keyword = normalizeMapSearch(keyword);
+          if (!keyword) {
+            mapAiStatus.textContent = '✅ Đã tải dữ liệu hệ thống thủy lợi.';
+            return;
+          }
+          if (!aiMap || !aiMapLayer) {
+            mapAiStatus.textContent = '⚠️ Bản đồ chưa sẵn sàng.';
+            return;
+          }
+          const matches = [];
 
-       style: function(feature) {
-
-    const properties =
-        feature.properties || {};
-
-    const type =
-        getCongTrinhType(
-            properties,
-            feature.geometry
-        );
-
-    const geometryType =
-        feature.geometry?.type || "";
-
-    // ==============================
-    // TUYẾN KÊNH / ĐƯỜNG
-    // ==============================
-    if (
-        geometryType === "LineString" ||
-        geometryType === "MultiLineString"
-    ) {
-        return {
-            color: "#1677ff",
-            weight: 2,
-            opacity: 0.85,
-            fill: false
-        };
-    }
-
-    // ==============================
-    // VÙNG HỒ CHỨA / KHU TƯỚI
-    // ==============================
-    if (
-        geometryType === "Polygon" ||
-        geometryType === "MultiPolygon"
-    ) {
-        return {
-            color: "#1677ff",
-            weight: 1.5,
-            opacity: 0.65,
-            fillColor: "#1677ff",
-            fillOpacity: 0.06
-        };
-    }
-
-    // ==============================
-    // CÁC TRƯỜNG HỢP KHÁC
-    // ==============================
-    return {
-        color: "#1677ff",
-        weight: 1.5,
-        opacity: 0.7,
-        fillOpacity: 0.05
-    };
-},
-        // -------------------------------
-        // POPUP
-        // -------------------------------
-
-        onEachFeature: function(feature, layer) {
-
-            const p =
-                feature.properties || {};
-
-            const type =
-                getCongTrinhType(
-                    p,
-                    feature.geometry
-                );
-
-            const label =
-                getCongTrinhLabel(type);
-
-            const name =
-                p.name ||
-                p.Name ||
-                p.NAME ||
-                'Chưa xác định';
-
-
-            let description =
-                p.description ||
-                '';
-            const code =
-            p.code ||
-            p.Code ||
-            p.ma ||
-            p.Ma ||
-            p.id ||
-            p.ID ||
-            '';
-            const station =
-            p.station ||
-            p.Station ||
-            p.ly_trinh ||
-            p.LyTrinh ||
-            p.lyTrinh ||
-            '';
-
-
-            // Nếu description là HTML
-            // thì giữ nguyên để hiển thị bảng
-            if (description) {
-
-                description =
-                    String(description);
+          function scanLayer(layer) {
+            if (layer.eachLayer && !layer.feature) {
+              layer.eachLayer(function(child) { scanLayer(child); });
+              return;
             }
-            // ============================================
-   // ======================================================
-// TẠO POPUP THÔNG TIN CÔNG TRÌNH — PHIÊN BẢN MOBILE
-// ======================================================
-
-const popupIconMap = {
-    ho: '💧',
-    tram_bom: '⚙️',
-    dap: '🟠',
-    dap_dang: '🟠',
-    kenh: '〰️',
-    cong: '◆',
-    tran: '🌊',
-    cau: '🌉',
-    ong: '◉',
-    khu_tuoi: '🌱',
-    khac: '📍'
-};
-
-const popupIcon =
-    popupIconMap[type] || '📍';
-
-const popupTypeColors = {
-    ho: '#1565C0',
-    tram_bom: '#0277BD',
-    dap: '#E65100',
-    dap_dang: '#E65100',
-    kenh: '#00838F',
-    cong: '#3949AB',
-    tran: '#00838F',
-    cau: '#6D4C41',
-    ong: '#546E7A',
-    khu_tuoi: '#2E7D32',
-    khac: '#455A64'
-};
-
-const popupAccent =
-    popupTypeColors[type] || '#1565C0';
-
-let popup = `
-
-<div class="tl-map-popup"
-     style="
-        width:160px;
-        max-width:calc(100vw - 70px);
-        font-family:Arial,sans-serif;
-        color:#263238;
-        overflow:hidden;
-     ">
-
-    <!-- TIÊU ĐỀ -->
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:7px;
-        padding:7px 6px 8px 6px;
-        margin:-2px -2px 0 -2px;
-        border-bottom:1px solid #e5e7eb;
-    ">
-
-        <div style="
-            width:32px;
-            height:32px;
-            min-width:32px;
-            border-radius:12px;
-            background:${popupAccent};
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-size:20px;
-            box-shadow:0 3px 8px rgba(0,0,0,.16);
-        ">
-            ${popupIcon}
-        </div>
-
-        <div style="
-            min-width:0;
-            flex:1;
-        ">
-
-            <div style="
-                font-size:12px;
-                font-weight:800;
-                line-height:1.15;
-                color:#0B3558;
-                word-break:break-word;
-            ">
-                ${escapeHtmlMap(name)}
-            </div>
-
-        </div>
-
-    </div>
-
-    <div style="
-        margin:8px 2px 4px 2px;
-        padding:9px 10px;
-        display:flex;
-        align-items:center;
-        gap:9px;
-        border-radius:10px;
-        background:#F8FAFB;
-        border:1px solid #E3EAF0;
-    ">
-        <div style="
-            width:28px;
-            height:28px;
-            min-width:28px;
-            border-radius:50%;
-            background:#18B83A;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            box-shadow:0 2px 5px rgba(24,184,58,.25);
-        ">
-            <span style="
-                width:10px;
-                height:10px;
-                border-radius:50%;
-                background:#ffffff;
-            "></span>
-        </div>
-
-        <div style="min-width:0;">
-            <div style="
-                font-size:9px;
-                font-weight:700;
-                color:#78909C;
-                text-transform:uppercase;
-                letter-spacing:.3px;
-            ">
-                Trạng thái
-            </div>
-
-            <div style="
-                margin-top:2px;
-                font-size:12px;
-                font-weight:800;
-                color:#263238;
-                word-break:break-word;
-            ">
-                ${escapeHtmlMap(
-                    p.status ||
-                    p.Status ||
-                    p.trang_thai ||
-                    p.TrangThai ||
-                    p.tinh_trang ||
-                    p.TinhTrang ||
-                    'Chưa cập nhật'
-                )}
-            </div>
-        </div>
-    </div>
-`;
-
-// ======================================================
-// THÔNG TIN NHANH - GOOGLE MAPS
-// ======================================================
-
-const geometryCoords =
-    feature &&
-    feature.geometry &&
-    feature.geometry.coordinates;
-
-let mapLat = null;
-let mapLng = null;
-
-// Lấy tọa độ trực tiếp đối với đối tượng POINT
-if (
-    feature.geometry &&
-    feature.geometry.type === 'Point' &&
-    Array.isArray(geometryCoords) &&
-    geometryCoords.length >= 2
-) {
-    mapLng = Number(geometryCoords[0]);
-    mapLat = Number(geometryCoords[1]);
-}
-
-// Nếu không phải Point, thử lấy tọa độ từ properties
-if (
-    !Number.isFinite(mapLat) ||
-    !Number.isFinite(mapLng)
-) {
-    const latValue =
-        p.latitude ??
-        p.Latitude ??
-        p.lat ??
-        p.Lat ??
-        p.vi_do ??
-        p.ViDo;
-
-    const lngValue =
-        p.longitude ??
-        p.Longitude ??
-        p.lng ??
-        p.Lng ??
-        p.kinh_do ??
-        p.KinhDo;
-
-    if (
-        latValue !== undefined &&
-        lngValue !== undefined
-    ) {
-        mapLat = Number(latValue);
-        mapLng = Number(lngValue);
-    }
-}
-
-const hasMapPosition =
-    Number.isFinite(mapLat) &&
-    Number.isFinite(mapLng);
-
-if (hasMapPosition) {
-
-    const googleMapsUrl =
-        `https://www.google.com/maps?q=${mapLat},${mapLng}`;
-
-    popup += `
-        <div style="
-            margin:4px 0 0 0;
-            padding:0;
-            text-align:center;
-        ">
-
-            
-
-            <a
-                href="${googleMapsUrl}"
-                target="_blank"
-                rel="noopener noreferrer"
-                style="
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-                    gap:6px;
-                    width:150px;
-                    margin:0 auto;
-                    box-sizing:border-box;
-                    padding:9px 0;
-                    border-radius:8px;
-                    background:#1565C0;
-                    color:#ffffff;
-                    text-decoration:none;
-                    font-size:11px;
-                    font-weight:800;
-                    box-shadow:0 3px 8px rgba(21,101,192,.22);
-                "
-            >
-                🗺️ GOOGLE MAPS
-            </a>
-
-        </div>
-    `;
-}
-// ======================================================
-// MÃ CÔNG TRÌNH
-// ======================================================
-
-if (code) {
-
-    popup += `
-
-        <div style="
-            background:#F5F8FB;
-            border:1px solid #E3EAF0;
-            border-radius:9px;
-            padding:7px 9px;
-        ">
-            <div style="
-                font-size:9px;
-                color:#78909C;
-                font-weight:700;
-                text-transform:uppercase;
-                margin-bottom:2px;
-            ">
-                Mã công trình
-            </div>
-
-            <div style="
-                font-size:11px;
-                font-weight:700;
-                color:#263238;
-                word-break:break-word;
-            ">
-                ${escapeHtmlMap(code)}
-            </div>
-        </div>
-    `;
-
-}
-
-popup += `</div>`;
-
-
-// ======================================================
-// LÝ TRÌNH / VỊ TRÍ
-// ======================================================
-
-if (station) {
-
-    popup += `
-
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:9px;
-        margin:7px 2px 0 2px;
-        padding:9px 10px;
-        border-radius:9px;
-        background:#EAF6F7;
-        border:1px solid #C9E7EA;
-    ">
-
-        <div style="
-            width:30px;
-            height:30px;
-            min-width:30px;
-            border-radius:8px;
-            background:#00838F;
-            color:white;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-size:15px;
-        ">
-            📍
-        </div>
-
-        <div style="min-width:0;">
-
-            <div style="
-                font-size:9px;
-                font-weight:700;
-                color:#607D8B;
-                text-transform:uppercase;
-            ">
-                Lý trình / vị trí
-            </div>
-
-            <div style="
-                font-size:12px;
-                font-weight:800;
-                color:#006064;
-                margin-top:2px;
-                word-break:break-word;
-            ">
-                ${escapeHtmlMap(station)}
-            </div>
-
-        </div>
-
-    </div>
-    `;
-
-}
-
-
-// ======================================================
-// NÚT XEM CHI TIẾT
-// ======================================================
-
-popup += `
- <div style="margin:4px 0 0 0;text-align:center;">
-    <button
-        type="button"
-        onclick="
-            const box = this.closest('div').nextElementSibling;
-            const open = box.style.display !== 'none';
-
-            box.style.display = open ? 'none' : 'block';
-            this.innerHTML = open
-                ? '🔎 XEM CHI TIẾT'
-                : '🔼 THU GỌN';
-        "
-        style="
-            -webkit-appearance:none;
-            appearance:none;
-            width:150px;
-            margin:4px auto 4px auto;
-            box-sizing:border-box;
-            padding:9px 0;
-            border-radius:8px;
-            background:#1565C0;
-            color:#ffffff;
-            font-size:11px;
-            font-weight:800;
-            cursor:pointer;
-            border:none;
-            box-shadow:0 3px 8px rgba(21,101,192,.22);
-        "
-    >
-        🔎 XEM CHI TIẾT
-    </button>
-   </div>
-    <div
-        style="
-            display:none;
-            margin-top:6px;
-        "
-    >
-`;
-
-// ======================================================
-// THÔNG SỐ KỸ THUẬT / BẢNG GIS
-// ======================================================
-
-if (description) {
-
-    const desc = String(description).trim();
-
-    if (
-        desc.includes('<table') ||
-        desc.includes('<TABLE')
-    ) {
-
-        popup += `
-
-        <div style="
-            margin-top:9px;
-            border-top:1px solid #E3EAF0;
-            padding-top:8px;
-        ">
-
-            <div style="
-                display:flex;
-                align-items:center;
-                gap:6px;
-                font-size:10px;
-                font-weight:800;
-                color:#0B3558;
-                text-transform:uppercase;
-                margin-bottom:6px;
-            ">
-                📋 Thông số kỹ thuật
-            </div>
-
-            <div style="
-                max-height:240px;
-                overflow:auto;
-                border:1px solid #DDE5EA;
-                border-radius:8px;
-                background:#fff;
-            ">
-                ${desc}
-            </div>
-
-        </div>
-
-        `;
-
-    } else {
-
-        popup += `
-
-        <div style="
-            margin-top:9px;
-            border-top:1px solid #E3EAF0;
-            padding-top:8px;
-        ">
-
-            <div style="
-                display:flex;
-                align-items:center;
-                gap:6px;
-                font-size:10px;
-                font-weight:800;
-                color:#0B3558;
-                text-transform:uppercase;
-                margin-bottom:5px;
-            ">
-                📝 Mô tả
-            </div>
-
-            <div style="
-                padding:9px 10px;
-                background:#F8FAFB;
-                border:1px solid #E4E9ED;
-                border-radius:8px;
-                font-size:11px;
-                line-height:1.5;
-                color:#455A64;
-                max-height:150px;
-                overflow:auto;
-                word-break:break-word;
-            ">
-                ${escapeHtmlMap(desc)}
-            </div>
-
-        </div>
-
-        `;
-
-    }
-
-}
-
-// ======================================================
-// ĐÓNG VÙNG CHI TIẾT
-// ======================================================
-
-popup += `
-    </div>
-`;
-// ======================================================
-// CHÂN POPUP
-// ======================================================
-
-popup += `
-
-    <div style="
-        margin-top:9px;
-        padding-top:7px;
-        border-top:1px solid #EEF1F3;
-        text-align:center;
-        font-size:9px;
-        color:#90A4AE;
-    ">
-        🗺️ Dữ liệu từ GIS Master • THỦY LỢI AI
-    </div>
-
-</div>
-`;
-
-
-// ======================================================
-// GẮN POPUP
-// ======================================================
-
-layer.bindPopup(
-    popup,
-    {
-        maxWidth: 340,
-        minWidth: 280,
-        closeButton: true,
-        autoPan: true,
-        autoPanPadding: [20, 20]
-    }
-);
-// ======================================================
-// KẾT THÚC POPUP
-// ======================================================
-
-        }
-
-// ======================================================
-// KẾT THÚC CẤU HÌNH LỚP GIS
-// ======================================================
-
-    }
-);
-
-// ======================================================
-// ĐƯA LỚP GIS LÊN BẢN ĐỒ
-// ======================================================
-
-aiMapLayer.addLayer(geoLayer);
-
-
-        // 8. Zoom toàn bộ dữ liệu
-        const bounds =
-            geoLayer.getBounds();
-
-        if (bounds.isValid()) {
-
-            aiMap.fitBounds(
-                bounds,
-                {
-                    padding: [20, 20],
-                    maxZoom: 14
-                }
-            );
-
-        }
-
-        // 9. Hoàn tất
-        aiMapLoaded = true;
-
-        mapAiStatus.textContent =
-            '✅ Đã tải ' +
-            geojson.features.length.toLocaleString('vi-VN') +
-            ' đối tượng thủy lợi.';
-
-        setTimeout(function() {
-            aiMap.invalidateSize();
-        }, 300);
-
-    } catch (error) {
-
-        console.error(
-            'AI MAP ERROR:',
-            error
-        );
-
-        mapAiStatus.textContent =
-            '❌ Lỗi bản đồ: ' +
-            error.message;
-
-    }
-}
-
-
-// =====================================================
-// BẢO VỆ NỘI DUNG POPUP
-// =====================================================
-
-function escapeHtmlMap(value) {
-
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-
-}
-  // =====================================================
-// TÌM KIẾM ĐỐI TƯỢNG TRÊN BẢN ĐỒ AI
-// =====================================================
-function normalizeMapSearch(value) {
-    return String(value || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim();
-}
-
-window.searchAiMap = function(keyword) {
-
-    keyword = normalizeMapSearch(keyword);
-
-    if (!keyword) {
-        mapAiStatus.textContent =
-            '✅ Đã tải dữ liệu hệ thống thủy lợi.';
-        return;
-    }
-
-    if (!aiMap || !aiMapLayer) {
-        mapAiStatus.textContent =
-            '⚠️ Bản đồ chưa sẵn sàng.';
-        return;
-    }
-    const matches = [];
-
-function scanLayer(layer) {
-
-    // Lớp GeoJSON tổng
-    if (
-        layer.eachLayer &&
-        !layer.feature
-    ) {
-        layer.eachLayer(function(child) {
-            scanLayer(child);
-        });
-        return;
-    }
-
-    const feature =
-        layer.feature || {};
-
-    const p =
-        feature.properties || {};
-
-    const name =
-        p.name ||
-        p.Name ||
-        p.NAME ||
-        '';
-
-    const description =
-        p.description ||
-        '';
-
-    const code =
-        p.code ||
-        p.Code ||
-        p.ma ||
-        p.Ma ||
-        p.id ||
-        p.ID ||
-        '';
-
-    const station =
-        p.station ||
-        p.Station ||
-        p.ly_trinh ||
-        p.LyTrinh ||
-        p.lyTrinh ||
-        '';
-
-    const type =
-        getCongTrinhType(
-            p,
-            feature.geometry
-        );
-
-    const typeLabel =
-        getCongTrinhLabel(type);
-
-    const searchText =
-    normalizeMapSearch(
-        [
-            name,
-            description,
-            code,
-            station,
-            typeLabel,
-            type
-        ].join(' ')
-    );
-
-// Tách từ khóa thành từng từ
-const keywordParts =
-    keyword
-        .split(/\s+/)
-        .filter(Boolean);
-
-// Tất cả các từ khóa đều phải xuất hiện
-const isMatch =
-    keywordParts.every(function(part) {
-        return searchText.includes(part);
-    });
-
-if (isMatch) {
-    matches.push(layer);
-}
-}
-
-scanLayer(aiMapLayer);
-    
-
-    if (!matches.length) {
-
-        mapAiStatus.textContent =
-            '❌ Không tìm thấy: "' +
-            keyword +
-            '"';
-
-        return;
-    }
-
-    // =================================================
-    // CHỈ CÓ 1 KẾT QUẢ
-    // =================================================
-    if (matches.length === 1) {
-
-        const layer = matches[0];
-
-        if (
-            layer.getBounds &&
-            layer.getBounds().isValid()
-        ) {
-
-            aiMap.fitBounds(
-                layer.getBounds(),
-                {
-                    padding: [50, 50],
-                    maxZoom: 17
-                }
-            );
-
-        } else if (layer.getLatLng) {
-
-            aiMap.setView(
-                layer.getLatLng(),
-                17
-            );
-        }
-
-        if (layer.openPopup) {
-            setTimeout(function() {
-                layer.openPopup();
-            }, 300);
-        }
-
-    } else {
-
-        // =================================================
-        // NHIỀU KẾT QUẢ
-        // =================================================
-        const bounds = L.latLngBounds([]);
-
-        matches.forEach(function(layer) {
-
-            if (
-                layer.getBounds &&
-                layer.getBounds().isValid()
-            ) {
-                bounds.extend(
-                    layer.getBounds()
-                );
-
+            const feature = layer.feature || {};
+            const p = feature.properties || {};
+            const name = p.name || p.Name || p.NAME || '';
+            const description = p.description || '';
+            const code = p.code || p.Code || p.ma || p.Ma || p.id || p.ID || '';
+            const station = p.station || p.Station || p.ly_trinh || p.LyTrinh || p.lyTrinh || '';
+            const type = getCongTrinhType(p, feature.geometry);
+            const typeLabel = getCongTrinhLabel(type);
+            const searchText = normalizeMapSearch([name, description, code, station, typeLabel, type].join(' '));
+            const keywordParts = keyword.split(/\s+/).filter(Boolean);
+            const isMatch = keywordParts.every(function(part) { return searchText.includes(part); });
+            if (isMatch) { matches.push(layer); }
+          }
+          scanLayer(aiMapLayer);
+
+          if (!matches.length) {
+            mapAiStatus.textContent = '❌ Không tìm thấy: "' + keyword + '"';
+            return;
+          }
+
+          if (matches.length === 1) {
+            const layer = matches[0];
+            if (layer.getBounds && layer.getBounds().isValid()) {
+              aiMap.fitBounds(layer.getBounds(), { padding: [50, 50], maxZoom: 17 });
             } else if (layer.getLatLng) {
-
-                bounds.extend(
-                    layer.getLatLng()
-                );
+              aiMap.setView(layer.getLatLng(), 17);
             }
-        });
-
-        if (bounds.isValid()) {
-
-            aiMap.fitBounds(
-                bounds,
-                {
-                    padding: [50, 50],
-                    maxZoom: 15
-                }
-            );
-        }
-    }
-
-    mapAiStatus.textContent =
-        '🔎 Tìm thấy ' +
-        matches.length +
-        ' đối tượng phù hợp với "' +
-        keyword +
-        '".';
-  // =====================================================
-// HIỂN THỊ DANH SÁCH KẾT QUẢ TÌM KIẾM
-// =====================================================
-
-let resultBox =
-    document.getElementById('mapSearchResults');
-
-if (!resultBox) {
-    resultBox = document.createElement('div');
-    resultBox.id = 'mapSearchResults';
-
-    resultBox.style.marginTop = '6px';
-    resultBox.style.background = '#ffffff';
-    resultBox.style.border = '1px solid #d8e2ec';
-    resultBox.style.borderRadius = '10px';
-    resultBox.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)';
-    resultBox.style.overflow = 'hidden';
-
-    const searchBox =
-        document.querySelector('.map-search-box');
-
-    if (searchBox) {
-        searchBox.insertAdjacentElement(
-            'afterend',
-            resultBox
-        );
-    }
-}
-
-// Xóa kết quả cũ
-resultBox.innerHTML = '';
-
-// Tối đa hiển thị 8 kết quả
-matches.slice(0, 8).forEach(function(layer) {
-
-    const feature =
-        layer.feature || {};
-
-    const p =
-        feature.properties || {};
-
-    const name =
-        p.name ||
-        p.Name ||
-        p.NAME ||
-        'Công trình chưa có tên';
-
-    const type =
-        getCongTrinhType(
-            p,
-            feature.geometry
-        );
-
-    const typeLabel =
-        getCongTrinhLabel(type);
-
-    const item =
-        document.createElement('div');
-
-    item.style.padding = '9px 12px';
-    item.style.borderBottom =
-        '1px solid #edf1f5';
-    item.style.cursor = 'pointer';
-    item.style.fontSize = '13px';
-
-    item.innerHTML =
-        '<div style="font-weight:700;color:#123b5d;">' +
-        escapeHtmlMap(name) +
-        '</div>' +
-        '<div style="font-size:11px;color:#6b7c8f;margin-top:2px;">' +
-        escapeHtmlMap(typeLabel) +
-        '</div>';
-
-    item.addEventListener(
-        'mouseenter',
-        function() {
-            item.style.background = '#f1f7fb';
-        }
-    );
-
-    item.addEventListener(
-        'mouseleave',
-        function() {
-            item.style.background = '#ffffff';
-        }
-    );
-
-    item.addEventListener(
-        'click',
-        function() {
-
-            if (
-                layer.getBounds &&
-                layer.getBounds().isValid()
-            ) {
-                aiMap.fitBounds(
-                    layer.getBounds(),
-                    {
-                        padding: [60, 60],
-                        maxZoom: 17
-                    }
-                );
-            } else if (layer.getLatLng) {
-                aiMap.setView(
-                    layer.getLatLng(),
-                    17
-                );
-            }
-
             if (layer.openPopup) {
-                setTimeout(function() {
-                    layer.openPopup();
-                }, 300);
+              setTimeout(function() { layer.openPopup(); }, 300);
             }
-
-            resultBox.innerHTML = '';
-            resultBox.style.display = 'none';
-        }
-    );
-
-    resultBox.appendChild(item);
-});
-
-resultBox.style.display =
-    matches.length ? 'block' : 'none';
-}      
-       mapAiBtn.addEventListener('click', async function() {
-            mapAiPanel.classList.remove('hidden');
-            mapAiPanel.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
+          } else {
+            const bounds = L.latLngBounds([]);
+            matches.forEach(function(layer) {
+              if (layer.getBounds && layer.getBounds().isValid()) {
+                bounds.extend(layer.getBounds());
+              } else if (layer.getLatLng) {
+                bounds.extend(layer.getLatLng());
+              }
             });
-          await initAiMap();
+            if (bounds.isValid()) {
+              aiMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+            }
+          }
 
+          mapAiStatus.textContent = '🔎 Tìm thấy ' + matches.length + ' đối tượng phù hợp với "' + keyword + '".';
+
+          // Hiển thị danh sách kết quả
+          let resultBox = document.getElementById('mapSearchResults');
+          if (!resultBox) {
+            resultBox = document.createElement('div');
+            resultBox.id = 'mapSearchResults';
+            resultBox.style.marginTop = '6px';
+            resultBox.style.background = '#ffffff';
+            resultBox.style.border = '1px solid #d8e2ec';
+            resultBox.style.borderRadius = '10px';
+            resultBox.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)';
+            resultBox.style.overflow = 'hidden';
+            const searchBox = document.querySelector('.map-search-box');
+            if (searchBox) { searchBox.insertAdjacentElement('afterend', resultBox); }
+          }
+          resultBox.innerHTML = '';
+          matches.slice(0, 8).forEach(function(layer) {
+            const feature = layer.feature || {};
+            const p = feature.properties || {};
+            const name = p.name || p.Name || p.NAME || 'Công trình chưa có tên';
+            const type = getCongTrinhType(p, feature.geometry);
+            const typeLabel = getCongTrinhLabel(type);
+            const item = document.createElement('div');
+            item.style.padding = '9px 12px';
+            item.style.borderBottom = '1px solid #edf1f5';
+            item.style.cursor = 'pointer';
+            item.style.fontSize = '13px';
+            item.innerHTML = '<div style="font-weight:700;color:#123b5d;">' + esc(name) +
+              '</div><div style="font-size:11px;color:#6b7c8f;margin-top:2px;">' + esc(typeLabel) + '</div>';
+            item.addEventListener('mouseenter', function() { item.style.background = '#f1f7fb'; });
+            item.addEventListener('mouseleave', function() { item.style.background = '#ffffff'; });
+            item.addEventListener('click', function() {
+              if (layer.getBounds && layer.getBounds().isValid()) {
+                aiMap.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 17 });
+              } else if (layer.getLatLng) {
+                aiMap.setView(layer.getLatLng(), 17);
+              }
+              if (layer.openPopup) {
+                setTimeout(function() { layer.openPopup(); }, 300);
+              }
+              resultBox.innerHTML = '';
+              resultBox.style.display = 'none';
+            });
+            resultBox.appendChild(item);
+          });
+          resultBox.style.display = matches.length ? 'block' : 'none';
+        };
+
+        // =====================================================
+        // SỰ KIỆN BẢN ĐỒ AI
+        // =====================================================
+        mapAiBtn.addEventListener('click', async function() {
+          mapAiPanel.classList.remove('hidden');
+          mapAiPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await initAiMap();
         });
-        
+
         closeMapAi.addEventListener('click', function() {
-            mapAiPanel.classList.add('hidden');
+          mapAiPanel.classList.add('hidden');
         });
+
         closeFieldReport.addEventListener('click', function() {
           fieldReportPanel.classList.add('hidden');
         });
@@ -3232,7 +2721,8 @@ resultBox.style.display =
             fieldReportPreview.innerHTML =
               '<div class="field-report-preview-inner">' +
               '<img src="' + url + '" class="thumb" alt="Ảnh hiện trường">' +
-              '<div><strong>✅ Ảnh xác thực hiện trường</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB + ' KB<br>' +
+              '<div><strong>✅ Ảnh xác thực hiện trường</strong><br>JPEG · ' + result.w + '×' + result.h + ' · ' + sizeKB +
+              ' KB<br>' +
               '🕐 ' + new Date().toLocaleString('vi-VN') +
               (currentLocation ? ' · 📍 ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6) : '') +
               (currentAddress ? ' · 📌 ' + currentAddress.substring(0, 60) : '') +
@@ -3259,31 +2749,22 @@ resultBox.style.display =
             showFieldReportStatus('⚠️ Vui lòng chụp hoặc chọn ảnh hiện trường.', true);
             return;
           }
-
           createFieldReport.disabled = true;
           showFieldReportStatus('🤖 THỦY LỢI AI đang phân tích hiện trường...');
-
           try {
             const formData = new FormData();
             formData.append('file', fieldReportFile, fieldReportFile.name);
             formData.append('report_type', selectedReportType);
             formData.append('question', (fieldReportQuestion.value || '').trim());
-            // ===== DỮ LIỆU GIS/KML ĐƯA VÀO AI =====
-if (window.kmlGpsResult) {
-  formData.append(
-    'kml_context',
-    JSON.stringify(window.kmlGpsResult)
-  );
-}
+            if (window.kmlGpsResult) {
+              formData.append('kml_context', JSON.stringify(window.kmlGpsResult));
+            }
             const result = await fetchJSON('/field-report', { method: 'POST', body: formData }, 90000);
-
             if (!result.success) {
               throw new Error(result.error || 'Không tạo được báo cáo.');
             }
-
             const reportTitle = result.report_title || getReportTypeName(selectedReportType);
             const answer = result.answer || 'THỦY LỢI AI chưa tạo được nội dung báo cáo.';
-
             const irrelevantKeywords = ['không liên quan', 'không phải công trình', 'không thể hiện', 'ảnh không chứa'];
             const isIrrelevant = irrelevantKeywords.some(kw => answer.toLowerCase().includes(kw));
             if (isIrrelevant) {
@@ -3298,22 +2779,16 @@ if (window.kmlGpsResult) {
                 return;
               }
             }
-
             window.reportTitle = reportTitle;
             window.reportAnswer = answer;
-
             addUser('📋 ' + reportTitle);
             addAI(answer, result.sources || []);
-
             const editor = document.getElementById('reportEditor');
             editor.hidden = false;
             document.getElementById('reportContent').value = answer;
-
             showFieldReportStatus('✅ Đã tạo dự thảo báo cáo hiện trường.');
-
             const pdfActions = document.getElementById('pdfActions');
             if (pdfActions) pdfActions.hidden = false;
-
             if (result.next_step) {
               const nextBox = document.createElement('div');
               nextBox.className = 'msg assistant';
@@ -3324,11 +2799,9 @@ if (window.kmlGpsResult) {
               messages.appendChild(nextBox);
               messages.scrollTop = messages.scrollHeight;
             }
-
             setTimeout(function() {
               fieldReportPanel.classList.add('hidden');
             }, 1200);
-
           } catch (err) {
             console.error('FIELD REPORT ERROR:', err);
             showFieldReportStatus('❌ ' + (err.message || 'Không thể tạo báo cáo.'), true);
@@ -3340,11 +2813,11 @@ if (window.kmlGpsResult) {
         updateFieldReportButton();
       })();
 
-      // ===== HEALTH CHECK =====
       async function health() {
         try {
           statusEl.textContent = 'Đang kiểm tra...';
-          const d = await fetchJSON('/health?t=' + Date.now(), { method: 'GET', headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' } }, 15000);
+          const d = await fetchJSON('/health?t=' + Date.now(), { method: 'GET', headers: { 'Accept': 'application/json',
+              'Cache-Control': 'no-cache' } }, 15000);
           const ok = d && d.status === 'ok' && d.gemini_configured === true && d.file_search_configured === true;
           if (ok) {
             dot.className = 'dot ok';
@@ -3360,7 +2833,6 @@ if (window.kmlGpsResult) {
         }
       }
 
-      // ===== COOLDOWN =====
       function startCooldown(seconds) {
         isCooldown = true;
         sendBtn.disabled = true;
@@ -3384,20 +2856,16 @@ if (window.kmlGpsResult) {
         }, 1000);
       }
 
-      // ===== ASK =====
       async function ask() {
         const q = question.value.trim();
         if ((!q && !window.preparedImageBlob) || sendBtn.disabled || isCooldown) return;
-
         const finalQuestion = q || 'Hãy phân tích hình ảnh này trong bối cảnh chuyên ngành thủy lợi.';
-
         addUser(window.preparedImageBlob ? '📷 ' + finalQuestion : finalQuestion);
         question.value = '';
         sendBtn.disabled = true;
         question.disabled = true;
         cameraBtn.disabled = true;
         typing.classList.add('show');
-
         try {
           let d;
           if (window.preparedImageBlob) {
@@ -3436,7 +2904,6 @@ if (window.kmlGpsResult) {
         }
       }
 
-      // ===== EVENT LISTENERS =====
       sendBtn.addEventListener('click', ask);
       question.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -3445,7 +2912,8 @@ if (window.kmlGpsResult) {
         }
       });
       clearBtn.addEventListener('click', function() {
-        messages.innerHTML = '<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';
+        messages.innerHTML =
+          '<div class="msg assistant"><div class="bubble"><strong>Đã xóa cuộc trò chuyện. 🌿</strong><p>Hãy đặt câu hỏi mới.</p></div></div>';
       });
 
       document.querySelectorAll('.quick button').forEach(function(btn) {
@@ -3461,11 +2929,10 @@ if (window.kmlGpsResult) {
     })();
   </script>
 
-  <!-- ===== SCRIPT XỬ LÝ PDF – GỬI ẢNH RÕ RÀNG VÀ LOG ===== -->
+  <!-- ===== SCRIPT XỬ LÝ PDF ===== -->
   <script>
     (function() {
       "use strict";
-
       let pdfBlob = null;
       let pdfUrl = null;
 
@@ -3497,14 +2964,11 @@ if (window.kmlGpsResult) {
         const button = document.getElementById('exportFieldReportPDF');
         const status = document.getElementById('pdfStatus');
         const result = document.getElementById('pdfResult');
-
         const answer = getReportAnswer();
         if (!answer) {
           alert("Chưa có nội dung báo cáo để xuất PDF.");
           return;
         }
-
-        // Kiểm tra ảnh
         if (!window.preparedImageBlob) {
           alert("⚠️ Chưa có ảnh hiện trường. Vui lòng chụp hoặc tải ảnh trước khi xuất PDF.");
           return;
@@ -3513,55 +2977,36 @@ if (window.kmlGpsResult) {
         status.hidden = false;
         result.hidden = true;
         status.innerText = "⏳ Đang tạo báo cáo PDF...";
-
         try {
           const formData = new FormData();
           formData.append("report_title", getReportTitle());
           formData.append("answer", answer);
           const reviewer = getReviewer();
           if (reviewer) formData.append("reviewer", reviewer);
-
           if (window.captureTimestamp) {
             formData.append("capture_time", window.captureTimestamp);
           }
           if (window.currentLocation) {
-          formData.append("latitude", String(window.currentLocation.lat));
-          formData.append("longitude", String(window.currentLocation.lng));
+            formData.append("latitude", String(window.currentLocation.lat));
+            formData.append("longitude", String(window.currentLocation.lng));
           }
-        
-          // Tạo File object với type rõ ràng
           const filename = window.preparedImageName || "image.jpg";
           const file = new File([window.preparedImageBlob], filename, { type: 'image/jpeg' });
           formData.append("image", file);
-          console.log('📤 Gửi ảnh lên server:', {
-            name: file.name,
-            size: file.size + ' bytes',
-            type: file.type
-          });
+          console.log('📤 Gửi ảnh lên server:', { name: file.name, size: file.size + ' bytes', type: file.type });
 
-          const response = await fetch("/field-report-pdf", {
-            method: "POST",
-            body: formData
-          });
-
+          const response = await fetch("/field-report-pdf", { method: "POST", body: formData });
           if (!response.ok) throw new Error("Máy chủ không tạo được PDF.");
-
           const blob = await response.blob();
           if (!blob || blob.size === 0) throw new Error("File PDF rỗng.");
-
-          // Lưu blob và tạo URL
           if (pdfUrl) URL.revokeObjectURL(pdfUrl);
           pdfBlob = blob;
           pdfUrl = URL.createObjectURL(blob);
-
           status.innerText = "✅ PDF đã sẵn sàng.";
           result.hidden = false;
-
-          // Kiểm tra nếu dung lượng PDF quá nhỏ so với ảnh (có thể server đã bỏ ảnh)
           if (blob.size < 10000 && window.preparedImageBlob.size > 50000) {
             status.innerText = "⚠️ PDF có dung lượng nhỏ. Có thể ảnh không được chèn. Hãy kiểm tra server log.";
           }
-
         } catch (error) {
           console.error("PDF ERROR:", error);
           status.innerText = "❌ Không thể tạo PDF. Vui lòng thử lại.";
@@ -3571,12 +3016,14 @@ if (window.kmlGpsResult) {
       }
 
       function openPDF() {
-        if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF."); return; }
+        if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF.");
+          return; }
         window.open(pdfUrl, "_blank");
       }
 
       async function downloadPDF() {
-        if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF."); return; }
+        if (!pdfBlob || !pdfUrl) { alert("Chưa có file PDF.");
+          return; }
         const link = document.createElement("a");
         link.href = pdfUrl;
         link.download = "bao-cao-hien-truong.pdf";
@@ -3587,15 +3034,13 @@ if (window.kmlGpsResult) {
       }
 
       async function sharePDF() {
-        if (!pdfBlob) { alert("Chưa có file PDF."); return; }
+        if (!pdfBlob) { alert("Chưa có file PDF.");
+          return; }
         if (navigator.share && navigator.canShare) {
           try {
             const file = new File([pdfBlob], "bao-cao-hien-truong.pdf", { type: "application/pdf" });
-            await navigator.share({
-              title: "Báo cáo nhanh hiện trường",
-              text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
-              files: [file]
-            });
+            await navigator.share({ title: "Báo cáo nhanh hiện trường", text: "Báo cáo nhanh hiện trường - THỦY LỢI AI",
+              files: [file] });
             return;
           } catch (e) { if (e.name === "AbortError") return; }
         }
@@ -3608,144 +3053,15 @@ if (window.kmlGpsResult) {
         const openBtn = document.getElementById("openPDF");
         const downloadBtn = document.getElementById("downloadPDF");
         const shareBtn = document.getElementById("sharePDF");
-
         if (exportBtn) exportBtn.addEventListener("click", exportPDF);
         if (openBtn) openBtn.addEventListener("click", openPDF);
         if (downloadBtn) downloadBtn.addEventListener("click", downloadPDF);
         if (shareBtn) shareBtn.addEventListener("click", sharePDF);
-
         updatePDFButton();
         const rev = document.getElementById('reviewerName');
         if (rev) rev.addEventListener('input', updatePDFButton);
       });
     })();
-    // ============================================================
-// KML / KMZ - NẠP HỆ THỐNG KÊNH
-// ============================================================
-document.addEventListener("DOMContentLoaded", function () {
-
-    const kmlFile = document.getElementById("kmlFile");
-    const kmlUploadBtn = document.getElementById("kmlUploadBtn");
-    const kmlStatus = document.getElementById("kmlStatus");
-    const kmlPreview = document.getElementById("kmlPreview");
-
-    if (!kmlFile || !kmlUploadBtn) return;
-
-    // Nhấn nút → mở cửa sổ chọn KML/KMZ
-    kmlUploadBtn.addEventListener("click", function () {
-        kmlFile.click();
-    });
-
-    // Khi người dùng chọn file
-    kmlFile.addEventListener("change", async function () {
-
-        const file = this.files && this.files[0];
-
-        if (!file) return;
-
-        const fileName = file.name.toLowerCase();
-
-        if (!fileName.endsWith(".kml") && !fileName.endsWith(".kmz")) {
-            alert("Vui lòng chọn file KML hoặc KMZ.");
-            this.value = "";
-            return;
-        }
-
-        kmlStatus.hidden = false;
-        kmlStatus.innerHTML = "⏳ Đang nạp hệ thống kênh...";
-
-        kmlPreview.hidden = true;
-        kmlPreview.innerHTML = "";
-
-        kmlUploadBtn.disabled = true;
-        kmlUploadBtn.innerHTML = "⏳ ĐANG NẠP KML/KMZ...";
-
-        try {
-
-            const formData = new FormData();
-            formData.append("file", file);
-
-            const response = await fetch("/kml-upload", {
-                method: "POST",
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data.success) {
-                throw new Error(
-                    data.detail ||
-                    data.error ||
-                    "Không thể nạp hệ thống KML/KMZ."
-                );
-            }
-
-            // Lưu thông tin hệ thống KML vào trình duyệt
-            window.thuyLoiKML = data;
-
-            kmlStatus.innerHTML =
-                "✅ <strong>Đã nạp hệ thống kênh thành công.</strong>";
-
-            kmlPreview.hidden = false;
-
-            kmlPreview.innerHTML = `
-                <div style="
-                    padding:12px;
-                    border:1px solid #d9e2ec;
-                    border-radius:10px;
-                    background:#f8fafc;
-                    font-size:14px;
-                    line-height:1.6;
-                ">
-                    <div>
-                        🗺️ <strong>Hệ thống:</strong>
-                        ${data.filename || file.name}
-                    </div>
-
-                    <div>
-                        📍 <strong>Số đối tượng:</strong>
-                        ${data.objects ?? 0}
-                    </div>
-
-                    <div>
-                        📌 <strong>Số tọa độ:</strong>
-                        ${data.coordinates ?? 0}
-                    </div>
-
-                    <div style="
-                        margin-top:6px;
-                        color:#087f5b;
-                        font-weight:600;
-                    ">
-                        ${data.message || "Đã sẵn sàng đối chiếu vị trí ảnh hiện trường."}
-                    </div>
-                </div>
-            `;
-
-            kmlUploadBtn.innerHTML =
-                "✅ HỆ THỐNG KÊNH ĐÃ ĐƯỢC NẠP";
-
-        } catch (error) {
-
-            console.error("KML UPLOAD ERROR:", error);
-
-            kmlStatus.hidden = false;
-            kmlStatus.innerHTML =
-                "❌ Không thể nạp KML/KMZ: " +
-                (error.message || "Lỗi không xác định.");
-
-            kmlUploadBtn.innerHTML =
-                "🗺️ NẠP LẠI HỆ THỐNG KÊNH KML/KMZ";
-
-        } finally {
-
-            kmlUploadBtn.disabled = false;
-
-        }
-
-    });
-
-});
   </script>
 </body>
 </html>
