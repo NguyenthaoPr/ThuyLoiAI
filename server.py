@@ -4,6 +4,7 @@ import asyncio
 import random
 import tempfile
 import httpx
+import logging
 import time
 import hashlib
 import base64
@@ -44,6 +45,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as pdfgen_canvas
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
