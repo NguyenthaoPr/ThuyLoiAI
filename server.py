@@ -2149,13 +2149,44 @@ async def ask(data: Question):
                     else:
                         value_text = gia_tri
 
-                    answers.append(
-                        f"Mực nước tại "
-                        f"{cong_trinh} "
-                        f"lúc {gio} giờ "
-                        f"ngày {ngay}/9/2026 "
-                        f"là {value_text}."
-                    )
+                 # ------------------------------------------------
+                # TÊN THÔNG SỐ HIỂN THỊ ĐỘNG
+                # ------------------------------------------------
+                parameter_labels = {
+                    "HTL": "Mực nước",
+                    "H": "Mực nước",
+                    "MNDBT": "Mực nước dâng bình thường",
+                    "MNDGC": "Mực nước dâng gia cường",
+                    "Q": "Lưu lượng",
+                    "X": "Độ mở",
+                    "Mưa": "Lượng mưa",
+                }
+                
+                parameter_text = parameter_labels.get(
+                    thong_so,
+                    thong_so or "Thông số"
+                )
+                
+                # ------------------------------------------------
+                # THỜI GIAN HIỂN THỊ
+                # ------------------------------------------------
+                time_text = ""
+                
+                if gio:
+                    time_text += f" lúc {gio} giờ"
+                
+                if ngay:
+                    time_text += f" ngày {ngay}/9/2026"
+                
+                # ------------------------------------------------
+                # CÂU TRẢ LỜI ĐỘNG
+                # ------------------------------------------------
+                answers.append(
+                    f"{parameter_text} tại "
+                    f"{cong_trinh}"
+                    f"{time_text} "
+                    f"là {value_text}."
+                )  
 
                 answer = "\n".join(
                     answers
