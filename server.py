@@ -704,31 +704,87 @@ def normalize_operational_text(text: str) -> str:
     return value.replace("đ", "d")
 
 
+# ============================================================
+# THỦY LỢI AI - SMART OPERATIONAL QUERY V1
+# ============================================================
+
 def is_operational_data_question(question: str) -> bool:
     """
-    Xác định câu hỏi có yêu cầu số liệu vận hành hay không.
+    Nhận diện câu hỏi yêu cầu số liệu vận hành.
+
+    Hỗ trợ:
+    - Mực nước
+    - Lưu lượng
+    - Lượng mưa
+    - Độ mở
+    - MNDBT
+    - MNDGC
+    - Hoạt động / vận hành
+    - Số liệu / thông số
+    - So sánh / biến động / thay đổi
     """
 
     text = normalize_operational_text(question)
 
-    operational_keywords = [
+    operational_keywords = (
+        # Mực nước
         "muc nuoc",
+        "muc nuoc ho",
+        "muc nuoc dap",
+        "muc nuoc tram bom",
+        "muc nuoc cong",
+        "muc nuoc kenh",
+
+        # Lưu lượng
         "luu luong",
+        "luong nuoc",
+        "q",
+
+        # Lượng mưa
+        "mua",
+        "luong mua",
+        "mua luong",
+        "mua tai",
+        "luong mua tai",
+        "rainfall",
+
+        # Độ mở
+        "do mo",
+        "do mo cong",
+        "do mo cua",
+        "opening",
+
+        # Mực nước đặc biệt
+        "mndbt",
+        "mndgc",
+
+        # Trạng thái vận hành
         "hoat dong",
         "van hanh",
+        "dang van hanh",
+        "may bom",
+        "so may",
+        "may nao dang chay",
+
+        # Dữ liệu
         "so lieu",
         "thong so",
+        "gia tri",
         "bao nhieu",
+        "hien tai",
         "luc ",
         "ngay ",
         "gio ",
-        "hien tai",
         "hom nay",
         "hom qua",
         "bien dong",
         "thay doi",
         "so sanh",
-    ]
+        "cao nhat",
+        "thap nhat",
+        "lon nhat",
+        "nho nhat",
+    )
 
     return any(
         keyword in text
@@ -738,52 +794,141 @@ def is_operational_data_question(question: str) -> bool:
 
 def detect_operational_parameter(question: str) -> str:
     """
-    Nhận diện thông số vận hành từ câu hỏi.
+    Nhận diện thông số vận hành.
 
-    Mực nước hồ → HTL
+    Chuẩn hóa về mã Data Engine:
+        HTL
+        MNDBT
+        MNDGC
+        Q
+        X
+        Mưa
     """
 
     text = normalize_operational_text(question)
 
-    # Mực nước
-    if "muc nuoc" in text:
+    # --------------------------------------------------------
+    # MỰC NƯỚC
+    # --------------------------------------------------------
+    if any(
+        keyword in text
+        for keyword in (
+            "muc nuoc",
+            "water level",
+            "htl",
+            "nnm",
+        )
+    ):
         return "HTL"
 
-    # Cho phép người dùng hỏi trực tiếp mã thông số
-    parameter_aliases = [
+    # --------------------------------------------------------
+    # MNDBT
+    # --------------------------------------------------------
+    if any(
+        keyword in text
+        for keyword in (
+            "mndbt",
+            "muc nuoc dang binh thuong",
+            "muc nuoc binh thuong",
+        )
+    ):
+        return "MNDBT"
+
+    # --------------------------------------------------------
+    # MNDGC
+    # --------------------------------------------------------
+    if any(
+        keyword in text
+        for keyword in (
+            "mndgc",
+            "muc nuoc dang gia cuong",
+            "muc nuoc gia cuong",
+        )
+    ):
+        return "MNDGC"
+
+    # --------------------------------------------------------
+    # LƯU LƯỢNG
+    # --------------------------------------------------------
+    if any(
+        keyword in text
+        for keyword in (
+            "luu luong",
+            "luong nuoc",
+            "flow",
+        )
+    ):
+        return "Q"
+
+    # --------------------------------------------------------
+    # ĐỘ MỞ
+    # --------------------------------------------------------
+    if any(
+        keyword in text
+        for keyword in (
+            "do mo",
+            "do mo cong",
+            "do mo cua",
+            "opening",
+        )
+    ):
+        return "X"
+
+    # --------------------------------------------------------
+    # LƯỢNG MƯA
+    # --------------------------------------------------------
+    if any(
+        keyword in text
+        for keyword in (
+            "luong mua",
+            "mua tai",
+            "mua",
+            "rainfall",
+        )
+    ):
+        return "Mưa"
+
+    # --------------------------------------------------------
+    # MÃ THÔNG SỐ TRỰC TIẾP
+    # --------------------------------------------------------
+    parameter_aliases = (
         "HTL",
         "MNDBT",
         "MNDGC",
         "Q",
         "X",
-    ]
+    )
 
     original = str(question or "")
 
     for parameter in parameter_aliases:
-        if parameter.lower() in original.lower():
+        if re.search(
+            rf"\b{re.escape(parameter)}\b",
+            original,
+            flags=re.IGNORECASE,
+        ):
             return parameter
 
     return ""
 
 
-def detect_operational_datetime(question: str) -> tuple[str, str]:
+def detect_operational_datetime(
+    question: str,
+) -> tuple[str, str]:
     """
-    Nhận diện ngày và giờ từ câu hỏi.
+    Nhận diện ngày và giờ.
 
-    Ví dụ:
-        ngày 1/9 lúc 7 giờ
-        ngày 01/09 lúc 07h
-        7 giờ ngày 1/9
-
-    Trả về:
-        (ngay, gio)
-
-    Ví dụ:
-        ("1", "7")
+    Hỗ trợ:
+        5/9
+        05/09
+        ngày 5/9
+        ngày 5 tháng 9
+        7 giờ
+        07 giờ
+        7h
+        07h
+        7:00
     """
-
-    import re
 
     text = str(question or "")
 
@@ -791,22 +936,14 @@ def detect_operational_datetime(question: str) -> tuple[str, str]:
     gio = ""
 
     # --------------------------------------------------------
-    # Ngày dạng 1/9 hoặc 01/09
+    # NGÀY dạng 5/9 hoặc 05/09
     # --------------------------------------------------------
-
     date_match = re.search(
-        r"\bngày\s+(\d{1,2})\s*/\s*(\d{1,2})\b",
+        r"\b(?:ngày\s+)?(\d{1,2})\s*/\s*(\d{1,2})"
+        r"(?:\s*/\s*(\d{4}))?\b",
         text,
         flags=re.IGNORECASE,
     )
-
-    if not date_match:
-
-        date_match = re.search(
-            r"\b(\d{1,2})\s*/\s*(\d{1,2})\b",
-            text,
-            flags=re.IGNORECASE,
-        )
 
     if date_match:
         ngay = str(
@@ -814,14 +951,41 @@ def detect_operational_datetime(question: str) -> tuple[str, str]:
         )
 
     # --------------------------------------------------------
-    # Giờ dạng 7 giờ / 07 giờ / 7h / 07h30
+    # NGÀY dạng:
+    # ngày 5 tháng 9
     # --------------------------------------------------------
+    if not ngay:
+        date_match = re.search(
+            r"\bngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\b",
+            text,
+            flags=re.IGNORECASE,
+        )
 
+        if date_match:
+            ngay = str(
+                int(date_match.group(1))
+            )
+
+    # --------------------------------------------------------
+    # GIỜ dạng:
+    # 7 giờ
+    # 07 giờ
+    # 7h
+    # 07h
+    # 7:00
+    # --------------------------------------------------------
     time_match = re.search(
-        r"\b(\d{1,2})\s*(?:giờ|h)\b",
+        r"\b(\d{1,2})\s*(?:giờ|h)(?:\s*\d{1,2})?\b",
         text,
         flags=re.IGNORECASE,
     )
+
+    if not time_match:
+        time_match = re.search(
+            r"\b(\d{1,2})\s*:\s*\d{2}\b",
+            text,
+            flags=re.IGNORECASE,
+        )
 
     if time_match:
         gio = str(
@@ -831,63 +995,89 @@ def detect_operational_datetime(question: str) -> tuple[str, str]:
     return ngay, gio
 
 
-def detect_operational_construction(question: str) -> str:
+def detect_operational_construction(
+    question: str,
+) -> str:
     """
-    Nhận diện tên công trình từ câu hỏi.
+    Nhận diện tên công trình.
 
-    Ví dụ:
-        Hồ Phú Ninh
-        Hồ Khe Tân
-        Hồ Phước Hà
-        Trạm bơm X
+    Hỗ trợ:
+        Hồ ...
+        Trạm bơm ...
+        Đập ...
+        Cống ...
+        Kênh ...
+
+    Không yêu cầu câu hỏi phải có đúng một mẫu cố định.
     """
-
-    import re
 
     text = str(question or "").strip()
 
     # --------------------------------------------------------
-    # Hồ ...
-    # Lấy tên sau "Hồ" đến trước từ khóa thời gian/thông số
+    # Danh sách loại công trình
     # --------------------------------------------------------
-
-    match = re.search(
-        r"\b(Hồ\s+.+?)(?=\s+(?:lúc|vào|ngày|hôm|hiện|đang|có|là|bao|thấp|cao)\b|[?.!,]|$)",
-        text,
-        flags=re.IGNORECASE,
+    construction_patterns = (
+        r"\bHồ\s+",
+        r"\bTrạm\s+bơm\s+",
+        r"\bĐập\s+",
+        r"\bCống\s+",
+        r"\bKênh\s+",
     )
 
-    if match:
-        return match.group(1).strip()
-
-    # --------------------------------------------------------
-    # Trạm bơm ...
-    # --------------------------------------------------------
-
-    match = re.search(
-        r"\b(Trạm\s+bơm\s+.+?)(?=\s+(?:lúc|vào|ngày|hôm|hiện|đang|có|là|bao)\b|[?.!,]|$)",
-        text,
-        flags=re.IGNORECASE,
+    # Các từ đánh dấu phần sau không còn là tên công trình
+    stop_words = (
+        "lúc",
+        "vào",
+        "ngày",
+        "giờ",
+        "hôm",
+        "hiện",
+        "đang",
+        "có",
+        "là",
+        "bao",
+        "thấp",
+        "cao",
+        "mưa",
+        "lượng",
+        "mực",
+        "lưu",
+        "độ",
+        "so",
+        "biến",
+        "thay",
+        "trong",
+        "từ",
+        "đến",
     )
 
-    if match:
-        return match.group(1).strip()
-
-    # --------------------------------------------------------
-    # Cống ...
-    # --------------------------------------------------------
-
-    match = re.search(
-        r"\b(Cống\s+.+?)(?=\s+(?:lúc|vào|ngày|hôm|hiện|đang|có|là|bao)\b|[?.!,]|$)",
-        text,
-        flags=re.IGNORECASE,
+    stop_pattern = "|".join(
+        re.escape(word)
+        for word in stop_words
     )
 
-    if match:
-        return match.group(1).strip()
+    for pattern in construction_patterns:
+
+        match = re.search(
+            rf"({pattern}.+?)"
+            rf"(?=\s+(?:{stop_pattern})\b|[?.!,;:]|$)",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            construction = match.group(1).strip()
+
+            # Loại bỏ khoảng trắng thừa
+            construction = re.sub(
+                r"\s+",
+                " ",
+                construction,
+            )
+
+            return construction
 
     return ""
-
 
 def parse_operational_question(question: str) -> dict:
     """
@@ -1730,7 +1920,99 @@ async def ask_with_singleflight(question: str):
         async with _inflight_lock:
             if _inflight.get(key) is future:
                 _inflight.pop(key, None)
+# ============================================================
+# OPERATIONAL ANSWER FORMATTER
+# ============================================================
 
+PARAMETER_LABELS = {
+    "HTL": "Mực nước",
+    "MNDBT": "Mực nước dâng bình thường",
+    "MNDGC": "Mực nước dâng gia cường",
+    "Q": "Lưu lượng",
+    "X": "Độ mở",
+    "Mưa": "Lượng mưa",
+}
+
+
+def get_parameter_label(
+    parameter: str,
+) -> str:
+
+    key = str(
+        parameter or ""
+    ).strip()
+
+    return PARAMETER_LABELS.get(
+        key,
+        key or "Thông số",
+    )
+
+
+def build_operational_direct_answer(
+    operational_rows: list,
+) -> str:
+
+    answers = []
+
+    for item in operational_rows:
+
+        cong_trinh = str(
+            item.get("cong_trinh", "")
+        ).strip()
+
+        thong_so = str(
+            item.get("thong_so", "")
+        ).strip()
+
+        gia_tri = str(
+            item.get("gia_tri", "")
+        ).strip()
+
+        don_vi = str(
+            item.get("don_vi_do", "")
+        ).strip()
+
+        ngay = str(
+            item.get("ngay", "")
+        ).strip()
+
+        gio = str(
+            item.get("gio", "")
+        ).strip()
+
+        label = get_parameter_label(
+            thong_so
+        )
+
+        value_text = (
+            f"{gia_tri} {don_vi}".strip()
+            if don_vi
+            else gia_tri
+        )
+
+        time_text = ""
+
+        if gio:
+            time_text += f" lúc {gio} giờ"
+
+        if ngay:
+            time_text += f" ngày {ngay}"
+
+        if time_text:
+            time_text = time_text.strip()
+
+        answer = (
+            f"{label} tại {cong_trinh}"
+        )
+
+        if time_text:
+            answer += time_text
+
+        answer += f" là {value_text}."
+
+        answers.append(answer)
+
+    return "\n".join(answers)
 # ============================================================
 # ASK
 # ============================================================
