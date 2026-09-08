@@ -3,6 +3,7 @@ import re
 import asyncio
 import random
 import tempfile
+import httpx
 import time
 import hashlib
 import base64
@@ -575,8 +576,108 @@ def get_active_kml_file():
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 
+# ============================================================
+# GOOGLE SHEETS DATA ENGINE
+# ============================================================
+
+GOOGLE_DATA_API_URL = os.getenv(
+    "GOOGLE_DATA_API_URL",
+    ""
+).strip()
+
+GOOGLE_DATA_TIMEOUT = max(
+    10,
+    int(os.getenv("GOOGLE_DATA_TIMEOUT", "20"))
+)
+# ============================================================
+# GOOGLE DATA ENGINE - QUERY
+# ============================================================
+
+async def query_google_data(
+    cong_trinh: str,
+    thong_so: str,
+    ngay: str = "",
+    gio: str = "",
+):
+
+    if not GOOGLE_DATA_API_URL:
+        return {
+            "success": False,
+            "error": "Chưa cấu hình GOOGLE_DATA_API_URL.",
+            "data": [],
+        }
+
+    if not cong_trinh:
+        return {
+            "success": False,
+            "error": "Thiếu tên công trình.",
+            "data": [],
+        }
+
+    params = {
+        "congTrinh": cong_trinh,
+        "thongSo": thong_so or "",
+        "ngay": ngay or "",
+        "gio": gio or "",
+    }
+
+    try:
+
+        logger.info(
+            "GOOGLE DATA QUERY | "
+            "Công trình=%s | "
+            "Thông số=%s | "
+            "Ngày=%s | "
+            "Giờ=%s",
+            cong_trinh,
+            thong_so,
+            ngay,
+            gio,
+        )
+
+        async with httpx.AsyncClient(
+            timeout=GOOGLE_DATA_TIMEOUT,
+            follow_redirects=True,
+        ) as client:
+
+            response = await client.get(
+                GOOGLE_DATA_API_URL,
+                params=params,
+            )
+
+            response.raise_for_status()
+
+            result = response.json()
+
+        if not isinstance(result, dict):
+            return {
+                "success": False,
+                "error": "Google Data API trả về dữ liệu không hợp lệ.",
+                "data": [],
+            }
+
+        logger.info(
+            "GOOGLE DATA RESULT | success=%s | count=%s",
+            result.get("success"),
+            result.get("count", 0),
+        )
+
+        return result
+
+    except Exception as exc:
+
+        logger.exception(
+            "GOOGLE DATA ERROR: %r",
+            exc
+        )
+
+        return {
+            "success": False,
+            "error": str(exc),
+            "data": [],
+        }
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
 REQUEST_TIMEOUT = max(15, int(os.getenv("REQUEST_TIMEOUT", "45")))
 QUEUE_TIMEOUT = max(5, int(os.getenv("QUEUE_TIMEOUT", "20")))
@@ -1053,7 +1154,26 @@ async def home():
         "model": GEMINI_MODEL,
         "version": "5.2",
     }
+# ============================================================
+# TEST GOOGLE DATA ENGINE
+# ============================================================
 
+@app.get("/data-test")
+async def data_test(
+    congTrinh: str = "",
+    thongSo: str = "HTL",
+    ngay: str = "",
+    gio: str = "",
+):
+
+    result = await query_google_data(
+        cong_trinh=congTrinh,
+        thong_so=thongSo,
+        ngay=ngay,
+        gio=gio,
+    )
+
+    return result
 @app.get("/health")
 async def health():
     return {
