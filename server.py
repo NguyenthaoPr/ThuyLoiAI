@@ -680,6 +680,301 @@ async def query_google_data(
             "error": str(exc),
             "data": [],
         }
+# ============================================================
+# THỦY LỢI AI - NHẬN DIỆN CÂU HỎI SỐ LIỆU VẬN HÀNH
+# ============================================================
+
+def normalize_operational_text(text: str) -> str:
+    """
+    Chuẩn hóa câu hỏi để nhận diện từ khóa.
+    Không làm thay đổi câu hỏi gốc gửi cho Gemini.
+    """
+
+    return (
+        str(text or "")
+        .strip()
+        .lower()
+        .replace("đ", "d")
+    )
+
+
+def is_operational_data_question(question: str) -> bool:
+    """
+    Xác định câu hỏi có yêu cầu số liệu vận hành hay không.
+    """
+
+    text = normalize_operational_text(question)
+
+    operational_keywords = [
+        "muc nuoc",
+        "luu luong",
+        "hoat dong",
+        "van hanh",
+        "so lieu",
+        "thong so",
+        "bao nhieu",
+        "luc ",
+        "ngay ",
+        "gio ",
+        "hien tai",
+        "hom nay",
+        "hom qua",
+        "bien dong",
+        "thay doi",
+        "so sanh",
+    ]
+
+    return any(
+        keyword in text
+        for keyword in operational_keywords
+    )
+
+
+def detect_operational_parameter(question: str) -> str:
+    """
+    Nhận diện thông số vận hành từ câu hỏi.
+
+    Mực nước hồ → HTL
+    """
+
+    text = normalize_operational_text(question)
+
+    # Mực nước
+    if "muc nuoc" in text:
+        return "HTL"
+
+    # Cho phép người dùng hỏi trực tiếp mã thông số
+    parameter_aliases = [
+        "HTL",
+        "MNDBT",
+        "MNDGC",
+        "Q",
+        "X",
+    ]
+
+    original = str(question or "")
+
+    for parameter in parameter_aliases:
+        if parameter.lower() in original.lower():
+            return parameter
+
+    return ""
+
+
+def detect_operational_datetime(question: str) -> tuple[str, str]:
+    """
+    Nhận diện ngày và giờ từ câu hỏi.
+
+    Ví dụ:
+        ngày 1/9 lúc 7 giờ
+        ngày 01/09 lúc 07h
+        7 giờ ngày 1/9
+
+    Trả về:
+        (ngay, gio)
+
+    Ví dụ:
+        ("1", "7")
+    """
+
+    import re
+
+    text = str(question or "")
+
+    ngay = ""
+    gio = ""
+
+    # --------------------------------------------------------
+    # Ngày dạng 1/9 hoặc 01/09
+    # --------------------------------------------------------
+
+    date_match = re.search(
+        r"\bngày\s+(\d{1,2})\s*/\s*(\d{1,2})\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if not date_match:
+
+        date_match = re.search(
+            r"\b(\d{1,2})\s*/\s*(\d{1,2})\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+    if date_match:
+        ngay = str(
+            int(date_match.group(1))
+        )
+
+    # --------------------------------------------------------
+    # Giờ dạng 7 giờ / 07 giờ / 7h / 07h30
+    # --------------------------------------------------------
+
+    time_match = re.search(
+        r"\b(\d{1,2})\s*(?:giờ|h)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if time_match:
+        gio = str(
+            int(time_match.group(1))
+        )
+
+    return ngay, gio
+
+
+def detect_operational_construction(question: str) -> str:
+    """
+    Nhận diện tên công trình từ câu hỏi.
+
+    Ví dụ:
+        Hồ Phú Ninh
+        Hồ Khe Tân
+        Hồ Phước Hà
+        Trạm bơm X
+    """
+
+    import re
+
+    text = str(question or "").strip()
+
+    # --------------------------------------------------------
+    # Hồ ...
+    # Lấy tên sau "Hồ" đến trước từ khóa thời gian/thông số
+    # --------------------------------------------------------
+
+    match = re.search(
+        r"\b(Hồ\s+.+?)(?=\s+(?:lúc|vào|ngày|hôm|hiện|đang|có|là|bao|thấp|cao)\b|[?.!,]|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if match:
+        return match.group(1).strip()
+
+    # --------------------------------------------------------
+    # Trạm bơm ...
+    # --------------------------------------------------------
+
+    match = re.search(
+        r"\b(Trạm\s+bơm\s+.+?)(?=\s+(?:lúc|vào|ngày|hôm|hiện|đang|có|là|bao)\b|[?.!,]|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if match:
+        return match.group(1).strip()
+
+    # --------------------------------------------------------
+    # Cống ...
+    # --------------------------------------------------------
+
+    match = re.search(
+        r"\b(Cống\s+.+?)(?=\s+(?:lúc|vào|ngày|hôm|hiện|đang|có|là|bao)\b|[?.!,]|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if match:
+        return match.group(1).strip()
+
+    return ""
+
+
+def parse_operational_question(question: str) -> dict:
+    """
+    Phân tích câu hỏi số liệu vận hành thành cấu trúc chuẩn.
+    """
+
+    cong_trinh = detect_operational_construction(
+        question
+    )
+
+    thong_so = detect_operational_parameter(
+        question
+    )
+
+    ngay, gio = detect_operational_datetime(
+        question
+    )
+
+    return {
+        "is_operational": is_operational_data_question(
+            question
+        ),
+        "cong_trinh": cong_trinh,
+        "thong_so": thong_so,
+        "ngay": ngay,
+        "gio": gio,
+    } 
+# ============================================================
+# THỦY LỢI AI - LẤY SỐ LIỆU VẬN HÀNH
+# ============================================================
+
+async def get_operational_data(
+    question: str,
+) -> dict:
+
+    parsed = parse_operational_question(
+        question
+    )
+
+    logger.info(
+        "OPERATIONAL PARSE | %s",
+        parsed,
+    )
+
+    if not parsed["is_operational"]:
+        return {
+            "success": False,
+            "found": False,
+            "reason": "not_operational",
+            "data": [],
+        }
+
+    if not parsed["cong_trinh"]:
+        return {
+            "success": False,
+            "found": False,
+            "reason": "missing_construction",
+            "data": [],
+        }
+
+    if not parsed["thong_so"]:
+        return {
+            "success": False,
+            "found": False,
+            "reason": "missing_parameter",
+            "data": [],
+        }
+
+    result = await query_google_data(
+        cong_trinh=parsed["cong_trinh"],
+        thong_so=parsed["thong_so"],
+        ngay=parsed["ngay"],
+        gio=parsed["gio"],
+    )
+
+    if not result.get("success"):
+        return {
+            **result,
+            "found": False,
+            "parsed": parsed,
+        }
+
+    data = result.get(
+        "data",
+        [],
+    )
+
+    return {
+        **result,
+        "found": bool(data),
+        "parsed": parsed,
+        "data": data,
+    }
 MAX_CONCURRENT = max(1, int(os.getenv("MAX_CONCURRENT", "2")))
 REQUEST_TIMEOUT = max(15, int(os.getenv("REQUEST_TIMEOUT", "45")))
 QUEUE_TIMEOUT = max(5, int(os.getenv("QUEUE_TIMEOUT", "20")))
