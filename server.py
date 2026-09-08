@@ -1735,6 +1735,99 @@ async def ask(data: Question):
         return {"status": "error", "answer": "Vui lòng nhập câu hỏi."}
     if len(question) > MAX_QUESTION_LENGTH:
         return {"status": "error", "answer": f"Câu hỏi quá dài. Vui lòng nhập tối đa {MAX_QUESTION_LENGTH} ký tự."}
+
+    # ========================================================
+    # GOOGLE DATA ENGINE - SỐ LIỆU VẬN HÀNH
+    # ========================================================
+
+    operational_data = await get_operational_data(
+        question
+    )
+
+    print(
+        "OPERATIONAL DATA:",
+        operational_data
+    )
+
+    # --------------------------------------------------------
+    # Nếu đây là câu hỏi số liệu vận hành
+    # và Data Engine tìm thấy dữ liệu
+    # --------------------------------------------------------
+
+    if operational_data.get("found"):
+
+        operational_rows = operational_data.get(
+            "data",
+            []
+        )
+
+        # Tạo phần dữ liệu xác thực để Gemini sử dụng
+        data_context_lines = []
+
+        for item in operational_rows:
+
+            data_context_lines.append(
+                "Công trình: "
+                + str(item.get("cong_trinh", ""))
+
+                + " | Thông số: "
+                + str(item.get("thong_so", ""))
+
+                + " | Giá trị: "
+                + str(item.get("gia_tri", ""))
+
+                + " | Đơn vị: "
+                + str(item.get("don_vi_do", ""))
+
+                + " | Ngày: "
+                + str(item.get("ngay", ""))
+
+                + " | Giờ: "
+                + str(item.get("gio", ""))
+
+                + " | Nguồn: "
+                + str(item.get("nguon", ""))
+            )
+
+        operational_context = (
+            "\n\n"
+            "===== DỮ LIỆU VẬN HÀNH XÁC THỰC =====\n"
+            + "\n".join(data_context_lines)
+            + "\n===== HẾT DỮ LIỆU VẬN HÀNH =====\n\n"
+            "QUY TẮC:\n"
+            "- Đây là dữ liệu vận hành được lấy trực tiếp từ Data Engine.\n"
+            "- Phải ưu tiên đúng giá trị số liệu này.\n"
+            "- Không được tự thay đổi, làm tròn hoặc bịa thêm số liệu.\n"
+            "- Khi trả lời, phải giữ đúng công trình, thông số, giá trị, đơn vị, ngày và giờ.\n"
+        )
+
+        # Gửi câu hỏi + dữ liệu xác thực cho Gemini
+        question_for_gemini = (
+            question
+            + operational_context
+        )
+
+    else:
+
+        # Câu hỏi thông thường:
+        # giữ nguyên luồng Gemini hiện tại.
+        question_for_gemini = question
+        if not GEMINI_API_KEY:
+            return {"status": "error", "answer": "THỦY LỢI AI chưa được cấu hình Gemini API."}
+        if gemini_client is None:
+            return {"status": "error", "answer": "THỦY LỢI AI chưa kết nối được Gemini API. Vui lòng thử lại sau."}
+        if not GEMINI_FILE_SEARCH_STORE:
+            return {"status": "error", "answer": "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."}
+        try:
+            answer, sources, was_cache = await ask_with_singleflight(question_for_gemini)
+            response = {"status": "ok", "answer": answer, "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False}
+            if sources:
+                response["sources"] = sources
+            return response
+        except Exception as e:
+            print("GEMINI KHÔNG TRẢ LỜI:", repr(e))
+            return {"status": "error", "answer": "THỦY LỢI AI tạm thời chưa lấy được câu trả lời từ kho dữ liệu Gemini. Hệ thống đã tự kiểm tra và thử lại. Vui lòng thử lại sau ít giây.", "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False}
+
     cached = await get_cached_answer(question_for_gemini)
     if cached:
         print("CACHE HIT - TRẢ CÂU TRẢ LỜI TỪ CACHE")
@@ -1742,82 +1835,7 @@ async def ask(data: Question):
         if cached["sources"]:
             response["sources"] = cached["sources"]
         return response
-# ========================================================
-# GOOGLE DATA ENGINE - SỐ LIỆU VẬN HÀNH
-# ========================================================
 
-operational_data = await get_operational_data(
-    question
-)
-
-print(
-    "OPERATIONAL DATA:",
-    operational_data
-)
-
-# --------------------------------------------------------
-# Nếu đây là câu hỏi số liệu vận hành
-# và Data Engine tìm thấy dữ liệu
-# --------------------------------------------------------
-
-if operational_data.get("found"):
-
-    operational_rows = operational_data.get(
-        "data",
-        []
-    )
-
-    # Tạo phần dữ liệu xác thực để Gemini sử dụng
-    data_context_lines = []
-
-    for item in operational_rows:
-
-        data_context_lines.append(
-            "Công trình: "
-            + str(item.get("cong_trinh", ""))
-
-            + " | Thông số: "
-            + str(item.get("thong_so", ""))
-
-            + " | Giá trị: "
-            + str(item.get("gia_tri", ""))
-
-            + " | Đơn vị: "
-            + str(item.get("don_vi_do", ""))
-
-            + " | Ngày: "
-            + str(item.get("ngay", ""))
-
-            + " | Giờ: "
-            + str(item.get("gio", ""))
-
-            + " | Nguồn: "
-            + str(item.get("nguon", ""))
-        )
-
-    operational_context = (
-        "\n\n"
-        "===== DỮ LIỆU VẬN HÀNH XÁC THỰC =====\n"
-        + "\n".join(data_context_lines)
-        + "\n===== HẾT DỮ LIỆU VẬN HÀNH =====\n\n"
-        "QUY TẮC:\n"
-        "- Đây là dữ liệu vận hành được lấy trực tiếp từ Data Engine.\n"
-        "- Phải ưu tiên đúng giá trị số liệu này.\n"
-        "- Không được tự thay đổi, làm tròn hoặc bịa thêm số liệu.\n"
-        "- Khi trả lời, phải giữ đúng công trình, thông số, giá trị, đơn vị, ngày và giờ.\n"
-    )
-
-    # Gửi câu hỏi + dữ liệu xác thực cho Gemini
-    question_for_gemini = (
-        question
-        + operational_context
-    )
-
-else:
-
-    # Câu hỏi thông thường:
-    # giữ nguyên luồng Gemini hiện tại.
-    question_for_gemini = question
     if not GEMINI_API_KEY:
         return {"status": "error", "answer": "THỦY LỢI AI chưa được cấu hình Gemini API."}
     if gemini_client is None:
