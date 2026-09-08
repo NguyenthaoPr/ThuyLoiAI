@@ -685,17 +685,23 @@ async def query_google_data(
 # ============================================================
 
 def normalize_operational_text(text: str) -> str:
-    """
-    Chuẩn hóa câu hỏi để nhận diện từ khóa.
-    Không làm thay đổi câu hỏi gốc gửi cho Gemini.
-    """
 
-    return (
-        str(text or "")
-        .strip()
-        .lower()
-        .replace("đ", "d")
+    import unicodedata
+
+    value = str(text or "").strip().lower()
+
+    value = unicodedata.normalize(
+        "NFD",
+        value
     )
+
+    value = "".join(
+        ch
+        for ch in value
+        if unicodedata.category(ch) != "Mn"
+    )
+
+    return value.replace("đ", "d")
 
 
 def is_operational_data_question(question: str) -> bool:
@@ -931,6 +937,7 @@ async def get_operational_data(
             "success": False,
             "found": False,
             "reason": "not_operational",
+            "parsed": parsed,
             "data": [],
         }
 
@@ -939,6 +946,7 @@ async def get_operational_data(
             "success": False,
             "found": False,
             "reason": "missing_construction",
+            "parsed": parsed,
             "data": [],
         }
 
@@ -947,6 +955,7 @@ async def get_operational_data(
             "success": False,
             "found": False,
             "reason": "missing_parameter",
+            "parsed": parsed,
             "data": [],
         }
 
@@ -1727,17 +1736,35 @@ async def ask_with_singleflight(question: str):
 # ============================================================
 @app.post("/ask")
 async def ask(data: Question):
+
     question = (data.question or "").strip()
+
     print("=" * 60)
     print("CÂU HỎI:", question)
     print("=" * 60)
+
+    # --------------------------------------------------------
+    # KIỂM TRA CÂU HỎI
+    # --------------------------------------------------------
+
     if not question:
-        return {"status": "error", "answer": "Vui lòng nhập câu hỏi."}
+        return {
+            "status": "error",
+            "answer": "Vui lòng nhập câu hỏi."
+        }
+
     if len(question) > MAX_QUESTION_LENGTH:
-        return {"status": "error", "answer": f"Câu hỏi quá dài. Vui lòng nhập tối đa {MAX_QUESTION_LENGTH} ký tự."}
+        return {
+            "status": "error",
+            "answer": (
+                f"Câu hỏi quá dài. "
+                f"Vui lòng nhập tối đa "
+                f"{MAX_QUESTION_LENGTH} ký tự."
+            )
+        }
 
     # ========================================================
-    # GOOGLE DATA ENGINE - SỐ LIỆU VẬN HÀNH
+    # 1. GOOGLE DATA ENGINE - SỐ LIỆU VẬN HÀNH
     # ========================================================
 
     operational_data = await get_operational_data(
@@ -1749,108 +1776,255 @@ async def ask(data: Question):
         operational_data
     )
 
-    # --------------------------------------------------------
-    # Nếu đây là câu hỏi số liệu vận hành
-    # và Data Engine tìm thấy dữ liệu
-    # --------------------------------------------------------
+    # ========================================================
+    # 2. NẾU LÀ CÂU HỎI SỐ LIỆU VẬN HÀNH
+    # ========================================================
 
-    if operational_data.get("found"):
+    parsed = operational_data.get(
+        "parsed",
+        {}
+    )
 
-        operational_rows = operational_data.get(
-            "data",
-            []
-        )
+    is_operational = parsed.get(
+        "is_operational",
+        False
+    )
 
-        # Tạo phần dữ liệu xác thực để Gemini sử dụng
-        data_context_lines = []
+    if is_operational:
 
-        for item in operational_rows:
+        # ----------------------------------------------------
+        # 2.1. CÓ DỮ LIỆU
+        # ----------------------------------------------------
 
-            data_context_lines.append(
-                "Công trình: "
-                + str(item.get("cong_trinh", ""))
+        if operational_data.get("found"):
 
-                + " | Thông số: "
-                + str(item.get("thong_so", ""))
-
-                + " | Giá trị: "
-                + str(item.get("gia_tri", ""))
-
-                + " | Đơn vị: "
-                + str(item.get("don_vi_do", ""))
-
-                + " | Ngày: "
-                + str(item.get("ngay", ""))
-
-                + " | Giờ: "
-                + str(item.get("gio", ""))
-
-                + " | Nguồn: "
-                + str(item.get("nguon", ""))
+            operational_rows = operational_data.get(
+                "data",
+                []
             )
 
-        operational_context = (
-            "\n\n"
-            "===== DỮ LIỆU VẬN HÀNH XÁC THỰC =====\n"
-            + "\n".join(data_context_lines)
-            + "\n===== HẾT DỮ LIỆU VẬN HÀNH =====\n\n"
-            "QUY TẮC:\n"
-            "- Đây là dữ liệu vận hành được lấy trực tiếp từ Data Engine.\n"
-            "- Phải ưu tiên đúng giá trị số liệu này.\n"
-            "- Không được tự thay đổi, làm tròn hoặc bịa thêm số liệu.\n"
-            "- Khi trả lời, phải giữ đúng công trình, thông số, giá trị, đơn vị, ngày và giờ.\n"
+            print(
+                "OPERATIONAL DATA FOUND:",
+                len(operational_rows)
+            )
+
+            # ------------------------------------------------
+            # Trường hợp có nhiều kết quả
+            # ------------------------------------------------
+
+            if operational_rows:
+
+                answers = []
+
+                for item in operational_rows:
+
+                    cong_trinh = str(
+                        item.get(
+                            "cong_trinh",
+                            ""
+                        )
+                    ).strip()
+
+                    thong_so = str(
+                        item.get(
+                            "thong_so",
+                            ""
+                        )
+                    ).strip()
+
+                    gia_tri = str(
+                        item.get(
+                            "gia_tri",
+                            ""
+                        )
+                    ).strip()
+
+                    don_vi = str(
+                        item.get(
+                            "don_vi_do",
+                            ""
+                        )
+                    ).strip()
+
+                    ngay = str(
+                        item.get(
+                            "ngay",
+                            ""
+                        )
+                    ).strip()
+
+                    gio = str(
+                        item.get(
+                            "gio",
+                            ""
+                        )
+                    ).strip()
+
+                    if don_vi:
+                        value_text = (
+                            f"{gia_tri} {don_vi}"
+                        )
+                    else:
+                        value_text = gia_tri
+
+                    answers.append(
+                        f"Mực nước tại "
+                        f"{cong_trinh} "
+                        f"lúc {gio} giờ "
+                        f"ngày {ngay}/9/2026 "
+                        f"là {value_text}."
+                    )
+
+                answer = "\n".join(
+                    answers
+                )
+
+                return {
+                    "status": "ok",
+                    "answer": answer,
+                    "engine": "Google Data Engine",
+                    "model": "AI_DATA",
+                    "cache": False,
+                    "data_source": "File trực 2026 GG.xlsx",
+                    "data": operational_rows
+                }
+
+        # ----------------------------------------------------
+        # 2.2. LÀ CÂU HỎI VẬN HÀNH NHƯNG KHÔNG CÓ DỮ LIỆU
+        # ----------------------------------------------------
+
+        print(
+            "OPERATIONAL DATA NOT FOUND"
         )
 
-        # Gửi câu hỏi + dữ liệu xác thực cho Gemini
-        question_for_gemini = (
-            question
-            + operational_context
-        )
+        return {
+            "status": "ok",
+            "answer": (
+                "THỦY LỢI AI chưa tìm thấy "
+                "số liệu vận hành phù hợp "
+                "với yêu cầu trong Data Engine."
+            ),
+            "engine": "Google Data Engine",
+            "model": "AI_DATA",
+            "cache": False,
+            "data": []
+        }
 
-    else:
+    # ========================================================
+    # 3. CÂU HỎI THÔNG THƯỜNG
+    # ========================================================
+    #
+    # Chỉ câu hỏi không phải số liệu vận hành
+    # mới đi vào Cache + Gemini File Search.
+    # ========================================================
 
-        # Câu hỏi thông thường:
-        # giữ nguyên luồng Gemini hiện tại.
-        question_for_gemini = question
-        if not GEMINI_API_KEY:
-            return {"status": "error", "answer": "THỦY LỢI AI chưa được cấu hình Gemini API."}
-        if gemini_client is None:
-            return {"status": "error", "answer": "THỦY LỢI AI chưa kết nối được Gemini API. Vui lòng thử lại sau."}
-        if not GEMINI_FILE_SEARCH_STORE:
-            return {"status": "error", "answer": "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."}
-        try:
-            answer, sources, was_cache = await ask_with_singleflight(question_for_gemini)
-            response = {"status": "ok", "answer": answer, "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False}
-            if sources:
-                response["sources"] = sources
-            return response
-        except Exception as e:
-            print("GEMINI KHÔNG TRẢ LỜI:", repr(e))
-            return {"status": "error", "answer": "THỦY LỢI AI tạm thời chưa lấy được câu trả lời từ kho dữ liệu Gemini. Hệ thống đã tự kiểm tra và thử lại. Vui lòng thử lại sau ít giây.", "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False}
+    cached = await get_cached_answer(
+        question
+    )
 
-    cached = await get_cached_answer(question_for_gemini)
     if cached:
-        print("CACHE HIT - TRẢ CÂU TRẢ LỜI TỪ CACHE")
-        response = {"status": "ok", "answer": cached["answer"], "engine": "Local Cache", "model": GEMINI_MODEL, "cache": True}
+
+        print(
+            "CACHE HIT - "
+            "TRẢ CÂU TRẢ LỜI TỪ CACHE"
+        )
+
+        response = {
+            "status": "ok",
+            "answer": cached["answer"],
+            "engine": "Local Cache",
+            "model": GEMINI_MODEL,
+            "cache": True
+        }
+
         if cached["sources"]:
-            response["sources"] = cached["sources"]
+            response["sources"] = (
+                cached["sources"]
+            )
+
         return response
+
+    # ========================================================
+    # 4. KIỂM TRA GEMINI
+    # ========================================================
 
     if not GEMINI_API_KEY:
-        return {"status": "error", "answer": "THỦY LỢI AI chưa được cấu hình Gemini API."}
+
+        return {
+            "status": "error",
+            "answer": (
+                "THỦY LỢI AI chưa được "
+                "cấu hình Gemini API."
+            )
+        }
+
     if gemini_client is None:
-        return {"status": "error", "answer": "THỦY LỢI AI chưa kết nối được Gemini API. Vui lòng thử lại sau."}
+
+        return {
+            "status": "error",
+            "answer": (
+                "THỦY LỢI AI chưa kết nối được "
+                "Gemini API. "
+                "Vui lòng thử lại sau."
+            )
+        }
+
     if not GEMINI_FILE_SEARCH_STORE:
-        return {"status": "error", "answer": "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."}
+
+        return {
+            "status": "error",
+            "answer": (
+                "THỦY LỢI AI chưa có "
+                "kho dữ liệu Gemini File Search."
+            )
+        }
+
+    # ========================================================
+    # 5. GEMINI FILE SEARCH
+    # ========================================================
+
     try:
-        answer, sources, was_cache = await ask_with_singleflight(question_for_gemini)
-        response = {"status": "ok", "answer": answer, "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False}
+
+        answer, sources, was_cache = (
+            await ask_with_singleflight(
+                question
+            )
+        )
+
+        response = {
+            "status": "ok",
+            "answer": answer,
+            "engine": "Gemini File Search",
+            "model": GEMINI_MODEL,
+            "cache": False
+        }
+
         if sources:
             response["sources"] = sources
+
         return response
+
     except Exception as e:
-        print("GEMINI KHÔNG TRẢ LỜI:", repr(e))
-        return {"status": "error", "answer": "THỦY LỢI AI tạm thời chưa lấy được câu trả lời từ kho dữ liệu Gemini. Hệ thống đã tự kiểm tra và thử lại. Vui lòng thử lại sau ít giây.", "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False}
+
+        print(
+            "GEMINI KHÔNG TRẢ LỜI:",
+            repr(e)
+        )
+
+        return {
+            "status": "error",
+            "answer": (
+                "THỦY LỢI AI tạm thời chưa lấy "
+                "được câu trả lời từ kho dữ liệu "
+                "Gemini. Hệ thống đã tự kiểm tra "
+                "và thử lại. Vui lòng thử lại "
+                "sau ít giây."
+            ),
+            "engine": "Gemini File Search",
+            "model": GEMINI_MODEL,
+            "cache": False
+        }
+
 
 # ============================================================
 # STORE / DOCUMENT HELPERS
