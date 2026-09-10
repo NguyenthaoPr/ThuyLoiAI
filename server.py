@@ -803,6 +803,8 @@ def detect_operational_parameter(question: str) -> str:
         Q
         X
         Mưa
+        Mưa T1
+        Mưa C24
     """
 
     text = normalize_operational_text(question)
@@ -875,7 +877,41 @@ def detect_operational_parameter(question: str) -> str:
         return "X"
 
     # --------------------------------------------------------
-    # LƯỢNG MƯA
+    # LƯỢNG MƯA - TRẠM T1
+    # --------------------------------------------------------
+    if (
+        any(
+            keyword in text
+            for keyword in (
+                "luong mua",
+                "mua tai",
+                "mua",
+                "rainfall",
+            )
+        )
+        and "t1" in text
+    ):
+        return "Mưa T1"
+
+    # --------------------------------------------------------
+    # LƯỢNG MƯA - TRẠM C24
+    # --------------------------------------------------------
+    if (
+        any(
+            keyword in text
+            for keyword in (
+                "luong mua",
+                "mua tai",
+                "mua",
+                "rainfall",
+            )
+        )
+        and "c24" in text
+    ):
+        return "Mưa C24"
+
+    # --------------------------------------------------------
+    # LƯỢNG MƯA - TẤT CẢ CÁC TRẠM
     # --------------------------------------------------------
     if any(
         keyword in text
@@ -910,7 +946,6 @@ def detect_operational_parameter(question: str) -> str:
             return parameter
 
     return ""
-
 
 def detect_operational_datetime(
     question: str,
