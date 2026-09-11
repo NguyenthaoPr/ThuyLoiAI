@@ -812,16 +812,42 @@ def detect_operational_parameter(question: str) -> str:
     # --------------------------------------------------------
     # MỰC NƯỚC
     # --------------------------------------------------------
+    # ----------------------------------------------------------
+    # MỰC NƯỚC
+    # ----------------------------------------------------------
+    
+    # Mực nước thượng lưu → HTL
+    if any(
+        keyword in text
+        for keyword in (
+            "muc nuoc thuong luu",
+            "water level upstream",
+            "htl",
+        )
+    ):
+        return "HTL"
+    
+    # Mực nước hạ lưu → HHL
+    if any(
+        keyword in text
+        for keyword in (
+            "muc nuoc ha luu",
+            "water level downstream",
+            "hhl",
+        )
+    ):
+        return "HHL"
+    
+    # Mực nước chung → để Data Engine V4 tự xử lý
+    # H + HTL + HHL
     if any(
         keyword in text
         for keyword in (
             "muc nuoc",
             "water level",
-            "htl",
-            "nnm",
         )
     ):
-        return "HTL"
+        return "Mực nước"
 
     # --------------------------------------------------------
     # MNDBT
