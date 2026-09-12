@@ -2186,6 +2186,19 @@ async def ask(data: Question):
                 "data",
                 []
             )
+            print(
+                "OPERATIONAL ROWS DETAIL:",
+                [
+                    {
+                        "ngay": item.get("ngay"),
+                        "gio": item.get("gio"),
+                        "thong_so": item.get("thong_so"),
+                        "gia_tri": item.get("gia_tri"),
+                        "don_vi_do": item.get("don_vi_do"),
+                    }
+                    for item in operational_rows
+                ]
+            )
 
             print(
                 "OPERATIONAL DATA FOUND:",
