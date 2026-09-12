@@ -1056,6 +1056,7 @@ def detect_operational_datetime(
     return ngay, gio
 
 
+
 def detect_operational_construction(
     question: str,
 ) -> str:
@@ -1069,7 +1070,15 @@ def detect_operational_construction(
         Cống ...
         Kênh ...
 
-    Không yêu cầu câu hỏi phải có đúng một mẫu cố định.
+    Tách tên công trình khỏi:
+        - giờ
+        - ngày/tháng/năm
+        - "lúc", "vào", "ngày", ...
+        - các từ mô tả thông số phía sau
+
+    Ví dụ:
+        "Mực nước Trạm bơm Đông Hồ 19h ngày 11/9/2026"
+        -> "Trạm bơm Đông Hồ"
     """
 
     text = str(question or "").strip()
@@ -1085,13 +1094,19 @@ def detect_operational_construction(
         r"\bKênh\s+",
     )
 
+    # --------------------------------------------------------
     # Các từ đánh dấu phần sau không còn là tên công trình
+    # --------------------------------------------------------
     stop_words = (
         "lúc",
         "vào",
         "ngày",
         "giờ",
         "hôm",
+        "nay",
+        "sáng",
+        "chiều",
+        "tối",
         "hiện",
         "đang",
         "có",
@@ -1117,11 +1132,33 @@ def detect_operational_construction(
         for word in stop_words
     )
 
+    # --------------------------------------------------------
+    # Mẫu thời gian / ngày tháng
+    # --------------------------------------------------------
+    time_pattern = (
+        r"\d{1,2}\s*(?:h|giờ)\b"
+        r"|\d{1,2}:\d{2}\b"
+    )
+
+    date_pattern = (
+        r"\d{1,2}/\d{1,2}"
+        r"(?:/\d{2,4})?\b"
+    )
+
+    # --------------------------------------------------------
+    # Tìm tên công trình
+    # --------------------------------------------------------
     for pattern in construction_patterns:
 
         match = re.search(
             rf"({pattern}.+?)"
-            rf"(?=\s+(?:{stop_pattern})\b|[?.!,;:]|$)",
+            rf"(?="
+            rf"\s+(?:{stop_pattern})\b"
+            rf"|\s+(?:{time_pattern})"
+            rf"|\s+(?:{date_pattern})"
+            rf"|[?.!,;:]"
+            rf"|$"
+            rf")",
             text,
             flags=re.IGNORECASE,
         )
@@ -1129,16 +1166,20 @@ def detect_operational_construction(
         if match:
             construction = match.group(1).strip()
 
+            # ------------------------------------------------
             # Loại bỏ khoảng trắng thừa
+            # ------------------------------------------------
             construction = re.sub(
                 r"\s+",
                 " ",
                 construction,
-            )
+            ).strip()
 
             return construction
 
     return ""
+
+ 
 
 def parse_operational_question(question: str) -> dict:
     """
