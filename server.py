@@ -1087,8 +1087,8 @@ def detect_operational_construction(
     # Danh sách loại công trình
     # --------------------------------------------------------
     construction_patterns = (
-        r"\bHồ\s+",
         r"\bTrạm\s+bơm\s+",
+        r"\bHồ\s+",
         r"\bĐập\s+",
         r"\bCống\s+",
         r"\bKênh\s+",
