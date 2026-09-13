@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+import json
+import os
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 # ============================================================
 # THUY LOI AI - TECHNICAL MODULE V1
@@ -9,8 +13,40 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.0.0",
+    version="1.1.0",
 )
+
+# ============================================================
+# BƯỚC 3.2 - KẾT NỐI APPS SCRIPT API
+# Chỉ đọc dữ liệu. Không ghi/sửa/xóa AI_DATA.
+# Backend proxy giúp trình duyệt không phải gọi trực tiếp
+# Apps Script, tránh vấn đề CORS.
+# ============================================================
+APPS_SCRIPT_API_URL = os.getenv(
+    "APPS_SCRIPT_API_URL",
+    "https://script.google.com/macros/s/AKfycbzP3yXgeBs0WDuvQdrYa4ptJSeK9cHnCe0lrM78pR1WVohagQyOjn8LFtBB7QhmltWupQ/exec"
+)
+
+def fetch_apps_script_api_(api, params=None):
+    query = {"api": api}
+    if params:
+        query.update({k: v for k, v in params.items() if v not in (None, "")})
+    url = APPS_SCRIPT_API_URL + "?" + urlencode(query)
+
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "THUY-LOI-AI-Technical/1.1"
+        }
+    )
+
+    with urlopen(req, timeout=20) as response:
+        raw = response.read().decode("utf-8")
+
+    data = json.loads(raw)
+    if not data.get("ok"):
+        raise RuntimeError(data.get("error") or "Apps Script API trả lỗi.")
+    return data
 
 HTML = '''
 <!doctype html>
@@ -60,10 +96,7 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 <section class="toolbar">
 <div class="control"><label>CONG TRINH</label>
 <select id="facility">
-<option>Chon cong trinh...</option>
-<option>Ho Vinh Trinh</option><option>Ho Phu Loc</option><option>Ho Phu Ninh</option>
-<option>Ho Dong Tien</option><option>Ho Cao Ngan</option><option>Dong Quang</option>
-<option>Dong Ho</option><option>Dap Thanh Quyt</option><option>Dap Bau Nit</option>
+<option value="">Đang tải công trình...</option>
 </select></div>
 <div class="control"><label>THONG SO</label>
 <select id="parameter"><option>Muc nuoc</option><option>HTL</option><option>HHL</option><option>Luong mua</option></select></div>
@@ -93,22 +126,79 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 <section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Du lieu gan nhat</div><div class="head-sub">Bang chi tiet se ket noi Data Engine o Buoc 3</div></div></div>
 <div class="table"><table><thead><tr><th>Ngay</th><th>Gio</th><th>Cong trinh</th><th>Thong so</th><th>Gia tri</th><th>Don vi</th></tr></thead>
 <tbody><tr><td colspan="6" class="empty">Chua ket noi du lieu van hanh.</td></tr></tbody></table></div></section>
-<div class="footer">THUY LOI AI · Technical Module V1 · Buoc 1 — Giao dien doc lap</div>
+<div class="footer">THUY LOI AI · Technical Module V1.1 · Buoc 3.2 — Ket noi danh sach cong trinh</div>
 </main>
 
 <script>
 const f=document.getElementById('facility');
 const s=document.getElementById('selected');
-f.addEventListener('change',()=>s.textContent=f.value==='Chon cong trinh...'?'Chua chon':f.value);
-function refreshModule(){
- if(f.value==='Chon cong trinh...'){s.textContent='Chua chon';return;}
- s.textContent=f.value;
- console.log({facility:f.value,parameter:document.getElementById('parameter').value,period:document.getElementById('period').value});
+
+function setSelectedFacility(){
+  s.textContent = f.value || 'Chưa chọn';
 }
+
+async function loadFacilities(){
+  f.disabled=true;
+  f.innerHTML='<option value="">Đang tải công trình...</option>';
+
+  try{
+    const response=await fetch('/api/facilities');
+    const result=await response.json();
+
+    if(!response.ok || !result.ok){
+      throw new Error(result.error || 'Không tải được danh sách công trình.');
+    }
+
+    const facilities=Array.isArray(result.data)?result.data:[];
+    f.innerHTML='<option value="">Chọn công trình...</option>';
+
+    facilities.forEach(name=>{
+      const option=document.createElement('option');
+      option.value=name;
+      option.textContent=name;
+      f.appendChild(option);
+    });
+
+    if(!facilities.length){
+      f.innerHTML='<option value="">Không có công trình</option>';
+      s.textContent='Không có dữ liệu';
+    }else{
+      s.textContent='Chưa chọn';
+    }
+  }catch(err){
+    console.error(err);
+    f.innerHTML='<option value="">Lỗi tải dữ liệu</option>';
+    s.textContent='Không kết nối được API';
+  }finally{
+    f.disabled=false;
+  }
+}
+
+f.addEventListener('change',setSelectedFacility);
+
+function refreshModule(){
+  if(!f.value){
+    setSelectedFacility();
+    return;
+  }
+  setSelectedFacility();
+  console.log({
+    facility:f.value,
+    parameter:document.getElementById('parameter').value,
+    period:document.getElementById('period').value
+  });
+}
+
+loadFacilities();
 </script>
 </body>
 </html>
 '''
+
+@app.get("/api/facilities")
+def api_facilities():
+    """Proxy danh sách công trình từ Apps Script API."""
+    return fetch_apps_script_api_("facilities")
 
 @app.get("/", response_class=HTMLResponse)
 def technical_dashboard():
@@ -116,7 +206,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.0","status":"ok","stage":1,"mode":"ui_only"}
+    return {"module":"technical_module","version":"1.1","status":"ok","stage":2,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
