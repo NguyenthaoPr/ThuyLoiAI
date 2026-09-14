@@ -35,6 +35,8 @@ GOOGLE_SHEETS_ID = os.getenv(
     "1SJU9aCRZGWeAeHw6UfY_08HK8-A34kIlnrEiPJNEnko",
 ).strip()
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "AI_DATA").strip() or "AI_DATA"
+# GID của tab AI_DATA trong file Google Sheet hiện tại. Dùng GID để tránh export nhầm tab RAW_DATA.
+GOOGLE_SHEET_GID = os.getenv("GOOGLE_SHEET_GID", "1866404435").strip()
 GOOGLE_SHEETS_RANGE = os.getenv("GOOGLE_SHEETS_RANGE", f"{GOOGLE_SHEET_NAME}!A:K").strip()
 GOOGLE_SHEETS_TIMEOUT = float(os.getenv("GOOGLE_SHEETS_TIMEOUT", "15"))
 GOOGLE_SHEETS_CACHE_SECONDS = float(os.getenv("GOOGLE_SHEETS_CACHE_SECONDS", "30"))
@@ -170,7 +172,7 @@ def _read_public_sheet_values():
     """Đọc AI_DATA trực tiếp từ Google Sheet công khai, không qua Apps Script.
     Dùng endpoint xuất CSV của Google Sheets; không ghi/sửa dữ liệu.
     """
-    params = urlencode({"format": "csv", "sheet": GOOGLE_SHEET_NAME})
+    params = urlencode({"format": "csv", "gid": GOOGLE_SHEET_GID})
     url = f"https://docs.google.com/spreadsheets/d/{quote(GOOGLE_SHEETS_ID, safe='')}/export?{params}"
     req = urllib.request.Request(url, headers={"User-Agent": "THUY-LOI-AI/2.1"})
     with urllib.request.urlopen(req, timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
@@ -183,6 +185,17 @@ def _read_public_sheet_values():
     rows = list(csv.reader(io.StringIO(text)))
     if not rows or len(rows[0]) < 2:
         raise RuntimeError("Google Sheet công khai không trả về dữ liệu CSV hợp lệ.")
+
+    # Kiểm tra đúng tab AI_DATA. Nếu export nhầm RAW_DATA, dừng thay vì
+    # đưa dữ liệu sai cột lên giao diện (đây là nguyên nhân dropdown bị sai).
+    header = [str(x).strip().lower() for x in rows[0]]
+    expected = ["tháng", "ngày", "giờ", "đơn vị", "công trình", "hạng mục", "thông số", "thông số (đơn vị đo)", "giá trị"]
+    matches = sum(1 for i, v in enumerate(expected) if i < len(header) and header[i] == v)
+    if matches < 6:
+        raise RuntimeError(
+            f"Đọc nhầm tab/cấu trúc Google Sheet: header nhận được {rows[0][:11]}. "
+            f"Đã khớp {matches}/9 cột AI_DATA. Kiểm tra GOOGLE_SHEET_GID."
+        )
     return rows
 
 def _cache_rows(values):
