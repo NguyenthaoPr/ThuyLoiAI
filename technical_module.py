@@ -970,6 +970,23 @@ let currentParameters={waterLevel:[],rainfall:[]},currentData=null,hydroChart=nu
 let selectedWaterParameter='Mực nước';
 let alertSoundEnabled=false,lastAlertLevel='normal';
 
+function formatNumber(value,digits=2){
+  const n=Number(value);
+  if(!Number.isFinite(n))return '—';
+  return n.toLocaleString('vi-VN',{
+    minimumFractionDigits:digits,
+    maximumFractionDigits:digits
+  });
+}
+
+function toggleQuickReportActions(){
+  const box=document.getElementById('quickReportActions');
+  const btn=document.getElementById('quickReportBtn');
+  if(!box)return;
+  const open=box.classList.toggle('show');
+  if(btn)btn.setAttribute('aria-expanded',open?'true':'false');
+}
+
 function toggleAlertSound(){
   alertSoundEnabled=!alertSoundEnabled;
   const b=document.getElementById('soundBtn');
