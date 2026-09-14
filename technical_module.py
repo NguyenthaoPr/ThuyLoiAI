@@ -8,7 +8,10 @@ import re
 import threading
 from datetime import datetime, timedelta
 from time import monotonic
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+import urllib.request
+import csv
+import io
 
 try:
     from google.oauth2 import service_account
@@ -25,7 +28,7 @@ except ImportError:  # pragma: no cover
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.0.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.1.0")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -35,6 +38,9 @@ GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "AI_DATA").strip() or "AI_DAT
 GOOGLE_SHEETS_RANGE = os.getenv("GOOGLE_SHEETS_RANGE", f"{GOOGLE_SHEET_NAME}!A:K").strip()
 GOOGLE_SHEETS_TIMEOUT = float(os.getenv("GOOGLE_SHEETS_TIMEOUT", "15"))
 GOOGLE_SHEETS_CACHE_SECONDS = float(os.getenv("GOOGLE_SHEETS_CACHE_SECONDS", "30"))
+# Cho phép đọc Sheet công khai trực tiếp, không cần Apps Script/Service Account.
+# Nếu Sheet đặt "Bất kỳ ai có liên kết - Người xem", chế độ này hoạt động ngay.
+GOOGLE_SHEETS_PUBLIC = os.getenv("GOOGLE_SHEETS_PUBLIC", "1").strip().lower() in {"1", "true", "yes", "on"}
 GOOGLE_SHEETS_API_KEY = os.getenv("GOOGLE_SHEETS_API_KEY", "").strip()
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
 GOOGLE_SERVICE_ACCOUNT_B64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_B64", "").strip()
@@ -150,7 +156,7 @@ def _build_credentials():
             return _creds
         except Exception as exc:
             raise RuntimeError(f"Không đọc được GOOGLE_APPLICATION_CREDENTIALS: {exc}") from exc
-    raise RuntimeError("Chưa cấu hình Service Account. Cần GOOGLE_SERVICE_ACCOUNT_JSON (khuyến nghị) hoặc GOOGLE_SERVICE_ACCOUNT_B64.")
+    raise RuntimeError("Chưa cấu hình quyền đọc Google Sheet. Nếu Sheet công khai, đặt GOOGLE_SHEETS_PUBLIC=1; nếu Sheet riêng tư, dùng GOOGLE_SERVICE_ACCOUNT_JSON hoặc GOOGLE_SERVICE_ACCOUNT_B64.")
 
 def _get_session():
     global _session
@@ -160,11 +166,45 @@ def _get_session():
         _session = AuthorizedSession(_build_credentials())
     return _session
 
+def _read_public_sheet_values():
+    """Đọc AI_DATA trực tiếp từ Google Sheet công khai, không qua Apps Script.
+    Dùng endpoint xuất CSV của Google Sheets; không ghi/sửa dữ liệu.
+    """
+    params = urlencode({"format": "csv", "sheet": GOOGLE_SHEET_NAME})
+    url = f"https://docs.google.com/spreadsheets/d/{quote(GOOGLE_SHEETS_ID, safe='')}/export?{params}"
+    req = urllib.request.Request(url, headers={"User-Agent": "THUY-LOI-AI/2.1"})
+    with urllib.request.urlopen(req, timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
+        raw = resp.read()
+    text = raw.decode("utf-8-sig", errors="replace")
+    # Nếu Google trả về trang HTML đăng nhập/quyền truy cập thì không coi là dữ liệu CSV.
+    head = text.lstrip()[:200].lower()
+    if head.startswith("<!doctype html") or "<html" in head:
+        raise RuntimeError("Google Sheet chưa cho phép đọc công khai bằng liên kết.")
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows or len(rows[0]) < 2:
+        raise RuntimeError("Google Sheet công khai không trả về dữ liệu CSV hợp lệ.")
+    return rows
+
+def _cache_rows(values):
+    with _cache_lock:
+        _sheet_cache["rows"] = values
+        _sheet_cache["loaded_at"] = monotonic()
+    return values
+
 def _read_sheet_values(force=False):
     now = monotonic()
     with _cache_lock:
         if not force and _sheet_cache["rows"] is not None and now - _sheet_cache["loaded_at"] < GOOGLE_SHEETS_CACHE_SECONDS:
             return _sheet_cache["rows"]
+
+    public_error = None
+    if GOOGLE_SHEETS_PUBLIC:
+        try:
+            return _cache_rows(_read_public_sheet_values())
+        except Exception as exc:
+            public_error = str(exc)
+
+    # Fallback bảo mật: Google Sheets API + Service Account/API key.
     encoded_range = quote(GOOGLE_SHEETS_RANGE, safe="")
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{quote(GOOGLE_SHEETS_ID, safe='')}/values/{encoded_range}"
     params = {"majorDimension": "ROWS", "valueRenderOption": "UNFORMATTED_VALUE", "dateTimeRenderOption": "FORMATTED_STRING"}
@@ -172,29 +212,31 @@ def _read_sheet_values(force=False):
         params["key"] = GOOGLE_SHEETS_API_KEY
     try:
         if GOOGLE_SHEETS_API_KEY and not (GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_B64 or GOOGLE_APPLICATION_CREDENTIALS):
-            import urllib.request
-            import urllib.parse
-            req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params), headers={"User-Agent": "THUY-LOI-AI/2.0"})
+            req = urllib.request.Request(url + "?" + urlencode(params), headers={"User-Agent": "THUY-LOI-AI/2.1"})
             with urllib.request.urlopen(req, timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
         else:
             resp = _get_session().get(url, params=params, timeout=GOOGLE_SHEETS_TIMEOUT)
             if resp.status_code >= 400:
-                try: detail = resp.json().get("error", {}).get("message", resp.text[:300])
-                except Exception: detail = resp.text[:300]
+                try:
+                    detail = resp.json().get("error", {}).get("message", resp.text[:300])
+                except Exception:
+                    detail = resp.text[:300]
                 raise RuntimeError(f"Google Sheets API HTTP {resp.status_code}: {detail}")
             payload = resp.json()
-    except RuntimeError:
+    except RuntimeError as exc:
+        if public_error:
+            raise RuntimeError(f"Không đọc được Google Sheet trực tiếp. Public CSV: {public_error}. API: {exc}") from exc
         raise
     except Exception as exc:
+        if public_error:
+            raise RuntimeError(f"Không đọc được Google Sheet trực tiếp. Public CSV: {public_error}. API: {exc}") from exc
         raise RuntimeError(f"Không đọc được Google Sheet: {exc}") from exc
+
     values = payload.get("values") if isinstance(payload, dict) else None
     if not isinstance(values, list) or not values:
         raise RuntimeError(f"Google Sheet không có dữ liệu trong vùng {GOOGLE_SHEETS_RANGE}.")
-    with _cache_lock:
-        _sheet_cache["rows"] = values
-        _sheet_cache["loaded_at"] = monotonic()
-    return values
+    return _cache_rows(values)
 
 def _data_rows():
     values = _read_sheet_values()
@@ -1205,7 +1247,7 @@ def technical_dashboard(): return HTML
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"2.0.0","status":"ok","stage":7,"mode":"direct_google_sheets","sheet":GOOGLE_SHEET_NAME}
+    return {"module":"technical_module","version":"2.1.0","status":"ok","stage":7,"mode":"direct_google_sheets","sheet":GOOGLE_SHEET_NAME}
 
 if __name__ == "__main__":
     import uvicorn
