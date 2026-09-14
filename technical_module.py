@@ -970,6 +970,15 @@ let currentParameters={waterLevel:[],rainfall:[]},currentData=null,hydroChart=nu
 let selectedWaterParameter='Mực nước';
 let alertSoundEnabled=false,lastAlertLevel='normal';
 
+function escapeHtml(value){
+  return String(value??'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
 function formatNumber(value,digits=2){
   const n=Number(value);
   if(!Number.isFinite(n))return '—';
@@ -2026,7 +2035,7 @@ function setDataError(message){
   rainTotal.textContent='—';
   document.getElementById('waterNote').textContent='Kiểm tra kết nối Google Sheet';
   document.getElementById('technicalSummary').innerHTML=
-    '<div class="empty">'+String(message||'Không đọc được Google Sheet.')+'</div>';
+    '<div class="empty">'+escapeHtml(String(message||'Không đọc được Google Sheet.'))+'</div>';
   if(hydroChart){
     hydroChart.destroy();
     hydroChart=null;
