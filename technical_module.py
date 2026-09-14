@@ -9,14 +9,14 @@ from urllib.error import HTTPError, URLError
 from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.13
+# THUY LOI AI - TECHNICAL MODULE V1.14.1
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.13.0",
+    version="1.14.1",
 )
 
 # ============================================================
@@ -139,7 +139,7 @@ button{cursor:pointer}
 .sound-btn.on{border-color:var(--primary);color:var(--primary)}
 .alert-banner.danger{animation:alertDanger 1.1s infinite alternate}
 @keyframes alertDanger{to{box-shadow:0 0 28px rgba(225,75,50,.20),var(--shadow)}}
-.date-filter{display:grid;grid-template-columns:1fr 1fr auto minmax(240px,1fr);gap:10px;margin:-4px 0 16px}
+.date-filter{display:grid;grid-template-columns:1fr 1fr auto minmax(240px,1fr);gap:10px;margin:-4px 0 16px;min-width:0}
 .date-box{padding:10px 13px;background:var(--surface);border:1px solid var(--line);border-radius:14px}
 .date-box label{display:block;color:var(--muted);font-size:10px;font-weight:900;margin-bottom:5px}
 .date-box input{width:100%;border:0;outline:0;background:transparent;color:var(--text);font-weight:750}
@@ -228,11 +228,18 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 
 /* V1.10 - Quick Report preview */
 .report-btn{white-space:nowrap}
-.report-wrap{position:relative;display:flex;align-items:center;gap:7px}
+.report-wrap{position:relative;display:flex;align-items:center;gap:7px;min-width:0}
 .report-actions{display:none;align-items:center;gap:7px;flex-wrap:wrap}
-.report-actions.show{display:flex}
+.report-actions.show{display:flex;min-width:0}
 .report-actions .primary-btn,.report-actions .ghost-btn{min-height:44px;padding:0 13px}
-@media(max-width:760px){.report-wrap{width:100%;flex-wrap:wrap}.report-wrap>.primary-btn{width:100%}.report-actions{width:100%}.report-actions button{flex:1;min-width:0}}
+@media(max-width:760px){
+  .date-filter .report-wrap{grid-column:1/-1;width:100%;display:block}
+  .report-wrap>.primary-btn{width:100%;min-height:46px}
+  .report-actions{width:100%;display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:7px}
+  .report-actions.show{display:grid}
+  .report-actions button{width:100%;min-width:0;min-height:44px;padding:0 5px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media(max-width:390px){.report-actions{gap:5px}.report-actions button{font-size:11px;padding:0 3px}}
 .report-modal{position:fixed;inset:0;z-index:9999;background:rgba(4,12,22,.72);display:none;align-items:center;justify-content:center;padding:18px}
 .report-modal.show{display:flex}
 .report-modal-card{width:min(980px,100%);height:min(90vh,900px);background:var(--panel,#fff);color:var(--text,#152238);border:1px solid var(--line,#dce4ee);border-radius:18px;box-shadow:0 25px 80px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden}
@@ -309,7 +316,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   </section>
 
 
-  <div class="footer">THUY LOI AI · Technical Module V1.13 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.14.1 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -578,38 +585,116 @@ function reportAnalysis(data){
   const min=pts.length?Math.min(...pts.map(p=>p.value)):null, max=pts.length?Math.max(...pts.map(p=>p.value)):null;
   const maxRise=pts.length>1?Math.max(...pts.slice(1).map((p,i)=>p.value-pts[i].value)):null;
   const maxDrop=pts.length>1?Math.min(...pts.slice(1).map((p,i)=>p.value-pts[i].value)):null;
+
+  /*
+   * PHÂN TÍCH 2–3 LẦN ĐO GẦN NHẤT
+   * - Không dùng khoảng 24 giờ cố định để dự kiến thời gian đến ngưỡng.
+   * - Lấy tối đa 3 điểm cuối, tính đúng thời gian giữa các lần đo.
+   * - Tính tốc độ từng khoảng (m/giờ) và tốc độ xu hướng tuyến tính từ 2–3 điểm.
+   * - Dùng tốc độ xu hướng để NGOẠI SUY thời gian đến MNDBT/MNDGC.
+   * Đây là ngoại suy, không phải “nội suy” theo nghĩa toán học vì dự báo nằm ngoài
+   * khoảng quan trắc. Cách gọi trong báo cáo được ghi rõ để tránh hiểu nhầm.
+   */
+  const recent=pts.slice(-3);
+  const intervals=[];
+  for(let i=1;i<recent.length;i++){
+    const dt=(recent[i].time-recent[i-1].time)/3600000;
+    const dh=recent[i].value-recent[i-1].value;
+    if(dt>0) intervals.push({from:recent[i-1],to:recent[i],hours:dt,delta:dh,rate:dh/dt});
+  }
+  let trendSlope=null,trendMethod='Chưa đủ 2 lần đo';
+  if(recent.length>=2&&intervals.length){
+    if(recent.length===2){
+      trendSlope=intervals[intervals.length-1].rate;
+      trendMethod='2 lần đo gần nhất';
+    }else{
+      const t0=recent[0].time.getTime();
+      const xs=recent.map(p=>(p.time.getTime()-t0)/3600000), ys=recent.map(p=>p.value);
+      const xm=xs.reduce((a,b)=>a+b,0)/xs.length, ym=ys.reduce((a,b)=>a+b,0)/ys.length;
+      const den=xs.reduce((sum,x)=>sum+(x-xm)*(x-xm),0);
+      trendSlope=den>0?xs.reduce((sum,x,i)=>sum+(x-xm)*(ys[i]-ym),0)/den:null;
+      trendMethod='3 lần đo gần nhất · hồi quy tuyến tính theo thời gian';
+    }
+  }
+  const lastInterval=intervals.length?intervals[intervals.length-1]:null;
+  const prevInterval=intervals.length>1?intervals[intervals.length-2]:null;
+  const recentDelta=lastInterval?lastInterval.delta:null;
+  const recentRate=lastInterval?lastInterval.rate:null;
+  const previousRate=prevInterval?prevInterval.rate:null;
+  const rateChange=(Number.isFinite(recentRate)&&Number.isFinite(previousRate))?recentRate-previousRate:null;
+  const accelerationRatio=(Number.isFinite(recentRate)&&Number.isFinite(previousRate)&&previousRate>0)?recentRate/previousRate:null;
+
+  // Tiêu chí nội bộ để nhận diện “tăng nhiều/tăng rất nhanh”; không phải ngưỡng quy chuẩn.
+  const RISE_M=0.30;
+  const FAST_RATE=0.05;
+  const VERY_FAST_RATE=0.10;
   const abnormal=[];
   const addAbnormal=x=>{if(x&&!abnormal.includes(x))abnormal.push(x)};
   if(latest&&Number.isFinite(gc)&&latest.value>=gc)addAbnormal(`Mực nước mới nhất ${formatNumber(latest.value)} m chạm/vượt MNDGC ${formatNumber(gc)} m.`);
   else if(max!==null&&Number.isFinite(gc)&&max>=gc)addAbnormal(`Trong kỳ có thời điểm mực nước chạm/vượt MNDGC ${formatNumber(gc)} m.`);
   if(latest&&Number.isFinite(bt)&&latest.value>=bt)addAbnormal(`Mực nước mới nhất không thấp hơn MNDBT ${formatNumber(bt)} m.`);
   else if(max!==null&&Number.isFinite(bt)&&max>=bt)addAbnormal(`Trong kỳ có thời điểm mực nước đạt/vượt MNDBT ${formatNumber(bt)} m.`);
+
+  if(lastInterval&&lastInterval.delta>=RISE_M){
+    addAbnormal(`Mực nước tăng nhiều ở 2 lần đo gần nhất: +${formatNumber(lastInterval.delta)} m trong ${formatNumber(lastInterval.hours,1)} giờ.`);
+  }
+  if(Number.isFinite(recentRate)&&recentRate>=VERY_FAST_RATE){
+    addAbnormal(`Tốc độ tăng mực nước rất nhanh: +${formatNumber(recentRate,3)} m/giờ trong khoảng đo gần nhất.`);
+  }else if(Number.isFinite(recentRate)&&recentRate>=FAST_RATE){
+    addAbnormal(`Tốc độ tăng mực nước nhanh: +${formatNumber(recentRate,3)} m/giờ trong khoảng đo gần nhất.`);
+  }
+  if(Number.isFinite(accelerationRatio)&&accelerationRatio>=1.5&&recentRate>0){
+    addAbnormal(`Tốc độ tăng của khoảng gần nhất cao khoảng ${formatNumber(accelerationRatio,1)} lần khoảng trước; cần theo dõi sát.`);
+  }
   for(let i=1;i<pts.length;i++){
     const d=pts[i].value-pts[i-1].value, hours=(pts[i].time-pts[i-1].time)/3600000;
-    if(hours>0&&Math.abs(d)>=0.30)addAbnormal(`Biến động đáng chú ý: ${d>=0?'+':''}${formatNumber(d)} m trong ${hours.toFixed(1)} giờ so với lần đo trước.`);
+    const isLast=i===pts.length-1;
+    const alreadyReportedLastRise=isLast&&lastInterval&&lastInterval.delta>=RISE_M;
+    if(hours>0&&Math.abs(d)>=RISE_M&&!alreadyReportedLastRise)addAbnormal(`Biến động đáng chú ý: ${d>=0?'+':''}${formatNumber(d)} m trong ${hours.toFixed(1)} giờ so với lần đo trước.`);
   }
+
   const trendFor=hours=>{if(!latest)return null;const cutoff=latest.time.getTime()-hours*3600000,a=pts.filter(p=>p.time.getTime()>=cutoff);return a.length>1?latest.value-a[0].value:null};
   const trend24=trendFor(24),trend72=trendFor(72),trend168=trendFor(168);
   const rate24=trend24!==null?trend24/24:null;
   const rainPeak=rainPoints.length?rainPoints.reduce((a,b)=>b.value>a.value?b:a):null;
+
   let forecast='Chưa đủ dữ liệu để dự kiến xu hướng.';
-  const projected={h6:null,h12:null,h24:null,btHours:null,gcHours:null};
-  if(latest&&trend24!==null){
-    projected.h6=latest.value+trend24/4; projected.h12=latest.value+trend24/2; projected.h24=latest.value+trend24;
-    forecast=`Theo xu hướng 24 giờ gần nhất (ngoại suy tuyến tính, chỉ mang tính tham khảo): sau 6 giờ khoảng ${formatNumber(projected.h6)} m; 12 giờ khoảng ${formatNumber(projected.h12)} m; 24 giờ khoảng ${formatNumber(projected.h24)} m nếu điều kiện và xu hướng hiện tại tiếp diễn.`;
-    if(rate24>0){
-      if(Number.isFinite(bt)&&latest.value<bt)projected.btHours=(bt-latest.value)/rate24;
-      if(Number.isFinite(gc)&&latest.value<gc)projected.gcHours=(gc-latest.value)/rate24;
-      if(projected.btHours!==null&&projected.btHours<=24)forecast+=` Với tốc độ tăng trung bình hiện tại, có khả năng tiến đến MNDBT sau khoảng ${formatNumber(projected.btHours,1)} giờ.`;
-      if(projected.gcHours!==null&&projected.gcHours<=48)forecast+=` Với cùng xu hướng, có khả năng tiến đến MNDGC sau khoảng ${formatNumber(projected.gcHours,1)} giờ.`;
+  const projected={h1:null,h3:null,h6:null,h12:null,h24:null,btHours:null,gcHours:null,rise30Hours:null,rise50Hours:null,trendSlope,trendMethod};
+  if(latest&&Number.isFinite(trendSlope)){
+    projected.h1=latest.value+trendSlope*1;
+    projected.h3=latest.value+trendSlope*3;
+    projected.h6=latest.value+trendSlope*6;
+    projected.h12=latest.value+trendSlope*12;
+    projected.h24=latest.value+trendSlope*24;
+    const slopeText=(trendSlope>=0?'+':'')+formatNumber(trendSlope,3)+' m/giờ';
+    forecast=`Dựa trên ${trendMethod}, tốc độ xu hướng hiện tại là ${slopeText}. Ngoại suy từ mực nước mới nhất: sau 1 giờ khoảng ${formatNumber(projected.h1)} m; 3 giờ ${formatNumber(projected.h3)} m; 6 giờ ${formatNumber(projected.h6)} m; 12 giờ ${formatNumber(projected.h12)} m; 24 giờ ${formatNumber(projected.h24)} m, nếu xu hướng tiếp tục không đổi.`;
+    if(trendSlope>0){
+      projected.rise30Hours=0.30/trendSlope;
+      projected.rise50Hours=0.50/trendSlope;
+      if(Number.isFinite(bt)&&latest.value<bt)projected.btHours=(bt-latest.value)/trendSlope;
+      if(Number.isFinite(gc)&&latest.value<gc)projected.gcHours=(gc-latest.value)/trendSlope;
+      if(projected.btHours!==null)forecast+=` Thời gian ước tính đến MNDBT: khoảng ${formatNumber(projected.btHours,1)} giờ.`;
+      else if(Number.isFinite(bt)&&latest.value>=bt)forecast+=' Mực nước hiện đã ở mức MNDBT hoặc cao hơn.';
+      if(projected.gcHours!==null)forecast+=` Thời gian ước tính đến MNDGC: khoảng ${formatNumber(projected.gcHours,1)} giờ.`;
+      else if(Number.isFinite(gc)&&latest.value>=gc)forecast+=' Mực nước hiện đã chạm/vượt MNDGC.';
+      forecast+=` Nếu tốc độ này tiếp tục, thời gian để mực nước tăng thêm 0,30 m khoảng ${formatNumber(projected.rise30Hours,1)} giờ và thêm 0,50 m khoảng ${formatNumber(projected.rise50Hours,1)} giờ.`;
+    }else if(trendSlope<0){
+      forecast+=` Xu hướng đang giảm khoảng ${formatNumber(Math.abs(trendSlope),3)} m/giờ; không tính thời gian tiến đến các ngưỡng cao hơn theo xu hướng giảm hiện tại.`;
+    }else{
+      forecast+=' Xu hướng gần như ổn định; chưa có cơ sở để xác định thời gian tiến đến ngưỡng cao hơn.';
     }
   }
+
   let assessment='Chưa đủ dữ liệu để đánh giá.';
   if(latest&&Number.isFinite(gc)&&latest.value>=gc)assessment='Mực nước hiện tại chạm/vượt MNDGC; cần tăng cường kiểm tra, theo dõi và thực hiện chế độ vận hành/cảnh báo theo quy trình của công trình.';
   else if(latest&&Number.isFinite(bt)&&latest.value>=bt)assessment='Mực nước hiện tại từ MNDBT trở lên; cần tiếp tục theo dõi diễn biến mực nước và lượng mưa, đồng thời đối chiếu quy trình vận hành.';
+  else if(latest&&Number.isFinite(recentRate)&&recentRate>=VERY_FAST_RATE)assessment=`Mực nước đang tăng rất nhanh, tốc độ khoảng ${formatNumber(recentRate,3)} m/giờ theo 2 lần đo gần nhất; cần theo dõi sát và đối chiếu với lượng mưa, vận hành công trình.`;
+  else if(latest&&Number.isFinite(recentRate)&&recentRate>=FAST_RATE)assessment=`Mực nước đang tăng nhanh, tốc độ khoảng ${formatNumber(recentRate,3)} m/giờ theo 2 lần đo gần nhất; cần tăng cường theo dõi.`;
   else if(latest)assessment='Mực nước hiện tại thấp hơn MNDBT; tiếp tục theo dõi xu thế mực nước, lượng mưa và các yếu tố vận hành liên quan.';
-  return {r,pts,latest,first,bt,gc,totalRain,rainPoints,rainPeak,increase,min,max,maxRise,maxDrop,abnormal,trend24,trend72,trend168,rate24,projected,forecast,assessment};
+
+  return {r,pts,latest,first,bt,gc,totalRain,rainPoints,rainPeak,increase,min,max,maxRise,maxDrop,abnormal,trend24,trend72,trend168,rate24,recent,intervals,lastInterval,prevInterval,recentDelta,recentRate,previousRate,rateChange,accelerationRatio,trendSlope,trendMethod,projected,forecast,assessment,RISE_M,FAST_RATE,VERY_FAST_RATE};
 }
+
 function buildQuickReportHtml(){
   if(!currentData||!Array.isArray(currentData.water)||!currentData.water.length)return null
   const a=reportAnalysis(currentData), d=currentData, facility=d.facility||f.value||'Chưa xác định';
@@ -629,16 +714,16 @@ function buildQuickReportHtml(){
 <h1>BÁO CÁO NHANH DIỄN BIẾN MỰC NƯỚC – LƯỢNG MƯA</h1>
 <table class="meta"><tr><td>Công trình</td><td>${escapeHtml(facility)}</td></tr><tr><td>Thời gian</td><td>Từ ${escapeHtml(a.r.from)} đến ${escapeHtml(a.r.to)}</td></tr><tr><td>Ngày lập báo cáo</td><td>${fmtReportDate(new Date())}</td></tr></table>
 <h2>1. Tổng hợp số liệu quan trắc</h2><table><tr><th>Nội dung</th><th>Kết quả</th></tr>
-<tr><td>Số lần đo mực nước</td><td>${a.pts.length} lần</td></tr><tr><td>Mực nước đầu kỳ</td><td>${escapeHtml(firstText)}</td></tr><tr><td>Mực nước mới nhất</td><td>${escapeHtml(latestText)}</td></tr><tr><td>Mực nước thấp nhất</td><td>${a.min!==null?formatNumber(a.min)+' m':'—'}</td></tr><tr><td>Mực nước cao nhất</td><td>${a.max!==null?formatNumber(a.max)+' m':'—'}</td></tr><tr><td>Biến động đầu kỳ → cuối kỳ</td><td>${trendText(a.increase)}</td></tr><tr><td>Tăng lớn nhất giữa hai lần đo</td><td>${a.maxRise!==null?trendText(a.maxRise):'—'}</td></tr><tr><td>Giảm lớn nhất giữa hai lần đo</td><td>${a.maxDrop!==null?trendText(a.maxDrop):'—'}</td></tr><tr><td>Xu hướng 24 giờ</td><td>${trendText(a.trend24)}</td></tr><tr><td>Xu hướng 3 ngày</td><td>${trendText(a.trend72)}</td></tr><tr><td>Xu hướng 7 ngày</td><td>${trendText(a.trend168)}</td></tr><tr><td>Tổng lượng mưa</td><td>${formatNumber(a.totalRain)} mm</td></tr><tr><td>Lượng mưa lớn nhất ghi nhận</td><td>${escapeHtml(peakRain)}</td></tr></table>
+<tr><td>Số lần đo mực nước</td><td>${a.pts.length} lần</td></tr><tr><td>Mực nước đầu kỳ</td><td>${escapeHtml(firstText)}</td></tr><tr><td>Mực nước mới nhất</td><td>${escapeHtml(latestText)}</td></tr><tr><td>Mực nước thấp nhất</td><td>${a.min!==null?formatNumber(a.min)+' m':'—'}</td></tr><tr><td>Mực nước cao nhất</td><td>${a.max!==null?formatNumber(a.max)+' m':'—'}</td></tr><tr><td>Biến động đầu kỳ → cuối kỳ</td><td>${trendText(a.increase)}</td></tr><tr><td>Tăng lớn nhất giữa hai lần đo</td><td>${a.maxRise!==null?trendText(a.maxRise):'—'}</td></tr><tr><td>Giảm lớn nhất giữa hai lần đo</td><td>${a.maxDrop!==null?trendText(a.maxDrop):'—'}</td></tr><tr><td>2–3 lần đo gần nhất</td><td>${a.recent.length} lần đo · Phân tích theo thời gian thực giữa các lần đo</td></tr><tr><td>Tăng/giảm lần đo gần nhất</td><td>${a.recentDelta!==null?trendText(a.recentDelta)+' trong '+formatNumber(a.lastInterval.hours,1)+' giờ':'—'}</td></tr><tr><td>Tốc độ biến đổi gần nhất</td><td>${a.recentRate!==null?(a.recentRate>=0?'+':'')+formatNumber(a.recentRate,3)+' m/giờ':'—'}</td></tr><tr><td>Tốc độ xu hướng 2–3 lần đo</td><td>${a.trendSlope!==null?(a.trendSlope>=0?'+':'')+formatNumber(a.trendSlope,3)+' m/giờ':'—'} · ${escapeHtml(a.trendMethod)}</td></tr><tr><td>Xu hướng 24 giờ</td><td>${trendText(a.trend24)}</td></tr><tr><td>Xu hướng 3 ngày</td><td>${trendText(a.trend72)}</td></tr><tr><td>Xu hướng 7 ngày</td><td>${trendText(a.trend168)}</td></tr><tr><td>Tổng lượng mưa</td><td>${formatNumber(a.totalRain)} mm</td></tr><tr><td>Lượng mưa lớn nhất ghi nhận</td><td>${escapeHtml(peakRain)}</td></tr></table>
 <h2>2. So sánh mực nước với MNDBT, MNDGC</h2><table><tr><th>Ngưỡng</th><th>Giá trị</th><th>Chênh lệch với H mới nhất</th><th>Đánh giá</th></tr>
 <tr><td>MNDBT</td><td>${Number.isFinite(a.bt)?formatNumber(a.bt)+' m':'—'}</td><td>${marginBT!==null?(marginBT>=0?'+':'')+formatNumber(marginBT)+' m':'—'}</td><td>${a.latest&&Number.isFinite(a.bt)?(a.latest.value>=a.bt?'Đạt/vượt MNDBT':'Thấp hơn MNDBT'):'Chưa đủ dữ liệu'}</td></tr>
 <tr><td>MNDGC</td><td>${Number.isFinite(a.gc)?formatNumber(a.gc)+' m':'—'}</td><td>${marginGC!==null?(marginGC>=0?'+':'')+formatNumber(marginGC)+' m':'—'}</td><td>${a.latest&&Number.isFinite(a.gc)?(a.latest.value>=a.gc?'CHẠM/VƯỢT MNDGC':'Chưa vượt MNDGC'):'Chưa đủ dữ liệu'}</td></tr></table>
 <h2>3. Tổng hợp lượng mưa</h2>${rainTable}
-<h2>4. Bất thường / điểm cần chú ý</h2><ul>${abnormalHtml}</ul>
-<h2>5. Nhận định kỹ thuật</h2><p>${escapeHtml(a.assessment)}</p>
-<h2>6. Dự kiến diễn biến</h2><p>${escapeHtml(a.forecast)}</p>
-<h2>7. Kiến nghị theo dõi</h2><ul><li>Tiếp tục cập nhật mực nước và lượng mưa theo tần suất quy định của công trình.</li><li>Đối chiếu diễn biến với MNDBT, MNDGC và quy trình vận hành hồ/công trình hiện hành.</li><li>Nếu mực nước tăng nhanh, tiến sát/vượt ngưỡng hoặc lượng mưa tăng mạnh, tăng cường theo dõi và thực hiện chế độ báo cáo/cảnh báo theo quy định.</li><li>Đánh giá đồng thời lượng mưa, xu thế mực nước và tình trạng vận hành trước khi quyết định điều hành.</li></ul>
-<p class="note">Lưu ý: “Dự kiến diễn biến” là ngoại suy xu hướng từ số liệu quan trắc đang có, chỉ mang tính tham khảo; không phải dự báo khí tượng thủy văn chính thức và không thay thế quy trình vận hành hoặc quyết định của người có thẩm quyền. Tiêu chí biến động đáng chú ý ≥ 0,30 m giữa hai lần đo là tiêu chí phân tích của báo cáo, không phải ngưỡng quy chuẩn.</p>
+<h2>4. Phân tích tốc độ tăng và thời gian đến ngưỡng</h2><table><tr><th>Nội dung</th><th>Kết quả</th></tr><tr><td>Khoảng đo gần nhất</td><td>${a.lastInterval?`${fmtReportDate(a.lastInterval.from.time)} → ${fmtReportDate(a.lastInterval.to.time)}`:'—'}</td></tr><tr><td>Mực nước tăng/giảm</td><td>${a.recentDelta!==null?trendText(a.recentDelta):'—'}</td></tr><tr><td>Thời gian giữa 2 lần đo</td><td>${a.lastInterval?formatNumber(a.lastInterval.hours,1)+' giờ':'—'}</td></tr><tr><td>Tốc độ gần nhất</td><td>${a.recentRate!==null?(a.recentRate>=0?'+':'')+formatNumber(a.recentRate,3)+' m/giờ':'—'}</td></tr><tr><td>Xu hướng từ 2–3 lần đo</td><td>${a.trendSlope!==null?(a.trendSlope>=0?'+':'')+formatNumber(a.trendSlope,3)+' m/giờ · '+escapeHtml(a.trendMethod):'—'}</td></tr><tr><td>Dự kiến H sau 6 giờ</td><td>${a.projected.h6!==null?formatNumber(a.projected.h6)+' m':'—'}</td></tr><tr><td>Dự kiến H sau 12 giờ</td><td>${a.projected.h12!==null?formatNumber(a.projected.h12)+' m':'—'}</td></tr><tr><td>Dự kiến H sau 24 giờ</td><td>${a.projected.h24!==null?formatNumber(a.projected.h24)+' m':'—'}</td></tr><tr><td>Thời gian để tăng thêm 0,30 m</td><td>${a.projected.rise30Hours!==null?formatNumber(a.projected.rise30Hours,1)+' giờ':'—'}</td></tr><tr><td>Thời gian để tăng thêm 0,50 m</td><td>${a.projected.rise50Hours!==null?formatNumber(a.projected.rise50Hours,1)+' giờ':'—'}</td></tr><tr><td>Thời gian ước tính đến MNDBT</td><td>${a.projected.btHours!==null?formatNumber(a.projected.btHours,1)+' giờ':'—'}</td></tr><tr><td>Thời gian ước tính đến MNDGC</td><td>${a.projected.gcHours!==null?formatNumber(a.projected.gcHours,1)+' giờ':'—'}</td></tr></table><h2>5. Bất thường / điểm cần chú ý</h2><ul>${abnormalHtml}</ul>
+<h2>6. Nhận định kỹ thuật</h2><p>${escapeHtml(a.assessment)}</p>
+<h2>7. Dự kiến diễn biến</h2><p>${escapeHtml(a.forecast)}</p>
+<h2>8. Kiến nghị theo dõi</h2><ul><li>Tiếp tục cập nhật mực nước và lượng mưa theo tần suất quy định của công trình.</li><li>Đối chiếu diễn biến với MNDBT, MNDGC và quy trình vận hành hồ/công trình hiện hành.</li><li>Nếu mực nước tăng nhanh, tiến sát/vượt ngưỡng hoặc lượng mưa tăng mạnh, tăng cường theo dõi và thực hiện chế độ báo cáo/cảnh báo theo quy định.</li><li>Đánh giá đồng thời lượng mưa, xu thế mực nước và tình trạng vận hành trước khi quyết định điều hành.</li></ul>
+<p class="note">Lưu ý: Phần dự kiến sử dụng 2–3 lần đo gần nhất, tính đúng khoảng thời gian giữa các lần đo và tốc độ biến đổi mực nước (m/giờ); với 3 điểm, tốc độ xu hướng được ước tính bằng hồi quy tuyến tính theo thời gian. Khi tính thời gian đến MNDBT/MNDGC, đây là ngoại suy ra ngoài khoảng quan trắc, không phải nội suy toán học. Kết quả chỉ mang tính tham khảo, không phải dự báo khí tượng thủy văn chính thức và không thay thế quy trình vận hành hoặc quyết định của người có thẩm quyền. Tiêu chí nội bộ: tăng ≥ 0,30 m giữa 2 lần đo là “tăng nhiều”; tốc độ ≥ 0,05 m/giờ là “tăng nhanh”; ≥ 0,10 m/giờ là “tăng rất nhanh”. Các tiêu chí này cần hiệu chỉnh theo đặc điểm từng công trình, không phải ngưỡng quy chuẩn.</p>
 <div class="footer">THUY LOI AI · Báo cáo nhanh tự động từ dữ liệu đang hiển thị trên Dashboard.</div>
 </body></html>`;
   return html;
@@ -850,7 +935,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.13.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.14.1","status":"ok","stage":6,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
