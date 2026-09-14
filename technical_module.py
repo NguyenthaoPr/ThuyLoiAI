@@ -9,14 +9,14 @@ from urllib.error import HTTPError, URLError
 from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.12
+# THUY LOI AI - TECHNICAL MODULE V1.13
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.12.0",
+    version="1.13.0",
 )
 
 # ============================================================
@@ -309,7 +309,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   </section>
 
 
-  <div class="footer">THUY LOI AI · Technical Module V1.12 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.13 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -347,7 +347,7 @@ function localDateStart(v){return v?new Date(v+'T00:00:00'):null}
 function localDateEnd(v){return v?new Date(v+'T23:59:59.999'):null}
 
 
-function setSelectedFacility(){if(s)s.textContent=f.value||'Chưa chọn'}
+function setSelectedFacility(){return f.value||'Chưa chọn'}
 function periodDays(){return ({'24 gio':1,'3 ngay':3,'7 ngay':7,'30 ngay':30,'90 ngay':90})[period.value]||7}
 function formatNumber(v,digits=2){if(v===null||v===undefined||v==='')return '—';const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—'}
 function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -700,7 +700,8 @@ function downloadQuickReportWord(){
 }
 // Giữ tên hàm cũ để không phá các tích hợp/onclick cũ nếu còn tồn tại.
 function exportQuickReportWord(){downloadQuickReportWord()}
-document.getElementById('reportModal').addEventListener('click',e=>{if(e.target.id==='reportModal')closeReportPreview()});
+const reportModalEl=document.getElementById('reportModal');
+if(reportModalEl)reportModalEl.addEventListener('click',e=>{if(e.target.id==='reportModal')closeReportPreview()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReportPreview()});
 
 function renderTechnicalSummary(data,series){
@@ -768,7 +769,7 @@ async function loadFacilities(){
     f.innerHTML='<option value="">Chọn công trình...</option>';
     facilities.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name;f.appendChild(option)});
     if(!facilities.length){
-      f.innerHTML='<option value="">Không có công trình</option>';if(s)s.textContent='Không có dữ liệu';
+      f.innerHTML='<option value="">Không có công trình</option>';
       resetData('Apps Script đã kết nối nhưng không trả về danh sách công trình.');
       return;
     }
@@ -849,7 +850,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.12.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.13.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
