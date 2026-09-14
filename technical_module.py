@@ -1,86 +1,305 @@
 # -*- coding: utf-8 -*-
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+import base64
 import json
 import os
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+import re
+import threading
+from datetime import datetime, timedelta
 from time import monotonic
+from urllib.parse import quote
+
+try:
+    from google.oauth2 import service_account
+    from google.auth.transport.requests import AuthorizedSession, Request as GoogleAuthRequest
+except ImportError:  # pragma: no cover
+    service_account = None
+    AuthorizedSession = None
+    GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.17.0
-# BUOC 1: GIAO DIEN DOC LAP
-# Khong import, khong sua server.py
+# THUY LOI AI - TECHNICAL MODULE V2.0.0
+# DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
+# Doc truc tiep AI_DATA bang Google Sheets API.
+# Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(
-    title="THUY LOI AI - Thong so ky thuat",
-    version="1.17.0",
-)
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.0.0")
 
-# ============================================================
-# BƯỚC 3.2 - KẾT NỐI APPS SCRIPT API
-# Chỉ đọc dữ liệu. Không ghi/sửa/xóa AI_DATA.
-# Backend proxy giúp trình duyệt không phải gọi trực tiếp
-# Apps Script, tránh vấn đề CORS.
-# ============================================================
-APPS_SCRIPT_API_URL = os.getenv(
-    "APPS_SCRIPT_API_URL",
-    "https://script.google.com/macros/s/AKfycbzP3yXgeBs0WDuvQdrYa4ptJSeK9cHnCe0lrM78pR1WVohagQyOjn8LFtBB7QhmltWupQ/exec"
-)
-APPS_SCRIPT_TIMEOUT = float(os.getenv("APPS_SCRIPT_TIMEOUT", "12"))
+GOOGLE_SHEETS_ID = os.getenv(
+    "GOOGLE_SHEETS_ID",
+    "1SJU9aCRZGWeAeHw6UfY_08HK8-A34kIlnrEiPJNEnko",
+).strip()
+GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "AI_DATA").strip() or "AI_DATA"
+GOOGLE_SHEETS_RANGE = os.getenv("GOOGLE_SHEETS_RANGE", f"{GOOGLE_SHEET_NAME}!A:K").strip()
+GOOGLE_SHEETS_TIMEOUT = float(os.getenv("GOOGLE_SHEETS_TIMEOUT", "15"))
+GOOGLE_SHEETS_CACHE_SECONDS = float(os.getenv("GOOGLE_SHEETS_CACHE_SECONDS", "30"))
+GOOGLE_SHEETS_API_KEY = os.getenv("GOOGLE_SHEETS_API_KEY", "").strip()
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+GOOGLE_SERVICE_ACCOUNT_B64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_B64", "").strip()
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
 
-def _safe_error_message(exc):
-    if isinstance(exc, HTTPError):
-        return f"Apps Script HTTP {exc.code}: {exc.reason or 'Upstream trả lỗi HTTP.'}"
-    if isinstance(exc, URLError):
-        reason = getattr(exc, "reason", None)
-        return f"Không kết nối được Apps Script: {reason or 'lỗi mạng/DNS.'}"
-    if isinstance(exc, TimeoutError):
-        return f"Apps Script timeout sau {APPS_SCRIPT_TIMEOUT:g} giây."
-    if isinstance(exc, json.JSONDecodeError):
-        return "Apps Script trả về dữ liệu không phải JSON hợp lệ."
-    return str(exc) or "Lỗi không xác định khi gọi Apps Script."
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+_cache_lock = threading.Lock()
+_sheet_cache = {"loaded_at": 0.0, "rows": None}
+_creds = None
+_session = None
 
-def fetch_apps_script_api_(api, params=None):
-    query = {"api": api}
-    if params:
-        query.update({k: v for k, v in params.items() if v not in (None, "")})
-    url = APPS_SCRIPT_API_URL + "?" + urlencode(query)
-    req = Request(
-        url,
-        headers={
-            "User-Agent": "THUY-LOI-AI-Technical/1.11",
-            "Accept": "application/json,text/plain,*/*",
-            "Cache-Control": "no-cache",
-        }
-    )
+# ------------------------------------------------------------
+# Semantic dictionary - dữ liệu đúng theo AI_DATA hiện tại
+# ------------------------------------------------------------
+WATER_ALIASES = {
+    "WATER_LEVEL": ["h (m)", "h", "mực nước", "muc nuoc"],
+    "WATER_LEVEL_UPSTREAM": ["htl (m)", "htl", "mực nước thượng lưu", "muc nuoc thuong luu"],
+    "WATER_LEVEL_DOWNSTREAM": ["hhl (m)", "hhl", "mực nước hạ lưu", "muc nuoc ha luu"],
+}
+RAINFALL_ALIASES = {
+    "RAINFALL": ["x (mm)", "lượng mưa", "luong mua", "mưa", "mua"],
+    "RAINFALL_T1": ["x t1 (mm)", "x t1"],
+    "RAINFALL_C24": ["x c24 (mm)", "x c24"],
+}
+
+def _norm(v):
+    import unicodedata
+    s = "" if v is None else str(v)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    s = s.lower().replace("đ", "d")
+    s = re.sub(r"[()\[\]{}]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _num(v):
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace("−", "-")
+    if not s:
+        return None
+    # Dữ liệu AI_DATA dùng dấu phẩy thập phân; đồng thời chịu được 1.234,56.
+    s = s.replace(" ", "")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", ".")
+    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
+    return float(m.group(0)) if m else None
+
+def _label_value(text, label):
+    if text is None:
+        return None
+    nlabel = _norm(label)
+    pattern = re.escape(nlabel).replace(r"\ ", r"\s*")
+    m = re.search(pattern + r"\s*[:=]?\s*([-+]?\d+(?:[\.,]\d+)?)", _norm(str(text)))
+    if m:
+        return _num(m.group(1))
+    # Fallback giữ nguyên chuỗi gốc để bắt dấu thập phân/thực tế.
+    m = re.search(re.escape(str(label)) + r"\s*[:=]?\s*([-+]?\d+(?:[\.,]\d+)?)", str(text), re.I)
+    return _num(m.group(1)) if m else None
+
+def _extract_limit(row, label):
+    # MNDBT/MNDGC thường nằm trong cột F/G như ảnh AI_DATA.
+    for idx in (5, 6, 4, 7):
+        if idx < len(row):
+            value = _label_value(row[idx], label)
+            if value is not None:
+                return value
+    return None
+
+def _classify_parameter(name):
+    n = _norm(name)
+    if n in {_norm(x) for x in WATER_ALIASES["WATER_LEVEL"]}:
+        return "WATER_LEVEL"
+    if n in {_norm(x) for x in WATER_ALIASES["WATER_LEVEL_UPSTREAM"]} or n.startswith("htl "):
+        return "WATER_LEVEL_UPSTREAM"
+    if n in {_norm(x) for x in WATER_ALIASES["WATER_LEVEL_DOWNSTREAM"]} or n.startswith("hhl "):
+        return "WATER_LEVEL_DOWNSTREAM"
+    if n in {_norm(x) for x in RAINFALL_ALIASES["RAINFALL"]}:
+        return "RAINFALL"
+    if n in {_norm(x) for x in RAINFALL_ALIASES["RAINFALL_T1"]}:
+        return "RAINFALL_T1"
+    if n in {_norm(x) for x in RAINFALL_ALIASES["RAINFALL_C24"]}:
+        return "RAINFALL_C24"
+    return None
+
+def _build_credentials():
+    global _creds
+    if _creds is not None:
+        return _creds
+    if service_account is None:
+        raise RuntimeError("Thiếu thư viện google-auth. Thêm google-auth vào requirements.txt.")
+    if GOOGLE_SERVICE_ACCOUNT_JSON:
+        try:
+            info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+            _creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+            return _creds
+        except Exception as exc:
+            raise RuntimeError(f"GOOGLE_SERVICE_ACCOUNT_JSON không hợp lệ: {exc}") from exc
+    if GOOGLE_SERVICE_ACCOUNT_B64:
+        try:
+            info = json.loads(base64.b64decode(GOOGLE_SERVICE_ACCOUNT_B64).decode("utf-8"))
+            _creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+            return _creds
+        except Exception as exc:
+            raise RuntimeError(f"GOOGLE_SERVICE_ACCOUNT_B64 không hợp lệ: {exc}") from exc
+    if GOOGLE_APPLICATION_CREDENTIALS:
+        try:
+            _creds = service_account.Credentials.from_service_account_file(GOOGLE_APPLICATION_CREDENTIALS, scopes=SCOPES)
+            return _creds
+        except Exception as exc:
+            raise RuntimeError(f"Không đọc được GOOGLE_APPLICATION_CREDENTIALS: {exc}") from exc
+    raise RuntimeError("Chưa cấu hình Service Account. Cần GOOGLE_SERVICE_ACCOUNT_JSON (khuyến nghị) hoặc GOOGLE_SERVICE_ACCOUNT_B64.")
+
+def _get_session():
+    global _session
+    if _session is None:
+        if AuthorizedSession is None:
+            raise RuntimeError("Thiếu thư viện google-auth. Thêm google-auth vào requirements.txt.")
+        _session = AuthorizedSession(_build_credentials())
+    return _session
+
+def _read_sheet_values(force=False):
+    now = monotonic()
+    with _cache_lock:
+        if not force and _sheet_cache["rows"] is not None and now - _sheet_cache["loaded_at"] < GOOGLE_SHEETS_CACHE_SECONDS:
+            return _sheet_cache["rows"]
+    encoded_range = quote(GOOGLE_SHEETS_RANGE, safe="")
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{quote(GOOGLE_SHEETS_ID, safe='')}/values/{encoded_range}"
+    params = {"majorDimension": "ROWS", "valueRenderOption": "UNFORMATTED_VALUE", "dateTimeRenderOption": "FORMATTED_STRING"}
+    if GOOGLE_SHEETS_API_KEY:
+        params["key"] = GOOGLE_SHEETS_API_KEY
     try:
-        with urlopen(req, timeout=APPS_SCRIPT_TIMEOUT) as response:
-            raw = response.read().decode("utf-8")
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            raise RuntimeError("Apps Script trả về JSON nhưng không đúng cấu trúc object.")
-        if not data.get("ok"):
-            raise RuntimeError(data.get("error") or f"Apps Script API '{api}' trả ok=false.")
-        return data
+        if GOOGLE_SHEETS_API_KEY and not (GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_B64 or GOOGLE_APPLICATION_CREDENTIALS):
+            import urllib.request
+            import urllib.parse
+            req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params), headers={"User-Agent": "THUY-LOI-AI/2.0"})
+            with urllib.request.urlopen(req, timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        else:
+            resp = _get_session().get(url, params=params, timeout=GOOGLE_SHEETS_TIMEOUT)
+            if resp.status_code >= 400:
+                try: detail = resp.json().get("error", {}).get("message", resp.text[:300])
+                except Exception: detail = resp.text[:300]
+                raise RuntimeError(f"Google Sheets API HTTP {resp.status_code}: {detail}")
+            payload = resp.json()
+    except RuntimeError:
+        raise
     except Exception as exc:
-        raise RuntimeError(_safe_error_message(exc)) from exc
+        raise RuntimeError(f"Không đọc được Google Sheet: {exc}") from exc
+    values = payload.get("values") if isinstance(payload, dict) else None
+    if not isinstance(values, list) or not values:
+        raise RuntimeError(f"Google Sheet không có dữ liệu trong vùng {GOOGLE_SHEETS_RANGE}.")
+    with _cache_lock:
+        _sheet_cache["rows"] = values
+        _sheet_cache["loaded_at"] = monotonic()
+    return values
 
-def _proxy_call(api, params=None):
+def _data_rows():
+    values = _read_sheet_values()
+    rows=[]
+    for raw in values[1:]:
+        row=list(raw)+[""]*(11-len(raw))
+        if any(str(x).strip() for x in row): rows.append(row[:11])
+    return rows
+
+def _row_facility(row): return str(row[4]).strip() if len(row)>4 else ""
+def _row_parameter(row): return str(row[7]).strip() if len(row)>7 else ""
+def _row_value(row): return _num(row[8] if len(row)>8 else None)
+
+def _row_datetime(row, year):
     try:
-        return fetch_apps_script_api_(api, params)
-    except RuntimeError as exc:
-        return JSONResponse(
-            status_code=502,
-            content={
-                "ok": False,
-                "source": "apps_script",
-                "api": api,
-                "error": str(exc),
-            },
-        )
+        month=int(_num(row[0])); day=int(_num(row[1])); hour=float(_num(row[2]) or 0)
+        minute=int(round((hour-int(hour))*60)); hour=int(hour)
+        return datetime(int(year), month, day, hour, minute)
+    except Exception:
+        return None
+
+def _date_filter(dt, from_date, to_date):
+    if dt is None: return False
+    if from_date:
+        try:
+            if dt < datetime.strptime(from_date, "%Y-%m-%d"): return False
+        except ValueError: pass
+    if to_date:
+        try:
+            if dt > datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1) - timedelta(microseconds=1): return False
+        except ValueError: pass
+    return True
+
+def _pick_water_name(names):
+    normed=[(n,_classify_parameter(n)) for n in names]
+    for code in ("WATER_LEVEL","WATER_LEVEL_UPSTREAM"):
+        for name,c in normed:
+            if c==code:return name
+    return None
+
+def _series(rows, year, codes):
+    out={}
+    for row in rows:
+        name=_row_parameter(row); code=_classify_parameter(name)
+        if code not in codes: continue
+        value=_row_value(row); dt=_row_datetime(row,year)
+        if value is None or dt is None: continue
+        out.setdefault(name,[]).append({"time":dt.isoformat(),"value":value})
+    for name in out: out[name].sort(key=lambda x:x["time"])
+    return out
+
+def _limits(rows):
+    bt=gc=None
+    for row in rows:
+        v=_extract_limit(row,"MNDBT")
+        if v is not None: bt=v
+        v=_extract_limit(row,"MNDGC")
+        if v is not None: gc=v
+    return {"mndbt":bt,"mndgc":gc}
+
+def _rain_total(rainfall):
+    # Tổng KPI chỉ cộng chuỗi lượng mưa tức thời/đơn vị; C24 là tích lũy 24h nên không cộng dồn.
+    primary=[]
+    for item in rainfall:
+        code=_classify_parameter(item.get("parameter"))
+        if code=="RAINFALL": primary.extend(item.get("data",[]))
+    if primary: return round(sum(float(x["value"]) for x in primary), 3)
+    t1=[]
+    for item in rainfall:
+        if _classify_parameter(item.get("parameter"))=="RAINFALL_T1": t1.extend(item.get("data",[]))
+    if t1: return round(sum(float(x["value"]) for x in t1), 3)
+    c24=[]
+    for item in rainfall:
+        if _classify_parameter(item.get("parameter"))=="RAINFALL_C24": c24.extend(item.get("data",[]))
+    return round(float(c24[-1]["value"]),3) if c24 else None
+
+def _build_chart(facility, year, days, from_date, to_date):
+    rows=[r for r in _data_rows() if _row_facility(r)==facility]
+    all_names=[]
+    for r in rows:
+        p=_row_parameter(r)
+        if p and p not in all_names: all_names.append(p)
+    water_names=[n for n in all_names if _classify_parameter(n) in {"WATER_LEVEL","WATER_LEVEL_UPSTREAM"}]
+    water_name=_pick_water_name(water_names)
+    water=[]
+    if water_name:
+        for r in rows:
+            if _row_parameter(r)!=water_name: continue
+            dt=_row_datetime(r,year); value=_row_value(r)
+            if dt and value is not None and _date_filter(dt,from_date,to_date): water.append({"time":dt.isoformat(),"value":value})
+    water.sort(key=lambda x:x["time"])
+    rain_map={}
+    for r in rows:
+        p=_row_parameter(r); code=_classify_parameter(p)
+        if code not in {"RAINFALL","RAINFALL_T1","RAINFALL_C24"}: continue
+        dt=_row_datetime(r,year); value=_row_value(r)
+        if dt and value is not None and _date_filter(dt,from_date,to_date): rain_map.setdefault(p,[]).append({"time":dt.isoformat(),"value":value})
+    rainfall=[]
+    for p,data in rain_map.items():
+        data.sort(key=lambda x:x["time"]); rainfall.append({"parameter":p,"code":_classify_parameter(p),"data":data})
+    totals={x["parameter"]:round(sum(float(p["value"]) for p in x["data"]),3) for x in rainfall if _classify_parameter(x["parameter"])!="RAINFALL_C24"}
+    for x in rainfall:
+        if _classify_parameter(x["parameter"])=="RAINFALL_C24" and x["data"]: totals[x["parameter"]]=round(float(x["data"][-1]["value"]),3)
+    limits=_limits(rows)
+    return {"facility":facility,"year":year,"days":days,"limits":limits,"waterParameter":water_name,"water":water,"waterVariants":_series([r for r in rows if _date_filter(_row_datetime(r,year),from_date,to_date)],year,{"WATER_LEVEL","WATER_LEVEL_UPSTREAM","WATER_LEVEL_DOWNSTREAM"}),"rainfall":rainfall,"rainfallTotalsByParameter":totals,"totalRainfall":_rain_total(rainfall),"source":"google_sheets","sheet":GOOGLE_SHEET_NAME,"range":GOOGLE_SHEETS_RANGE}
 
 HTML = r'''<!doctype html>
 <html lang="vi">
@@ -90,7 +309,7 @@ HTML = r'''<!doctype html>
 <meta name="theme-color" content="#071426">
 <title>THUY LOI AI - Thông số kỹ thuật</title>
 
-<!-- Chart.js chỉ dùng cho lớp hiển thị biểu đồ; API/backend hiện tại không thay đổi. -->
+<!-- Chart.js chỉ dùng cho lớp hiển thị biểu đồ. Dữ liệu đọc trực tiếp Google Sheets API. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
 
 <style>
@@ -320,7 +539,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   </section>
 
 
-  <div class="footer">THUY LOI AI · Technical Module V1.17.0 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V2.0.0 · Smart Control Room · Google Sheets Direct · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -389,21 +608,17 @@ async function checkConnections(){
   buttons.forEach(b=>{b.disabled=true;b.textContent='⏳ Đang kiểm tra...'});
   try{
     const result=await fetchJson('/api/connection',{},0);
-    if(result.apps_script_ok){
+    if(result.google_sheets_ok){
       alertBanner.className='alert-banner safe show';
       document.getElementById('alertIcon').textContent='🟢';
-      document.getElementById('alertTitle').textContent='Kết nối dữ liệu OK';
-      document.getElementById('alertDetail').textContent=`FastAPI → Apps Script → AI_DATA hoạt động · ${result.apps_script_ms||0} ms`;
+      document.getElementById('alertTitle').textContent='Kết nối Google Sheet OK';
+      document.getElementById('alertDetail').textContent=`FastAPI → Google Sheets → AI_DATA hoạt động · ${result.google_sheets_ms||0} ms · ${result.rows||0} dòng`;
       return true;
     }
-    setDataError(result.apps_script_error||'Apps Script/AI_DATA không phản hồi.');
+    setDataError(result.google_sheets_error||'Google Sheet/AI_DATA không phản hồi.');
     return false;
-  }catch(err){
-    setDataError(err.message||'Không kiểm tra được kết nối.');
-    return false;
-  }finally{
-    buttons.forEach(b=>{b.disabled=false;b.textContent='🧪 Kiểm tra kết nối'});
-  }
+  }catch(err){setDataError(err.message||'Không kiểm tra được kết nối.');return false}
+  finally{buttons.forEach(b=>{b.disabled=false;b.textContent='🧪 Kiểm tra kết nối'})}
 }
 
 function resetData(message='Chọn công trình để tải dữ liệu.'){
@@ -448,17 +663,12 @@ function toggleTheme(){
 (function initTheme(){const dark=localStorage.getItem('tlai-theme')==='dark';if(dark)document.documentElement.classList.add('dark');document.getElementById('themeBtn').textContent=dark?'☀️':'🌙'})();
 
 async function loadParameters(){
-  /* V1.16: ẩn ô Thông số nhưng vẫn phải đọc API parameters để biết TÊN THỰC của cột mực nước. */
   if(!f.value)return false;
   try{
     const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value),{},1);
     currentParameters=result.data||{waterLevel:[],rainfall:[]};
     const raw=Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[];
-    const names=raw.map(x=>{
-      if(typeof x==='string')return x.trim();
-      if(x&&typeof x==='object')return String(x.name||x.parameter||x.label||x.value||'').trim();
-      return '';
-    }).filter(Boolean);
+    const names=raw.map(x=>typeof x==='string'?x.trim():String(x?.name||x?.parameter||x?.label||x?.value||'').trim()).filter(Boolean);
     const norm=v=>String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[()\[\]{}]/g,' ').replace(/\s+/g,' ').trim();
     const exactH=names.find(n=>/^h(?:\s*\(m\))?$/i.test(n));
     const semantic=names.find(n=>norm(n)==='muc nuoc' || norm(n).startsWith('muc nuoc '));
@@ -466,13 +676,10 @@ async function loadParameters(){
     selectedWaterParameter=exactH||semantic||htl||names[0]||'Mực nước';
     return true;
   }catch(err){
-    console.warn('Không đọc được /api/parameters, dùng tham số dự phòng:',err);
-    currentParameters={waterLevel:[],rainfall:[]};
-    selectedWaterParameter='Mực nước';
-    return false;
+    console.warn('Không đọc được /api/parameters:',err);
+    currentParameters={waterLevel:[],rainfall:[]};selectedWaterParameter='Mực nước';return false;
   }
 }
-
 function exportFileStamp(){
   const d=new Date();
   const pad=n=>String(n).padStart(2,'0');
@@ -496,18 +703,6 @@ function normalizeRawWaterSeries(data){
   let raw=data&&(data.water??data.waterLevel??data.waterSeries??data.waterData);
   if(raw&&typeof raw==='object'&&!Array.isArray(raw))raw=Array.isArray(raw.data)?raw.data:(Array.isArray(raw.series)?raw.series:[]);
   if(!Array.isArray(raw))raw=[];
-  if(!raw.length && Array.isArray(data&&data.series)){
-    raw=data.series.filter(p=>{
-      const n=String(p&&((p.parameter??p.name??p.param??p.thongSo??p.thong_so)||'')).toLowerCase();
-      return /muc\s*nuoc|mực\s*nước|^h(?:\s*\(m\))?$|^htl/.test(n);
-    });
-  }
-  if(!raw.length && Array.isArray(data&&data.rows)){
-    raw=data.rows.filter(p=>{
-      const n=String(p&&((p.parameter??p.name??p.param??p.thongSo??p.thong_so)||'')).toLowerCase();
-      return /muc\s*nuoc|mực\s*nước|^h(?:\s*\(m\))?$|^htl/.test(n);
-    });
-  }
   return raw.map(p=>{
     if(Array.isArray(p))return {time:p[0],value:p[1]};
     if(!p||typeof p!=='object')return null;
@@ -519,58 +714,19 @@ function normalizeRawWaterSeries(data){
 
 async function loadChartData(){
   if(!f.value){resetData();return}
-  state.textContent='Đang tải...';stateDetail.textContent='Đang lấy dữ liệu thực tế từ AI_DATA';
+  state.textContent='Đang tải...';stateDetail.textContent='Đang đọc trực tiếp AI_DATA từ Google Sheet';
   try{
     const from=document.getElementById('fromDate').value,to=document.getElementById('toDate').value;
     const year=from?String(new Date(from+'T12:00:00').getFullYear()):String(new Date().getFullYear());
-    /*
-     * QUAN TRỌNG V1.17:
-     * Apps Script chart API của hệ thống cũ dùng waterParameter='' để tự
-     * xác định chuỗi mực nước. Không được bắt đầu bằng tên đoán như 'H (m)',
-     * vì Apps Script có thể trả lỗi ngay khi tên không khớp và làm mất cơ hội
-     * lấy chuỗi mặc định.
-     */
-    const candidates=[];
-    const addCandidate=v=>{
-      v=String(v??'').trim();
-      if(!candidates.includes(v))candidates.push(v);
-    };
-    /* 1) Luôn thử chế độ mặc định của Apps Script trước. */
-    addCandidate('');
-    /* 2) Sau đó mới thử tên thực tế lấy từ /api/parameters. */
-    addCandidate(selectedWaterParameter);
-    (Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[]).forEach(x=>{
-      if(typeof x==='string')addCandidate(x);
-      else if(x&&typeof x==='object')addCandidate(x.name||x.parameter||x.label||x.value);
-    });
-    addCandidate('H (m)'); addCandidate('H'); addCandidate('Mực nước'); addCandidate('HTL (m)'); addCandidate('HTL');
-
-    let result=null,lastData=null,lastError=null;
-    for(const candidate of candidates){
-      try{
-        const params=new URLSearchParams({facility:f.value,year,days:String(periodDays())});
-        if(from)params.set('fromDate',from);
-        if(to)params.set('toDate',to);
-        /* candidate='' => KHÔNG gửi waterParameter, giữ đúng contract cũ. */
-        if(candidate)params.set('waterParameter',candidate);
-        const r=await fetchJson('/api/chart?'+params.toString(),{},0);
-        lastData=r.data||{};
-        const raw=normalizeRawWaterSeries(lastData);
-        if(raw.length){result=r;break;}
-        result=r;
-      }catch(candidateErr){
-        lastError=candidateErr;
-        console.warn('Không lấy được chuỗi với waterParameter =',candidate||'(mặc định)',candidateErr);
-      }
-    }
-    if(!result && lastError)throw lastError;
-    currentData=result?.data||lastData||{};
+    const params=new URLSearchParams({facility:f.value,year,days:String(periodDays())});
+    if(from)params.set('fromDate',from);if(to)params.set('toDate',to);
+    const result=await fetchJson('/api/chart?'+params.toString(),{},1);
+    currentData=result.data||{};
     const normalized=normalizeRawWaterSeries(currentData);
-    if(normalized.length)currentData.water=normalized;
+    currentData.water=normalized;
     renderData(currentData);
-  }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu.')}
+  }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu Google Sheet.')} 
 }
-
 function evaluateAlert(data,latest){
   const banner=document.getElementById('alertBanner');
   banner.className='alert-banner safe';
@@ -963,7 +1119,7 @@ async function loadFacilities(){
     facilities.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name;f.appendChild(option)});
     if(!facilities.length){
       f.innerHTML='<option value="">Không có công trình</option>';
-      resetData('Apps Script đã kết nối nhưng không trả về danh sách công trình.');
+      resetData('Google Sheet đã kết nối nhưng không trả về danh sách công trình.');
       return;
     }
     /* V1.8: tự chọn công trình đầu tiên để chuỗi dữ liệu chạy hoàn chỉnh ngay sau khi kết nối. */
@@ -971,7 +1127,7 @@ async function loadFacilities(){
     await loadParameters();await loadChartData();
   }catch(err){
     console.error(err);
-    f.innerHTML='<option value="">🔴 Mất kết nối Apps Script</option>';
+    f.innerHTML='<option value="">🔴 Mất kết nối Google Sheet</option>';
     setDataError(err.message||'Không tải được danh sách công trình.');
   }finally{f.disabled=false}
 }
@@ -992,59 +1148,65 @@ loadFacilities();
 
 @app.get("/api/facilities")
 def api_facilities():
-    """Proxy danh sách công trình từ Apps Script API."""
-    return _proxy_call("facilities")
+    try:
+        rows=_data_rows(); seen=[]; seen_set=set()
+        for row in rows:
+            name=_row_facility(row)
+            if name and name not in seen_set:
+                seen.append(name);seen_set.add(name)
+        return {"ok":True,"source":"google_sheets","sheet":GOOGLE_SHEET_NAME,"data":seen}
+    except RuntimeError as exc:
+        return JSONResponse(status_code=502,content={"ok":False,"source":"google_sheets","error":str(exc)})
 
 @app.get("/api/parameters")
 def api_parameters(facility: str):
-    """Proxy bộ thông số thực tế của một công trình từ Apps Script."""
-    return _proxy_call("parameters", {"facility": facility})
+    try:
+        rows=[r for r in _data_rows() if _row_facility(r)==facility]
+        water=[];rain=[];other=[]
+        for r in rows:
+            p=_row_parameter(r)
+            if not p: continue
+            code=_classify_parameter(p)
+            target=water if code in {"WATER_LEVEL","WATER_LEVEL_UPSTREAM","WATER_LEVEL_DOWNSTREAM"} else rain if code in {"RAINFALL","RAINFALL_T1","RAINFALL_C24"} else other
+            if p not in target: target.append(p)
+        return {"ok":True,"source":"google_sheets","data":{"waterLevel":water,"rainfall":rain,"other":other}}
+    except RuntimeError as exc:
+        return JSONResponse(status_code=502,content={"ok":False,"source":"google_sheets","error":str(exc)})
 
 @app.get("/api/chart")
-def api_chart(
-    facility: str,
-    year: int = 2026,
-    days: int = 7,
-    waterParameter: str = "",
-    rainfallParameters: str = "",
-    fromDate: str = "",
-    toDate: str = "",
-):
-    """Proxy dữ liệu mực nước/lượng mưa và giới hạn kỹ thuật từ Apps Script."""
-    rain = [x.strip() for x in rainfallParameters.split(",") if x.strip()]
-    return _proxy_call("chart", {
-        "facility": facility,
-        "year": year,
-        "days": days,
-        "waterParameter": waterParameter,
-        "rainfallParameters": ",".join(rain),
-        "fromDate": fromDate,
-        "toDate": toDate,
-    })
+def api_chart(facility: str, year: int=2026, days: int=7, waterParameter: str="", rainfallParameters: str="", fromDate: str="", toDate: str=""):
+    try:
+        data=_build_chart(facility,year,days,fromDate,toDate)
+        # Nếu client chỉ yêu cầu một tên mực nước cụ thể và tên đó tồn tại, dùng tên đó.
+        if waterParameter:
+            rows=[r for r in _data_rows() if _row_facility(r)==facility and _row_parameter(r)==waterParameter]
+            if rows:
+                pts=[]
+                for r in rows:
+                    dt=_row_datetime(r,year); value=_row_value(r)
+                    if dt and value is not None and _date_filter(dt,fromDate,toDate): pts.append({"time":dt.isoformat(),"value":value})
+                pts.sort(key=lambda x:x["time"]); data["waterParameter"]=waterParameter;data["water"]=pts
+        return {"ok":True,"source":"google_sheets","data":data}
+    except RuntimeError as exc:
+        return JSONResponse(status_code=502,content={"ok":False,"source":"google_sheets","error":str(exc)})
 
 @app.get("/api/connection")
 def api_connection():
-    """Kiểm tra FastAPI -> Apps Script -> AI_DATA qua API facilities."""
     started=monotonic()
     try:
-        fetch_apps_script_api_("facilities")
-        elapsed=round((monotonic()-started)*1000)
-        return {"ok":True,"fastapi_ms":elapsed,"apps_script_ok":True,"apps_script_ms":elapsed,
-                "ai_data_ok":True,"message":"Apps Script phản hồi thành công; AI_DATA có thể truy cập qua Apps Script."}
+        rows=_data_rows(); elapsed=round((monotonic()-started)*1000)
+        return {"ok":True,"google_sheets_ok":True,"google_sheets_ms":elapsed,"rows":len(rows),"sheet":GOOGLE_SHEET_NAME,"range":GOOGLE_SHEETS_RANGE,"message":"Đọc trực tiếp Google Sheet thành công."}
     except RuntimeError as exc:
         elapsed=round((monotonic()-started)*1000)
-        return {"ok":True,"fastapi_ms":elapsed,"apps_script_ok":False,"apps_script_ms":elapsed,
-                "ai_data_ok":False,"apps_script_error":str(exc),
-                "message":"FastAPI hoạt động nhưng Apps Script/AI_DATA không phản hồi."}
+        return {"ok":True,"google_sheets_ok":False,"google_sheets_ms":elapsed,"rows":0,"google_sheets_error":str(exc),"message":"FastAPI hoạt động nhưng Google Sheet chưa thể truy cập."}
 
 @app.get("/", response_class=HTMLResponse)
-def technical_dashboard():
-    return HTML
+def technical_dashboard(): return HTML
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.17.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"2.0.0","status":"ok","stage":7,"mode":"direct_google_sheets","sheet":GOOGLE_SHEET_NAME}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")), reload=False)
+    uvicorn.run(app,host="0.0.0.0",port=int(os.getenv("PORT","8001")),reload=False)
