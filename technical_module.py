@@ -107,7 +107,7 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 
 <section class="cards">
 <div class="card"><div class="label">MUC NUOC HIEN TAI</div><div class="value" id="water">—</div><div class="unit">m</div></div>
-<div class="card"><div class="label">TRANG THAI</div><div class="value ok" id="state">—</div><div class="unit">Chua ket noi du lieu</div></div>
+<div class="card"><div class="label">TRANG THAI</div><div class="value ok" id="state">—</div><div class="unit" id="stateDetail">Chưa có dữ liệu</div></div>
 <div class="card"><div class="label">MNDBT</div><div class="value" id="mndbt">—</div><div class="unit">m</div></div>
 <div class="card"><div class="label">MNDGC</div><div class="value" id="mndgc">—</div><div class="unit">m</div></div>
 <div class="card"><div class="label">TONG LUONG MUA</div><div class="value" id="rainTotal">—</div><div class="unit">mm</div></div>
@@ -115,7 +115,7 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 
 <section class="grid">
 <div class="panel"><div class="head"><div><div class="head-title">Bieu do dien bien</div><div class="head-sub">Muc nuoc va luong mua theo thoi gian</div></div>
-<div class="pills"><span class="pill">X</span><span class="pill">X T1</span><span class="pill">X C24</span></div></div>
+<div class="pills" id="rainPills"><span class="pill">X</span><span class="pill">X T1</span><span class="pill">X C24</span></div></div>
 <div class="chart"><div id="chartArea" class="placeholder"><div><div style="font-size:32px">📈</div><b>Đang chờ dữ liệu</b><br>Chọn công trình để tải dữ liệu thực tế.</div></div></div></div>
 
 <div class="panel"><div class="head"><div><div class="head-title">Thong tin cong trinh</div><div class="head-sub">Khu vuc thong tin ky thuat</div></div></div>
@@ -126,7 +126,7 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 <section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Du lieu gan nhat</div><div class="head-sub">Dữ liệu thực tế từ AI_DATA qua Apps Script API</div></div></div>
 <div class="table"><table><thead><tr><th>Ngay</th><th>Gio</th><th>Cong trinh</th><th>Thong so</th><th>Gia tri</th><th>Don vi</th></tr></thead>
 <tbody id="dataBody"><tr><td colspan="6" class="empty">Chọn công trình để tải dữ liệu.</td></tr></tbody></table></div></section>
-<div class="footer">THUY LOI AI · Technical Module V1.2 · Bước 3.3 — Kết nối dữ liệu thực tế</div>
+<div class="footer">THUY LOI AI · Technical Module V1.3 · Bước 3.4 — Dữ liệu thực tế & biểu đồ</div>
 </main>
 
 <script>
@@ -136,7 +136,9 @@ const period=document.getElementById('period');
 const s=document.getElementById('selected');
 const water=document.getElementById('water');
 const state=document.getElementById('state');
+const stateDetail=document.getElementById('stateDetail');
 const mndbt=document.getElementById('mndbt');
+const rainPills=document.getElementById('rainPills');
 const mndgc=document.getElementById('mndgc');
 const rainTotal=document.getElementById('rainTotal');
 const dataBody=document.getElementById('dataBody');
@@ -164,6 +166,7 @@ function formatNumber(v, digits=2){
 function resetData(message='Chọn công trình để tải dữ liệu.'){
   water.textContent='—';
   state.textContent='—';
+  stateDetail.textContent='Chưa có dữ liệu';
   mndbt.textContent='—';
   mndgc.textContent='—';
   rainTotal.textContent='—';
@@ -179,11 +182,17 @@ async function loadParameters(){
     if(!response.ok || !result.ok) throw new Error(result.error || 'Không tải được thông số.');
     currentParameters=result.data || {waterLevel:[],rainfall:[]};
 
-    // Giữ các lựa chọn giao diện quen thuộc, nhưng bổ sung thông số thực tế.
+    // Hiển thị đúng các chuỗi mưa thực tế mà công trình có.
+    const rainList=currentParameters.rainfall||[];
+    rainPills.innerHTML=rainList.length
+      ? rainList.map(x=>'<span class="pill">'+escapeHtml(x.replace(/\s*\([^)]*\)/g,''))+'</span>').join('')
+      : '<span class="pill">Không có chuỗi mưa</span>';
+
+    // Giữ lựa chọn Mực nước tổng quát và bổ sung thông số thực tế.
     const options=[
       {label:'Mực nước',value:''},
       ...(currentParameters.waterLevel||[]).map(x=>({label:x,value:x})),
-      ...(currentParameters.rainfall||[]).map(x=>({label:x,value:x}))
+      ...(rainList).map(x=>({label:x,value:x}))
     ];
     parameter.innerHTML='';
     const seen=new Set();
@@ -202,6 +211,7 @@ async function loadParameters(){
 async function loadChartData(){
   if(!f.value){ resetData(); return; }
   state.textContent='Đang tải...';
+  stateDetail.textContent='Đang lấy dữ liệu thực tế từ AI_DATA';
   try{
     const params=new URLSearchParams({
       facility:f.value,
@@ -232,6 +242,14 @@ function renderData(data){
   const latest=waterSeries.length ? waterSeries[waterSeries.length-1] : null;
   water.textContent=latest ? formatNumber(latest.value) : '—';
   state.textContent=latest ? 'Có dữ liệu' : 'Chưa có mực nước';
+  if(latest){
+    const latestDate=new Date(latest.time);
+    stateDetail.textContent='Cập nhật '+latestDate.toLocaleString('vi-VN');
+  }else if(data.updatedAt){
+    stateDetail.textContent='API cập nhật '+new Date(data.updatedAt).toLocaleString('vi-VN');
+  }else{
+    stateDetail.textContent='Không có mực nước trong khoảng chọn';
+  }
   mndbt.textContent=data.limits && data.limits.mndbt!=null ? formatNumber(data.limits.mndbt) : '—';
   mndgc.textContent=data.limits && data.limits.mndgc!=null ? formatNumber(data.limits.mndgc) : '—';
   rainTotal.textContent=data.totalRainfall!=null ? formatNumber(data.totalRainfall) : '—';
@@ -263,34 +281,60 @@ function escapeHtml(v){
 function renderSimpleChart(data){
   const waterSeries=Array.isArray(data.water)?data.water:[];
   const rainfallSeries=Array.isArray(data.rainfall)?data.rainfall:[];
-  if(!waterSeries.length && !rainfallSeries.some(x=>x.data&&x.data.length)){
+  const validRain=rainfallSeries.filter(x=>x.data&&x.data.length);
+  if(!waterSeries.length && !validRain.length){
     chartArea.innerHTML='<div><div style="font-size:32px">📈</div><b>Không có dữ liệu</b><br>Trong khoảng thời gian đã chọn.</div>';
     return;
   }
 
-  // Vẽ biểu đồ SVG nhẹ, không thêm thư viện ngoài.
-  const W=900,H=320,L=55,R=55,T=25,B=45;
-  const allTimes=[...waterSeries.map(p=>p.time),...rainfallSeries.flatMap(s=>s.data.map(p=>p.time))];
+  const W=900,H=340,L=62,R=62,T=35,B=48;
+  const allTimes=[...waterSeries.map(p=>p.time),...validRain.flatMap(s=>s.data.map(p=>p.time))];
   const minT=Math.min(...allTimes), maxT=Math.max(...allTimes);
   const wx=waterSeries.map(p=>Number(p.value)).filter(Number.isFinite);
-  const rv=rainfallSeries.flatMap(s=>s.data.map(p=>Number(p.value))).filter(Number.isFinite);
-  const minW=wx.length?Math.min(...wx):0, maxW=wx.length?Math.max(...wx):1;
+  const rv=validRain.flatMap(s=>s.data.map(p=>Number(p.value))).filter(Number.isFinite);
+  let minW=wx.length?Math.min(...wx):0, maxW=wx.length?Math.max(...wx):1;
+  if(maxW===minW){minW-=1;maxW+=1;} else {const pad=(maxW-minW)*.12;minW-=pad;maxW+=pad;}
   const maxR=rv.length?Math.max(...rv):1;
   const x=t=>L+(maxT===minT?0.5:(t-minT)/(maxT-minT))*(W-L-R);
-  const yW=v=>T+(maxW===minW?0.5:(maxW-v)/(maxW-minW))*(H-T-B);
+  const yW=v=>T+(maxW-v)/(maxW-minW)*(H-T-B);
   const yR=v=>T+(1-v/(maxR||1))*(H-T-B);
   const waterPts=waterSeries.map(p=>x(p.time)+','+yW(Number(p.value))).join(' ');
   const rainBars=[];
-  rainfallSeries.forEach(series=>series.data.forEach(p=>{
-    const bw=8;
-    rainBars.push('<rect x="'+(x(p.time)-bw/2)+'" y="'+yR(Number(p.value))+'" width="'+bw+'" height="'+(H-B-yR(Number(p.value)))+'" opacity=".55"><title>'+escapeHtml(series.parameter)+': '+formatNumber(p.value)+' mm</title></rect>');
+  validRain.forEach(series=>series.data.forEach(p=>{
+    const bw=7;
+    const yy=yR(Number(p.value));
+    rainBars.push('<rect x="'+(x(p.time)-bw/2)+'" y="'+yy+'" width="'+bw+'" height="'+Math.max(0,H-B-yy)+'" opacity=".55"><title>'+escapeHtml(series.parameter)+': '+formatNumber(p.value)+' mm</title></rect>');
   }));
-  chartArea.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="100%" role="img" aria-label="Biểu đồ mực nước và lượng mưa">'
-    +'<line x1="'+L+'" y1="'+T+'" x2="'+L+'" y2="'+(H-B)+'" stroke="#b8c5d5"/><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'" stroke="#b8c5d5"/>'
-    +rainBars.join('')
+
+  const grid=[];
+  for(let i=0;i<=4;i++){
+    const yy=T+i*(H-T-B)/4;
+    const val=maxW-i*(maxW-minW)/4;
+    grid.push('<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#e5eaf1"/><text x="'+(L-8)+'" y="'+(yy+4)+'" text-anchor="end" font-size="11" fill="#687386">'+formatNumber(val)+'</text>');
+  }
+
+  // Hiển thị MNDBT/MNDGC nếu nguồn đã cung cấp, chỉ để tham chiếu.
+  const limitLines=[];
+  const limits=data.limits||{};
+  [['mndbt','MNDBT'],['mndgc','MNDGC']].forEach(([key,label])=>{
+    const v=Number(limits[key]);
+    if(Number.isFinite(v) && v>=minW && v<=maxW){
+      const yy=yW(v);
+      limitLines.push('<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#9aa6b5" stroke-dasharray="6 5"/><text x="'+(W-R-4)+'" y="'+(yy-5)+'" text-anchor="end" font-size="10" fill="#687386">'+label+' '+formatNumber(v)+'</text>');
+    }
+  });
+
+  const points=waterSeries.map(p=>'<circle cx="'+x(p.time)+'" cy="'+yW(Number(p.value))+'" r="3.2" fill="#1769aa"><title>'+new Date(p.time).toLocaleString('vi-VN')+': '+formatNumber(p.value)+' m</title></circle>').join('');
+  const legend='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:12px;color:#687386">'
+    +(waterSeries.length?'<span>━ <b>Mực nước</b></span>':'')
+    +(validRain.length?'<span>▮ <b>Lượng mưa</b></span>':'')
+    +'</div>';
+
+  chartArea.innerHTML=legend+'<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="calc(100% - 25px)" role="img" aria-label="Biểu đồ mực nước và lượng mưa">'
+    +grid.join('')+limitLines.join('')+rainBars.join('')
     +(waterPts?'<polyline points="'+waterPts+'" fill="none" stroke="#1769aa" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>':'')
-    +waterSeries.map(p=>'<circle cx="'+x(p.time)+'" cy="'+yW(Number(p.value))+'" r="3" fill="#1769aa"><title>'+new Date(p.time).toLocaleString('vi-VN')+': '+formatNumber(p.value)+' m</title></circle>').join('')
-    +'<text x="'+L+'" y="15" font-size="12" fill="#687386">H (m)</text><text x="'+(W-R-45)+'" y="15" font-size="12" fill="#687386">Mưa (mm)</text>'
+    +points
+    +'<text x="'+L+'" y="18" font-size="12" fill="#687386">H (m)</text><text x="'+(W-R)+'" y="18" text-anchor="end" font-size="12" fill="#687386">Mưa (mm)</text>'
     +'</svg>';
 }
 
