@@ -6,14 +6,14 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1
+# THUY LOI AI - TECHNICAL MODULE V1.4
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.1.0",
+    version="1.4.0",
 )
 
 # ============================================================
@@ -79,10 +79,10 @@ button{border:0;border-radius:12px;background:var(--primary);color:white;font-we
 .chart{height:360px;padding:16px}.placeholder{height:100%;border:1px dashed #b8c5d5;border-radius:12px;display:grid;place-items:center;text-align:center;color:var(--muted);background:repeating-linear-gradient(0deg,transparent 0,transparent 39px,#edf1f6 40px),repeating-linear-gradient(90deg,transparent 0,transparent 39px,#edf1f6 40px)}
 .pills{display:flex;flex-wrap:wrap;gap:8px}.pill{border:1px solid var(--line);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--muted);background:#fafbfd}
 table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}th{font-size:11px;color:var(--muted)}
-.table{overflow-x:auto}.empty{text-align:center;color:var(--muted);padding:26px}
+.table{overflow-x:auto}.empty{text-align:center;color:var(--muted);padding:26px}.mobile-data{display:none;padding:10px}.data-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px}.data-item .dt{font-size:11px;color:var(--muted);margin-bottom:4px}.data-item .pn{font-weight:700;font-size:14px}.data-item .pv{font-weight:800;font-size:18px}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-item{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fafbfd}.summary-label{font-size:11px;color:var(--muted);margin-bottom:5px}.summary-value{font-weight:800;font-size:17px}.summary-note{font-size:12px;color:var(--muted);margin-top:3px}.rain-series{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.rain-chip{border:1px solid var(--line);border-radius:999px;padding:7px 10px;background:#fff;font-size:12px}
 .footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 10px 28px}
 @media(max-width:1050px){.cards{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}}
-@media(max-width:720px){.container{padding:12px}.toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:13px}.value{font-size:21px}.chart{height:300px;padding:10px}button{min-height:48px}}
+@media(max-width:720px){.container{padding:12px}.toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:13px}.value{font-size:21px}.chart{height:300px;padding:10px}button{min-height:48px}.summary-grid{grid-template-columns:1fr 1fr}.table{display:none}.mobile-data{display:block}}
 @media(max-width:430px){.toolbar{grid-template-columns:1fr}.toolbar .control:first-child{grid-column:auto}}
 </style>
 </head>
@@ -123,10 +123,11 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 <div class="card" style="box-shadow:none"><div class="label">TRAM MUA</div><div class="pills"><span class="pill">X</span><span class="pill">X T1</span><span class="pill">X C24</span></div></div></div></div>
 </section>
 
+<section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Tom tat ky thuat</div><div class="head-sub">Phan tich so lieu tu du lieu thuc te, khong tu dong gan muc canh bao</div></div></div><div id="technicalSummary" style="padding:16px"><div class="empty">Chọn công trình để phân tích.</div></div></section>
 <section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Du lieu gan nhat</div><div class="head-sub">Dữ liệu thực tế từ AI_DATA qua Apps Script API</div></div></div>
 <div class="table"><table><thead><tr><th>Ngay</th><th>Gio</th><th>Cong trinh</th><th>Thong so</th><th>Gia tri</th><th>Don vi</th></tr></thead>
-<tbody id="dataBody"><tr><td colspan="6" class="empty">Chọn công trình để tải dữ liệu.</td></tr></tbody></table></div></section>
-<div class="footer">THUY LOI AI · Technical Module V1.3 · Bước 3.4 — Dữ liệu thực tế & biểu đồ</div>
+<tbody id="dataBody"><tr><td colspan="6" class="empty">Chọn công trình để tải dữ liệu.</td></tr></tbody></table></div><div id="mobileData" class="mobile-data"></div></section>
+<div class="footer">THUY LOI AI · Technical Module V1.4 · Bước 3.5 — Phân tích dữ liệu & mobile</div>
 </main>
 
 <script>
@@ -143,6 +144,8 @@ const mndgc=document.getElementById('mndgc');
 const rainTotal=document.getElementById('rainTotal');
 const dataBody=document.getElementById('dataBody');
 const chartArea=document.getElementById('chartArea');
+const technicalSummary=document.getElementById('technicalSummary');
+const mobileData=document.getElementById('mobileData');
 
 let currentParameters={waterLevel:[],rainfall:[]};
 let currentData=null;
@@ -172,6 +175,8 @@ function resetData(message='Chọn công trình để tải dữ liệu.'){
   rainTotal.textContent='—';
   dataBody.innerHTML='<tr><td colspan="6" class="empty">'+message+'</td></tr>';
   chartArea.innerHTML='<div><div style="font-size:32px">📈</div><b>'+message+'</b></div>';
+  technicalSummary.innerHTML='<div class="empty">'+message+'</div>';
+  mobileData.innerHTML='';
 }
 
 async function loadParameters(){
@@ -255,23 +260,30 @@ function renderData(data){
   rainTotal.textContent=data.totalRainfall!=null ? formatNumber(data.totalRainfall) : '—';
 
   const rows=[];
-  waterSeries.slice().reverse().slice(0,10).forEach(p=>{
-    const d=new Date(p.time);
-    rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'m'});
-  });
-  (data.rainfall||[]).forEach(series=>{
-    series.data.slice().reverse().slice(0,10).forEach(p=>{
-      const d=new Date(p.time);
-      rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'mm'});
-    });
-  });
+  waterSeries.slice().reverse().slice(0,10).forEach(p=>{ const d=new Date(p.time); rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'m'}); });
+  (data.rainfall||[]).forEach(series=>{ series.data.slice().reverse().slice(0,10).forEach(p=>{ const d=new Date(p.time); rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'mm'}); }); });
   rows.sort((a,b)=>b.time-a.time);
   const limited=rows.slice(0,20);
-  dataBody.innerHTML=limited.length ? limited.map(r=>
-    '<tr><td>'+r.time.toLocaleDateString('vi-VN')+'</td><td>'+String(r.time.getHours()).padStart(2,'0')+':00</td><td>'+escapeHtml(r.facility)+'</td><td>'+escapeHtml(r.parameter)+'</td><td>'+formatNumber(r.value)+'</td><td>'+r.unit+'</td></tr>'
-  ).join('') : '<tr><td colspan="6" class="empty">Không có dữ liệu trong khoảng thời gian đã chọn.</td></tr>';
-
+  dataBody.innerHTML=limited.length ? limited.map(r=>'<tr><td>'+r.time.toLocaleDateString('vi-VN')+'</td><td>'+String(r.time.getHours()).padStart(2,'0')+':00</td><td>'+escapeHtml(r.facility)+'</td><td>'+escapeHtml(r.parameter)+'</td><td>'+formatNumber(r.value)+'</td><td>'+r.unit+'</td></tr>').join('') : '<tr><td colspan="6" class="empty">Không có dữ liệu trong khoảng thời gian đã chọn.</td></tr>';
+  mobileData.innerHTML=limited.length ? limited.map(r=>'<div class="data-item"><div class="dt">'+r.time.toLocaleDateString('vi-VN')+' · '+String(r.time.getHours()).padStart(2,'0')+':00</div><div class="pn">'+escapeHtml(r.parameter)+'</div><div class="pv">'+formatNumber(r.value)+' '+r.unit+'</div></div>').join('') : '<div class="empty">Không có dữ liệu trong khoảng thời gian đã chọn.</div>';
+  renderTechnicalSummary(data,waterSeries);
   renderSimpleChart(data);
+}
+
+function renderTechnicalSummary(data, waterSeries){
+  const latest=waterSeries.length?waterSeries[waterSeries.length-1]:null; const previous=waterSeries.length>1?waterSeries[waterSeries.length-2]:null;
+  const mndbt=Number(data.limits&&data.limits.mndbt), mndgc=Number(data.limits&&data.limits.mndgc), h=latest?Number(latest.value):null;
+  const delta=(latest&&previous)?h-Number(previous.value):null;
+  let relation='Chưa đủ dữ liệu để so sánh';
+  if(Number.isFinite(h)&&Number.isFinite(mndbt)&&Number.isFinite(mndgc)) relation=h<mndbt?'Mực nước đang thấp hơn MNDBT':(h<=mndgc?'Mực nước nằm từ MNDBT đến MNDGC':'Mực nước cao hơn MNDGC');
+  else if(Number.isFinite(h)&&Number.isFinite(mndbt)) relation=h<mndbt?'Mực nước đang thấp hơn MNDBT':'Mực nước không thấp hơn MNDBT';
+  const rain=(data.rainfall||[]).filter(s=>Array.isArray(s.data)&&s.data.length);
+  const rainChips=rain.map(s=>'<span class="rain-chip"><b>'+escapeHtml(s.parameter)+'</b>: '+formatNumber((data.rainfallTotalsByParameter||{})[s.parameter])+' mm</span>').join('');
+  technicalSummary.innerHTML='<div class="summary-grid">'
+    +'<div class="summary-item"><div class="summary-label">SO VOI MNDBT</div><div class="summary-value">'+(Number.isFinite(h)&&Number.isFinite(mndbt)?formatNumber(h-mndbt)+' m':'—')+'</div><div class="summary-note">'+relation+'</div></div>'
+    +'<div class="summary-item"><div class="summary-label">SO VOI MNDGC</div><div class="summary-value">'+(Number.isFinite(h)&&Number.isFinite(mndgc)?formatNumber(h-mndgc)+' m':'—')+'</div><div class="summary-note">'+(Number.isFinite(h)&&Number.isFinite(mndgc)?(h<=mndgc?'Chưa vượt MNDGC':'Đã vượt MNDGC'):'Chưa đủ giới hạn')+'</div></div>'
+    +'<div class="summary-item"><div class="summary-label">BIEN DONG GAN NHAT</div><div class="summary-value">'+(delta!==null?(delta>=0?'+':'')+formatNumber(delta)+' m':'—')+'</div><div class="summary-note">'+(delta!==null?'So với lần đo liền trước':'Chưa đủ 2 lần đo')+'</div></div></div>'
+    +(rainChips?'<div class="summary-label" style="margin-top:14px">LUONG MUA THEO TUNG CHUOI</div><div class="rain-series">'+rainChips+'</div>':'');
 }
 
 function escapeHtml(v){
@@ -416,7 +428,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.2","status":"ok","stage":3,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.4","status":"ok","stage":3,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
