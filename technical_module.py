@@ -9,14 +9,14 @@ from urllib.error import HTTPError, URLError
 from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.14.1
+# THUY LOI AI - TECHNICAL MODULE V1.15.0
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.14.1",
+    version="1.15.0",
 )
 
 # ============================================================
@@ -157,7 +157,7 @@ button{cursor:pointer}
 .alert-banner.show{display:flex}.alert-banner.warn{border-color:rgba(216,137,0,.45);background:linear-gradient(90deg,rgba(216,137,0,.13),var(--surface))}
 .alert-banner.danger{border-color:rgba(225,75,50,.55);background:linear-gradient(90deg,rgba(225,75,50,.15),var(--surface))}
 .alert-icon{font-size:20px}.alert-text{flex:1}.alert-title{font-weight:900}.alert-detail{font-size:12px;color:var(--muted);margin-top:2px}
-.toolbar{display:grid;grid-template-columns:1.5fr .9fr .8fr auto;gap:10px;margin-bottom:16px}
+.toolbar{display:grid;grid-template-columns:1.55fr .85fr auto auto;gap:10px;margin-bottom:16px}
 .control,.card,.panel{
   background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)
 }
@@ -220,7 +220,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 @media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.trend-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:720px){
   .container{padding:12px}.header-inner{padding:10px 12px}.live-badge{font-size:0;padding:0;width:38px;justify-content:center}
-  .toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.kpi-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.toolbar .ghost-btn,.toolbar .primary-btn{width:100%}.kpi-grid{grid-template-columns:1fr 1fr;gap:8px}
   .kpi{padding:13px}.kpi-value{font-size:22px}.chart-wrap{height:330px;padding:9px}.summary-grid{grid-template-columns:1fr 1fr}.trend-grid{grid-template-columns:1fr 1fr}
   .table{display:none}.mobile-data{display:block}.data-toolbar{padding:10px}.page-info{margin-left:0;width:100%}
 }
@@ -229,12 +229,17 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 /* V1.10 - Quick Report preview */
 .report-btn{white-space:nowrap}
 .report-wrap{position:relative;display:flex;align-items:center;gap:7px;min-width:0}
+.report-btn{border:1px solid rgba(8,120,201,.35);background:linear-gradient(135deg,#0b82d8,#11b9d8);color:#fff;box-shadow:0 8px 22px rgba(8,120,201,.22);font-weight:900}
+.report-btn:hover{filter:brightness(1.04);transform:translateY(-1px)}
+.dark .report-btn{background:linear-gradient(135deg,#0aa6df,#18c9a0);border-color:rgba(53,215,178,.45);box-shadow:0 0 24px rgba(24,201,160,.20)}
 .report-actions{display:none;align-items:center;gap:7px;flex-wrap:wrap}
 .report-actions.show{display:flex;min-width:0}
 .report-actions .primary-btn,.report-actions .ghost-btn{min-height:44px;padding:0 13px}
+.report-actions .ghost-btn{background:var(--surface);border-color:rgba(8,120,201,.28);color:var(--primary);font-weight:900}
+.dark .report-actions .ghost-btn{background:var(--surface2);border-color:rgba(53,215,178,.35);color:#7ee9d0}
 @media(max-width:760px){
   .date-filter .report-wrap{grid-column:1/-1;width:100%;display:block}
-  .report-wrap>.primary-btn{width:100%;min-height:46px}
+  .report-wrap>.report-btn{width:100%;min-height:46px}
   .report-actions{width:100%;display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:7px}
   .report-actions.show{display:grid}
   .report-actions button{width:100%;min-width:0;min-height:44px;padding:0 5px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -275,7 +280,6 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 
   <section class="toolbar">
     <div class="control"><label>CÔNG TRÌNH</label><select id="facility"><option value="">Đang tải công trình...</option></select></div>
-    <div class="control"><label>THÔNG SỐ</label><select id="parameter"><option value="">Mực nước</option></select></div>
     <div class="control"><label>THỜI GIAN</label><select id="period"><option value="24 gio">24 giờ</option><option value="3 ngay">3 ngày</option><option value="7 ngay" selected>7 ngày</option><option value="30 ngay">30 ngày</option><option value="90 ngay">90 ngày</option></select></div>
     <button class="ghost-btn" onclick="checkConnections()">🧪 Kiểm tra kết nối</button><button class="primary-btn" onclick="refreshModule()">↻ Làm mới</button>
   </section>
@@ -316,11 +320,11 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   </section>
 
 
-  <div class="footer">THUY LOI AI · Technical Module V1.14.1 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.15.0 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
-const f=document.getElementById('facility'), parameter=document.getElementById('parameter'), period=document.getElementById('period');
+const f=document.getElementById('facility'), parameter=null, period=document.getElementById('period');
 const water=document.getElementById('water'), state=document.getElementById('state');
 const stateDetail=document.getElementById('stateDetail'), mndbt=document.getElementById('mndbt'), mndgc=document.getElementById('mndgc'), rainTotal=document.getElementById('rainTotal');
 const technicalSummary=document.getElementById('technicalSummary'), alertBanner=document.getElementById('alertBanner');
@@ -443,31 +447,11 @@ function toggleTheme(){
 (function initTheme(){const dark=localStorage.getItem('tlai-theme')==='dark';if(dark)document.documentElement.classList.add('dark');document.getElementById('themeBtn').textContent=dark?'☀️':'🌙'})();
 
 async function loadParameters(){
-  if(!f.value)return;
-  try{
-    const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value));
-    const raw=result&&result.data;
-    const obj=(raw&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};
-    const toList=(value)=>Array.isArray(value)?value.map(x=>typeof x==='string'?x:(x&&typeof x==='object'?(x.name||x.parameter||x.value||''):String(x))).filter(Boolean):[];
-    currentParameters={waterLevel:toList(obj.waterLevel||obj.water||obj.mucNuoc),rainfall:toList(obj.rainfall||obj.rain||obj.luongMua)};
-    const options=[{label:'Mực nước',value:''},...currentParameters.waterLevel.map(x=>({label:x,value:x})),...currentParameters.rainfall.map(x=>({label:x,value:x}))];
-    parameter.innerHTML='';
-    const seen=new Set();
-    options.forEach(o=>{
-      const key=String(o.value)+'|'+String(o.label);
-      if(seen.has(key))return;
-      seen.add(key);
-      const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.label;parameter.appendChild(opt);
-    });
-    if(!parameter.options.length){
-      const opt=document.createElement('option');opt.value='';opt.textContent='Mực nước';parameter.appendChild(opt);
-    }
-    parameter.value='';
-  }catch(err){
-    console.error('loadParameters:',err);
-    parameter.innerHTML='<option value="">Mực nước</option>';
-  }
+  /* V1.15: giao diện không còn ô Thông số; module cố định Mực nước và tự chọn chuỗi mưa từ API. */
+  currentParameters={waterLevel:[],rainfall:[]};
+  return true;
 }
+
 function exportFileStamp(){
   const d=new Date();
   const pad=n=>String(n).padStart(2,'0');
@@ -495,8 +479,8 @@ async function loadChartData(){
     const from=document.getElementById('fromDate').value,to=document.getElementById('toDate').value;
     if(from)params.set('fromDate',from);
     if(to)params.set('toDate',to);
-    const selected=parameter.value;
-    if(selected){const isRain=(currentParameters.rainfall||[]).includes(selected);if(!isRain)params.set('waterParameter',selected);else params.set('rainfallParameters',selected)}
+    /* Không còn bộ chọn Thông số; luôn yêu cầu Mực nước mặc định. Apps Script sẽ trả chuỗi mưa theo cấu hình. */
+    params.set('waterParameter','Mực nước');
     const result=await fetchJson('/api/chart?'+params.toString());
     currentData=result.data;renderData(currentData);
   }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu.')}
@@ -544,9 +528,10 @@ function evaluateAlert(data,latest){
 }
 
 function renderData(data){
-  const waterSeries=Array.isArray(data.water)?data.water:[],latest=waterSeries.length?waterSeries[waterSeries.length-1]:null;
+  const waterSeries=normalizeSeries(data.water),latest=waterSeries.length?waterSeries[waterSeries.length-1]:null;
+  data.water=waterSeries.map(p=>({...p,time:p.time.toISOString()}));
   water.textContent=latest?formatNumber(latest.value):'—';state.textContent=latest?'Có dữ liệu':'Chưa có mực nước';
-  if(latest){const d=new Date(latest.time);stateDetail.textContent='Cập nhật '+d.toLocaleString('vi-VN');document.getElementById('waterNote').textContent='Lần đo mới nhất'}
+  if(latest){const d=parseDataTime(latest.time);stateDetail.textContent='Cập nhật '+d.toLocaleString('vi-VN');document.getElementById('waterNote').textContent='Lần đo mới nhất'}
   mndbt.textContent=data.limits&&data.limits.mndbt!=null?formatNumber(data.limits.mndbt):'—';
   mndgc.textContent=data.limits&&data.limits.mndgc!=null?formatNumber(data.limits.mndgc):'—';
   rainTotal.textContent=data.totalRainfall!=null?formatNumber(data.totalRainfall):'—';
@@ -567,8 +552,31 @@ function updateKpiState(data,latest){
   else if(Number.isFinite(bt)&&h>=bt){k.classList.add('warn');led.classList.add('stale');ledState.classList.add('stale')}
 }
 
+function parseDataTime(value){
+  if(value instanceof Date)return value;
+  if(value===null||value===undefined||value==='')return null;
+  const raw=String(value).trim();
+  /* ISO có timezone/Z: tôn trọng timezone nguồn và hiển thị theo giờ Việt Nam của trình duyệt. */
+  if(/T/.test(raw)&&/(Z|[+-]\d{2}:?\d{2})$/.test(raw)){
+    const d=new Date(raw);return Number.isFinite(d.getTime())?d:null;
+  }
+  /* Chuỗi không có timezone phải được hiểu đúng như giờ quan trắc, không tự cộng/trừ UTC. */
+  let m=raw.match(/^(\d{4})[-\/]?(\d{2})[-\/]?(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]||0),0);return Number.isFinite(d.getTime())?d:null;}
+  m=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){const d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0),0);return Number.isFinite(d.getTime())?d:null;}
+  const d=new Date(raw);return Number.isFinite(d.getTime())?d:null;
+}
+function normalizeSeries(series){
+  return (Array.isArray(series)?series:[]).map(p=>({
+    ...p,
+    time:parseDataTime(p&&p.time),
+    value:Number(p&&p.value)
+  })).filter(p=>p.time&&Number.isFinite(p.time.getTime())&&Number.isFinite(p.value)).sort((a,b)=>a.time-b.time);
+}
+
 function reportDateRange(series){
-  const points=(series||[]).map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
+  const points=(series||[]).map(p=>({time:parseDataTime(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
   const from=document.getElementById('fromDate').value, to=document.getElementById('toDate').value;
   if(from||to){const fmt=v=>{if(!v)return '—';const d=new Date(v+'T00:00:00');return d.toLocaleDateString('vi-VN')};return {from:fmt(from),to:fmt(to),points};}
   if(points.length)return {from:points[0].time.toLocaleDateString('vi-VN'),to:points[points.length-1].time.toLocaleDateString('vi-VN'),points};
@@ -579,7 +587,7 @@ function reportAnalysis(data){
   const r=reportDateRange(data.water||[]), pts=r.points, latest=pts[pts.length-1], first=pts[0];
   const bt=Number(data.limits&&data.limits.mndbt), gc=Number(data.limits&&data.limits.mndgc);
   const rainfallSeries=Array.isArray(data.rainfall)?data.rainfall:[];
-  const rainPoints=rainfallSeries.flatMap(x=>(Array.isArray(x.data)?x.data:[]).map(p=>({time:new Date(p.time),value:Number(p.value),name:x.parameter||'Lượng mưa'}))).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime()));
+  const rainPoints=rainfallSeries.flatMap(x=>(Array.isArray(x.data)?x.data:[]).map(p=>({time:parseDataTime(p.time),value:Number(p.value),name:x.parameter||'Lượng mưa'}))).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime()));
   const totalRain=Number.isFinite(Number(data.totalRainfall))?Number(data.totalRainfall):rainPoints.reduce((sum,p)=>sum+(p.value||0),0);
   const increase=latest&&first?latest.value-first.value:null;
   const min=pts.length?Math.min(...pts.map(p=>p.value)):null, max=pts.length?Math.max(...pts.map(p=>p.value)):null;
@@ -804,7 +812,7 @@ function renderTechnicalSummary(data,series){
     renderTrendHtml(series)+(rainChips?'<div class="summary-label" style="margin-top:16px">LƯỢNG MƯA THEO TỪNG CHUỖI</div><div class="chips" style="margin-top:8px">'+rainChips+'</div>':'');
 }
 function renderTrendHtml(series){
-  const points=series.map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
+  const points=series.map(p=>({time:parseDataTime(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
   if(!points.length)return '';
   const latest=points[points.length-1];
   function stats(hours){const st=new Date(latest.time-hours*3600000),a=points.filter(p=>p.time>=st&&p.time<=latest.time);if(a.length<2)return null;return {d:latest.value-a[0].value,n:a.length,min:Math.min(...a.map(x=>x.value)),max:Math.max(...a.map(x=>x.value))}}
@@ -816,28 +824,38 @@ function renderTrendHtml(series){
 }
 
 function renderHydroChart(data){
-  const ws=(data.water||[]).map(p=>({x:new Date(p.time).getTime(),y:Number(p.value)})).filter(p=>Number.isFinite(p.y)&&Number.isFinite(p.x));
-  const rain=(data.rainfall||[]).flatMap(s=>(s.data||[]).map(p=>({x:new Date(p.time).getTime(),y:Number(p.value),name:s.parameter}))).filter(p=>Number.isFinite(p.y)&&Number.isFinite(p.x));
+  const ws=normalizeSeries(data.water);
+  const rain=(data.rainfall||[]).flatMap(s=>normalizeSeries(s&&s.data).map(p=>({x:p.time.getTime(),y:p.value,name:s.parameter||'Lượng mưa'})));
+  const waterPts=ws.map(p=>({x:p.time.getTime(),y:p.value}));
   const bt=Number(data.limits&&data.limits.mndbt),gc=Number(data.limits&&data.limits.mndgc);
   if(hydroChart)hydroChart.destroy();
+  const canvas=document.getElementById('hydroChart');
+  if(!canvas)return;
+  if(!waterPts.length&&!rain.length){return;}
   const dark=document.documentElement.classList.contains('dark'),grid=dark?'rgba(170,195,220,.10)':'rgba(50,85,120,.10)',text=dark?'#9fb0c6':'#687386';
+  const allTimes=[...waterPts.map(p=>p.x),...rain.map(p=>p.x)].sort((a,b)=>a-b);
+  const minX=allTimes[0],maxX=allTimes[allTimes.length-1];
+  let intervalMs=60*60*1000;
+  if(allTimes.length>1){
+    const diffs=[];for(let i=1;i<allTimes.length;i++){const d=allTimes[i]-allTimes[i-1];if(d>0)diffs.push(d)}
+    if(diffs.length){diffs.sort((a,b)=>a-b);intervalMs=diffs[Math.floor(diffs.length/2)];}
+  }
+  const barWidth=Math.max(20,Math.min(100,intervalMs*.68));
   const datasets=[];
-  if(rain.length)datasets.push({type:'bar',label:'Lượng mưa',data:rain,yAxisID:'rain',backgroundColor:dark?'rgba(71,214,181,.38)':'rgba(104,116,128,.38)',borderWidth:0,barPercentage:.72,categoryPercentage:.9});
-  if(ws.length)datasets.push({type:'line',label:'Mực nước',data:ws,yAxisID:'water',borderColor:dark?'#20c5ef':'#0878c9',backgroundColor:'transparent',borderWidth:3,pointRadius:2.5,pointHoverRadius:6,tension:.32});
-  if(Number.isFinite(bt))datasets.push({type:'line',label:'MNDBT',data:ws.length?ws.map(p=>({x:p.x,y:bt})):[],yAxisID:'water',borderColor:dark?'#ffb13b':'#d88900',borderWidth:2,borderDash:[8,6],pointRadius:0});
-  if(Number.isFinite(gc))datasets.push({type:'line',label:'MNDGC',data:ws.length?ws.map(p=>({x:p.x,y:gc})):[],yAxisID:'water',borderColor:dark?'#ff684e':'#e14b32',borderWidth:2,borderDash:[5,5],pointRadius:0});
-  hydroChart=new Chart(document.getElementById('hydroChart'),{
-    data:{datasets},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-      plugins:{legend:{labels:{color:text,usePointStyle:true,padding:14}},tooltip:{callbacks:{
-        title(items){return items[0]?.parsed?.x?new Date(items[0].parsed.x).toLocaleString('vi-VN'):''},
-        label(ctx){return `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)} ${ctx.dataset.yAxisID==='rain'?'mm':'m'}`}
-      }}},
-      scales:{x:{type:'linear',ticks:{color:text,maxRotation:0,callback(value){return new Date(value).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',hour:periodDays()<=1?'2-digit':undefined,minute:periodDays()<=1?'2-digit':undefined})}},grid:{color:grid}},
-        water:{position:'left',title:{display:true,text:'H (m)',color:text},ticks:{color:text},grid:{color:grid}},
-        rain:{position:'right',title:{display:true,text:'Mưa (mm)',color:text},ticks:{color:text},grid:{drawOnChartArea:false}}
-      }}
-  });
+  if(rain.length)datasets.push({type:'bar',label:'Lượng mưa',data:rain,yAxisID:'rain',backgroundColor:dark?'rgba(71,214,181,.38)':'rgba(104,116,128,.38)',borderWidth:0,barThickness:barWidth,maxBarThickness:42});
+  if(waterPts.length)datasets.push({type:'line',label:'Mực nước',data:waterPts,yAxisID:'water',borderColor:dark?'#20c5ef':'#0878c9',backgroundColor:'transparent',borderWidth:3,pointRadius:3,pointHoverRadius:6,tension:0,spanGaps:false});
+  if(Number.isFinite(bt))datasets.push({type:'line',label:'MNDBT',data:waterPts.length?waterPts.map(p=>({x:p.x,y:bt})):[],yAxisID:'water',borderColor:dark?'#ffb13b':'#d88900',borderWidth:2,borderDash:[8,6],pointRadius:0,tension:0});
+  if(Number.isFinite(gc))datasets.push({type:'line',label:'MNDGC',data:waterPts.length?waterPts.map(p=>({x:p.x,y:gc})):[],yAxisID:'water',borderColor:dark?'#ff684e':'#e14b32',borderWidth:2,borderDash:[5,5],pointRadius:0,tension:0});
+  hydroChart=new Chart(canvas,{data:{datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,interaction:{mode:'nearest',intersect:false},
+    plugins:{legend:{labels:{color:text,usePointStyle:true,padding:14}},tooltip:{callbacks:{
+      title(items){const x=items[0]?.parsed?.x;const d=Number.isFinite(x)?new Date(x):null;return d?d.toLocaleString('vi-VN'):''},
+      label(ctx){return `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)} ${ctx.dataset.yAxisID==='rain'?'mm':'m'}`}
+    }}},
+    scales:{x:{type:'linear',min:minX,max:maxX,ticks:{color:text,maxRotation:0,autoSkip:true,maxTicksLimit:8,callback(value){const d=new Date(Number(value));return periodDays()<=1?d.toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'});}},grid:{color:grid},title:{display:true,text:'Thời gian quan trắc',color:text}},
+      water:{position:'left',title:{display:true,text:'Mực nước H (m)',color:text},ticks:{color:text},grid:{color:grid}},
+      rain:{position:'right',title:{display:true,text:'Lượng mưa (mm)',color:text},ticks:{color:text},grid:{drawOnChartArea:false}}
+    }}}
+  );
 }
 function fitChart(){if(currentData)renderHydroChart(currentData)}
 
@@ -868,7 +886,7 @@ async function loadFacilities(){
   }finally{f.disabled=false}
 }
 f.addEventListener('change',async()=>{setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');await loadParameters();await loadChartData()});
-parameter.addEventListener('change',loadChartData);period.addEventListener('change',loadChartData);
+period.addEventListener('change',loadChartData);
 async function refreshModule(){if(!f.value){setSelectedFacility();resetData();return}setSelectedFacility();await loadParameters();await loadChartData()}
 loadFacilities();
 </script>
@@ -935,7 +953,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.14.1","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.15.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
