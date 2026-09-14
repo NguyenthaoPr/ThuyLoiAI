@@ -22,13 +22,13 @@ except ImportError:  # pragma: no cover
     GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V2.6.0
+# THUY LOI AI - TECHNICAL MODULE V2.7.0
 # DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
 # Doc truc tiep AI_DATA bang Google Sheets API.
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.6.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.7.0")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -329,59 +329,96 @@ def _rain_total(rainfall):
 def _build_chart(facility, year, days, from_date, to_date, hours=0):
     rows=[r for r in _data_rows() if _row_facility(r)==facility]
 
-    # Cửa sổ nhanh: lấy theo mốc quan trắc mới nhất của chính công trình.
-    # Nếu người dùng chọn Từ ngày/Đến ngày thì bộ lọc ngày được ưu tiên.
+    # Mốc neo duy nhất cho mọi cửa sổ nhanh.
+    latest_dt=None
+    parsed_rows=[]
+    for r in rows:
+        dt=_row_datetime(r,year)
+        parsed_rows.append((r,dt))
+        if dt and (latest_dt is None or dt>latest_dt):
+            latest_dt=dt
+
     quick_cutoff=None
-    if not from_date and not to_date and hours:
-        latest_dt=None
-        for _r in rows:
-            _dt=_row_datetime(_r,year)
-            if _dt and (latest_dt is None or _dt>latest_dt):
-                latest_dt=_dt
-        if latest_dt:
-            quick_cutoff=latest_dt-timedelta(hours=int(hours))
+    if not from_date and not to_date and hours and latest_dt:
+        quick_cutoff=latest_dt-timedelta(hours=int(hours))
 
     def _in_window(dt):
         if not dt:
             return False
         if from_date or to_date:
-            return _in_window(dt)
+            return _date_filter(dt,from_date,to_date)
         if quick_cutoff is not None:
-            return quick_cutoff <= dt <= latest_dt
-        # Khi không truyền hours, giữ tương thích với API cũ:
-        # days > 0 được tính từ mốc mới nhất của công trình.
-        if days and days > 0:
-            if latest_dt is None:
-                return True
-            return latest_dt-timedelta(days=int(days)) <= dt <= latest_dt
+            return quick_cutoff<=dt<=latest_dt
+        if days and days>0 and latest_dt is not None:
+            return latest_dt-timedelta(days=int(days))<=dt<=latest_dt
         return True
+
     all_names=[]
     for r in rows:
         p=_row_parameter(r)
         if p and p not in all_names: all_names.append(p)
-    water_names=[n for n in all_names if _classify_parameter(n) in {"WATER_LEVEL","WATER_LEVEL_UPSTREAM"}]
+
+    water_names=[
+        n for n in all_names
+        if _classify_parameter(n) in {"WATER_LEVEL","WATER_LEVEL_UPSTREAM"}
+    ]
     water_name=_pick_water_name(water_names)
+
     water=[]
     if water_name:
-        for r in rows:
+        for r,dt in parsed_rows:
             if _row_parameter(r)!=water_name: continue
-            dt=_row_datetime(r,year); value=_row_value(r)
-            if dt and value is not None and _in_window(dt): water.append({"time":dt.isoformat(),"value":value})
+            value=_row_value(r)
+            if dt and value is not None and _in_window(dt):
+                water.append({"time":dt.isoformat(),"value":value})
     water.sort(key=lambda x:x["time"])
+
     rain_map={}
-    for r in rows:
-        p=_row_parameter(r); code=_classify_parameter(p)
+    for r,dt in parsed_rows:
+        p=_row_parameter(r)
+        code=_classify_parameter(p)
         if code not in {"RAINFALL","RAINFALL_T1","RAINFALL_C24"}: continue
-        dt=_row_datetime(r,year); value=_row_value(r)
-        if dt and value is not None and _in_window(dt): rain_map.setdefault(p,[]).append({"time":dt.isoformat(),"value":value})
+        value=_row_value(r)
+        if dt and value is not None and _in_window(dt):
+            rain_map.setdefault(p,[]).append({"time":dt.isoformat(),"value":value})
+
     rainfall=[]
     for p,data in rain_map.items():
-        data.sort(key=lambda x:x["time"]); rainfall.append({"parameter":p,"code":_classify_parameter(p),"data":data})
-    totals={x["parameter"]:round(sum(float(p["value"]) for p in x["data"]),3) for x in rainfall if _classify_parameter(x["parameter"])!="RAINFALL_C24"}
+        data.sort(key=lambda x:x["time"])
+        rainfall.append({"parameter":p,"code":_classify_parameter(p),"data":data})
+
+    totals={
+        x["parameter"]:round(sum(float(p["value"]) for p in x["data"]),3)
+        for x in rainfall
+        if _classify_parameter(x["parameter"])!="RAINFALL_C24"
+    }
     for x in rainfall:
-        if _classify_parameter(x["parameter"])=="RAINFALL_C24" and x["data"]: totals[x["parameter"]]=round(float(x["data"][-1]["value"]),3)
-    limits=_limits(rows)
-    return {"facility":facility,"year":year,"days":days,"limits":limits,"waterParameter":water_name,"water":water,"waterVariants":_series([r for r in rows if _in_window(_row_datetime(r,year))],year,{"WATER_LEVEL","WATER_LEVEL_UPSTREAM","WATER_LEVEL_DOWNSTREAM"}),"rainfall":rainfall,"rainfallTotalsByParameter":totals,"totalRainfall":_rain_total(rainfall),"source":"google_sheets","sheet":GOOGLE_SHEET_NAME,"range":GOOGLE_SHEETS_RANGE}
+        if _classify_parameter(x["parameter"])=="RAINFALL_C24" and x["data"]:
+            totals[x["parameter"]]=round(float(x["data"][-1]["value"]),3)
+
+    filtered_rows=[r for r,dt in parsed_rows if _in_window(dt)]
+    return {
+        "facility":facility,
+        "year":year,
+        "days":days,
+        "hours":int(hours or 0),
+        "fromDate":from_date or "",
+        "toDate":to_date or "",
+        "windowLatest":latest_dt.isoformat() if latest_dt else None,
+        "limits":_limits(rows),
+        "waterParameter":water_name,
+        "water":water,
+        "waterVariants":_series(
+            filtered_rows,year,
+            {"WATER_LEVEL","WATER_LEVEL_UPSTREAM","WATER_LEVEL_DOWNSTREAM"}
+        ),
+        "rainfall":rainfall,
+        "rainfallTotalsByParameter":totals,
+        "totalRainfall":_rain_total(rainfall),
+        "source":"google_sheets",
+        "sheet":GOOGLE_SHEET_NAME,
+        "range":GOOGLE_SHEETS_RANGE
+    }
 
 HTML = r'''<!doctype html>
 <html lang="vi">
@@ -826,161 +863,72 @@ function localDateEnd(v){return v?new Date(v+'T23:59:59.999'):null}
 function setSelectedFacility(){return f.value||'Chưa chọn'}
 
 let selectedQuickPeriod='7d';
+let chartRequestSerial=0;
 
 function quickPeriodMeta(key){
   return ({
-    '6h':{value:'6 gio',hours:6,days:1},
-    '12h':{value:'12 gio',hours:12,days:1},
-    '24h':{value:'24 gio',hours:24,days:1},
-    '3d':{value:'3 ngay',hours:0,days:3},
-    '7d':{value:'7 ngay',hours:0,days:7}
-  })[key]||{value:'7 ngay',hours:0,days:7};
+    '6h':{value:'6 gio',hours:6,days:0,label:'6h'},
+    '12h':{value:'12 gio',hours:12,days:0,label:'12h'},
+    '24h':{value:'24 gio',hours:24,days:0,label:'24h'},
+    '3d':{value:'3 ngay',hours:0,days:3,label:'3 ngày'},
+    '7d':{value:'7 ngay',hours:0,days:7,label:'7 ngày'}
+  })[key]||{value:'7 ngay',hours:0,days:7,label:'7 ngày'};
+}
+
+function setQuickButtonsActive(key){
+  document.querySelectorAll('#periodQuick button[data-range]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.range===key);
+  });
+}
+
+function clearCustomDates(){
+  document.getElementById('fromDate').value='';
+  document.getElementById('toDate').value='';
 }
 
 function selectQuickPeriod(key){
   const meta=quickPeriodMeta(key);
   selectedQuickPeriod=key;
   period.value=meta.value;
-
-  document.querySelectorAll('#periodQuick button[data-range]').forEach(btn=>{
-    btn.classList.toggle('active',btn.dataset.range===key);
-  });
-
-  // Chọn khoảng nhanh thì xóa khoảng ngày tùy chọn để tránh xung đột.
-  document.getElementById('fromDate').value='';
-  document.getElementById('toDate').value='';
-
+  setQuickButtonsActive(key);
+  clearCustomDates();
   if(f.value)loadChartData();
 }
 
-function periodDays(){return ({'6 gio':1,'12 gio':1,'24 gio':1,'3 ngay':3,'7 ngay':7})[period.value]||7}
-function formatNumber(v,digits=2){if(v===null||v===undefined||v==='')return '—';const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—'}
-function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-
-const CLIENT_TIMEOUT=15000;
-function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
-async function fetchJson(url, options={}, retries=2){
-  let lastError;
-  for(let attempt=0;attempt<=retries;attempt++){
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),CLIENT_TIMEOUT);
-    try{
-      const response=await fetch(url,{...options,signal:controller.signal,cache:'no-store'});
-      let result;
-      try{result=await response.json()}catch(e){throw new Error('FastAPI trả về dữ liệu không hợp lệ.')}
-      if(!response.ok||!result.ok)throw new Error(result?.error||`HTTP ${response.status}`);
-      return result;
-    }catch(err){
-      lastError=err.name==='AbortError'?new Error(`Timeout sau ${CLIENT_TIMEOUT/1000} giây.`):err;
-      if(attempt<retries)await sleep(600*(attempt+1));
-    }finally{clearTimeout(timer)}
-  }
-  throw lastError||new Error('Không kết nối được API.');
-}
-async function checkConnections(){
-  const buttons=[...document.querySelectorAll('button')].filter(b=>b.textContent.includes('Kiểm tra kết nối'));
-  buttons.forEach(b=>{b.disabled=true;b.textContent='⏳ Đang kiểm tra...'});
-  try{
-    const result=await fetchJson('/api/connection',{},0);
-    if(result.google_sheets_ok){
-      alertBanner.className='alert-banner safe show';
-      document.getElementById('alertIcon').textContent='🟢';
-      document.getElementById('alertTitle').textContent='Kết nối Google Sheet OK';
-      document.getElementById('alertDetail').textContent=`FastAPI → Google Sheets → AI_DATA hoạt động · ${result.google_sheets_ms||0} ms · ${result.rows||0} dòng`;
-      return true;
-    }
-    setDataError(result.google_sheets_error||'Google Sheet/AI_DATA không phản hồi.');
-    return false;
-  }catch(err){setDataError(err.message||'Không kiểm tra được kết nối.');return false}
-  finally{buttons.forEach(b=>{b.disabled=false;b.textContent='🧪 Kiểm tra kết nối'})}
+function periodDays(){
+  return quickPeriodMeta(selectedQuickPeriod).days||1;
 }
 
-function resetData(message='Chọn công trình để tải dữ liệu.'){
-  water.textContent='—';state.textContent='—';stateDetail.textContent='Chưa có dữ liệu';mndbt.textContent='—';mndgc.textContent='—';rainTotal.textContent='—';
-  technicalSummary.innerHTML='<div class="empty">'+escapeHtml(message)+'</div>';
-  if(hydroChart){hydroChart.destroy();hydroChart=null}
-  const ab=document.getElementById('alertBanner');
-  ab.className='alert-banner safe';
-  document.getElementById('alertIcon').textContent='●';
-  document.getElementById('alertTitle').textContent='CHỜ DỮ LIỆU';
-  document.getElementById('alertDetail').textContent='Chưa có dữ liệu mực nước hoặc đang chờ kết nối.';
-  lastAlertLevel='normal';
-}
-
-function setDataError(message){
-  const msg=message||'Không tải được dữ liệu.';
-  water.textContent='—';state.textContent='Lỗi dữ liệu';stateDetail.textContent=msg;mndbt.textContent='—';mndgc.textContent='—';rainTotal.textContent='—';
-  technicalSummary.innerHTML='<div class=\"empty\">'+escapeHtml(msg)+'</div>';
-  const ab=document.getElementById('alertBanner');
-  ab.className='alert-banner danger show';
-  document.getElementById('alertIcon').textContent='🔴';
-  document.getElementById('alertTitle').textContent='MẤT KẾT NỐI DỮ LIỆU';
-  document.getElementById('alertDetail').textContent=msg;
-  lastAlertLevel='danger';
-}
-
-function toggleQuickReportActions(){
-  const box=document.getElementById('quickReportActions');
-  const btn=document.getElementById('quickReportBtn');
-  if(!box)return;
-  const show=!box.classList.contains('show');
-  box.classList.toggle('show',show);
-  if(btn)btn.textContent=show?'📄 Đóng Báo cáo nhanh':'📄 Báo cáo nhanh';
-}
-
-function toggleTheme(){
-  const dark=document.documentElement.classList.toggle('dark');
-  localStorage.setItem('tlai-theme',dark?'dark':'light');
-  document.getElementById('themeBtn').textContent=dark?'☀️':'🌙';
-  if(currentData) renderHydroChart(currentData);
-}
-(function initTheme(){const dark=localStorage.getItem('tlai-theme')==='dark';if(dark)document.documentElement.classList.add('dark');document.getElementById('themeBtn').textContent=dark?'☀️':'🌙'})();
-
-async function loadParameters(){
-  if(!f.value)return false;
-  try{
-    const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value),{},1);
-    currentParameters=result.data||{waterLevel:[],rainfall:[]};
-    const raw=Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[];
-    const names=raw.map(x=>typeof x==='string'?x.trim():String(x?.name||x?.parameter||x?.label||x?.value||'').trim()).filter(Boolean);
-    const norm=v=>String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[()\[\]{}]/g,' ').replace(/\s+/g,' ').trim();
-    const exactH=names.find(n=>/^h(?:\s*\(m\))?$/i.test(n));
-    const semantic=names.find(n=>norm(n)==='muc nuoc' || norm(n).startsWith('muc nuoc '));
-    const htl=names.find(n=>/^htl(?:\s*\(m\))?$/i.test(n));
-    selectedWaterParameter=exactH||semantic||htl||names[0]||'Mực nước';
-    return true;
-  }catch(err){
-    console.warn('Không đọc được /api/parameters:',err);
-    currentParameters={waterLevel:[],rainfall:[]};selectedWaterParameter='Mực nước';return false;
-  }
-}
-function exportFileStamp(){
-  const d=new Date();
-  const pad=n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
 function applyCustomDateRange(){
   const from=document.getElementById('fromDate').value;
   const to=document.getElementById('toDate').value;
+
   if(from&&to&&from>to){
     alert('Ngày bắt đầu không được lớn hơn ngày kết thúc.');
     return;
   }
+
   if(!from&&!to){
-    selectQuickPeriod(selectedQuickPeriod||'7d');
+    setQuickButtonsActive(selectedQuickPeriod||'7d');
+    if(f.value)loadChartData();
     return;
   }
+
   document.querySelectorAll('#periodQuick button[data-range]').forEach(btn=>btn.classList.remove('active'));
+
   if(!f.value){
     resetData('Chọn công trình để tải dữ liệu.');
     return;
   }
+
   loadChartData();
 }
 
 function normalizeRawWaterSeries(data){
   let raw=data&&(data.water??data.waterLevel??data.waterSeries??data.waterData);
-  if(raw&&typeof raw==='object'&&!Array.isArray(raw))raw=Array.isArray(raw.data)?raw.data:(Array.isArray(raw.series)?raw.series:[]);
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw)){
+    raw=Array.isArray(raw.data)?raw.data:(Array.isArray(raw.series)?raw.series:[]);
+  }
   if(!Array.isArray(raw))raw=[];
   return raw.map(p=>{
     if(Array.isArray(p))return {time:p[0],value:p[1]};
@@ -992,31 +940,61 @@ function normalizeRawWaterSeries(data){
 }
 
 async function loadChartData(){
-  if(!f.value){resetData();return}
-  state.textContent='Đang tải...';stateDetail.textContent='Đang đọc trực tiếp AI_DATA từ Google Sheet';
+  if(!f.value){
+    resetData();
+    return;
+  }
+
+  const requestId=++chartRequestSerial;
+  state.textContent='Đang tải...';
+  stateDetail.textContent='Đang đọc trực tiếp AI_DATA từ Google Sheet';
+
   try{
-    const from=document.getElementById('fromDate').value,to=document.getElementById('toDate').value;
-    const year=from?String(new Date(from+'T12:00:00').getFullYear()):String(new Date().getFullYear());
+    const from=document.getElementById('fromDate').value;
+    const to=document.getElementById('toDate').value;
     const meta=quickPeriodMeta(selectedQuickPeriod);
+
     const params=new URLSearchParams({
       facility:f.value,
-      year,
+      year:String(new Date().getFullYear()),
       days:String(meta.days),
       hours:String(meta.hours)
     });
+
+    // Custom date là chế độ độc lập và có độ ưu tiên cao nhất.
     if(from||to){
-      params.delete('hours');
       params.set('days','0');
-      if(from)params.set('fromDate',from);
+      params.set('hours','0');
+      if(from){
+        params.set('fromDate',from);
+        params.set('year',String(new Date(from+'T12:00:00').getFullYear()));
+      }
       if(to)params.set('toDate',to);
     }
+
     const result=await fetchJson('/api/chart?'+params.toString(),{},1);
-    currentData=result.data||{};
-    const normalized=normalizeRawWaterSeries(currentData);
-    currentData.water=normalized;
+
+    // Không để response của lần chọn trước ghi đè lựa chọn mới.
+    if(requestId!==chartRequestSerial)return;
+
+    const nextData=result.data||{};
+    nextData.water=normalizeRawWaterSeries(nextData);
+    currentData=nextData;
     renderData(currentData);
-  }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu Google Sheet.')} 
+
+    // renderHydroChart lấy min/max từ dataset mới; xóa scale cũ để không giữ window trước.
+    if(hydroChart){
+      hydroChart.options.scales.x.min=undefined;
+      hydroChart.options.scales.x.max=undefined;
+      hydroChart.update('none');
+    }
+  }catch(err){
+    if(requestId!==chartRequestSerial)return;
+    console.error(err);
+    setDataError(err.message||'Không tải được dữ liệu Google Sheet.');
+  }
 }
+
 function evaluateAlert(data,latest){
   const banner=document.getElementById('alertBanner');
   banner.className='alert-banner safe';
@@ -1817,9 +1795,10 @@ async function loadFacilities(){
   }finally{f.disabled=false}
 }
 f.addEventListener('change',async()=>{setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');await loadParameters();await loadChartData()});
-period.addEventListener('change',()=>loadChartData());
 async function refreshModule(){if(!f.value){setSelectedFacility();resetData();return}setSelectedFacility();await loadParameters();await loadChartData()}
-selectQuickPeriod('7d');
+selectedQuickPeriod='7d';
+setQuickButtonsActive('7d');
+period.value=quickPeriodMeta('7d').value;
 loadFacilities();
 </script>
 <div id="reportModal" class="report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
@@ -1867,11 +1846,30 @@ def api_chart(facility: str, year: int=2026, days: int=7, hours: int=0, waterPar
         if waterParameter:
             rows=[r for r in _data_rows() if _row_facility(r)==facility and _row_parameter(r)==waterParameter]
             if rows:
+                facility_rows=[r for r in _data_rows() if _row_facility(r)==facility]
+                latest=None
+                for r in facility_rows:
+                    dt=_row_datetime(r,year)
+                    if dt and (latest is None or dt>latest):
+                        latest=dt
+                cutoff=latest-timedelta(hours=int(hours)) if latest and not (fromDate or toDate) and hours else None
+
+                def selected_window(dt):
+                    if not dt:return False
+                    if fromDate or toDate:return _date_filter(dt,fromDate,toDate)
+                    if cutoff is not None:return cutoff<=dt<=latest
+                    if days and days>0 and latest is not None:
+                        return latest-timedelta(days=int(days))<=dt<=latest
+                    return True
+
                 pts=[]
                 for r in rows:
                     dt=_row_datetime(r,year); value=_row_value(r)
-                    if dt and value is not None and _date_filter(dt,fromDate,toDate): pts.append({"time":dt.isoformat(),"value":value})
-                pts.sort(key=lambda x:x["time"]); data["waterParameter"]=waterParameter;data["water"]=pts
+                    if dt and value is not None and selected_window(dt):
+                        pts.append({"time":dt.isoformat(),"value":value})
+                pts.sort(key=lambda x:x["time"])
+                data["waterParameter"]=waterParameter
+                data["water"]=pts
         return {"ok":True,"source":"google_sheets","data":data}
     except RuntimeError as exc:
         return JSONResponse(status_code=502,content={"ok":False,"source":"google_sheets","error":str(exc)})
@@ -1891,7 +1889,7 @@ def technical_dashboard(): return HTML
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"2.1.0","status":"ok","stage":7,"mode":"direct_google_sheets","sheet":GOOGLE_SHEET_NAME}
+    return {"module":"technical_module","version":"2.7.0","status":"ok","stage":7,"mode":"direct_google_sheets","sheet":GOOGLE_SHEET_NAME}
 
 if __name__ == "__main__":
     import uvicorn
