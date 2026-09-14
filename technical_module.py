@@ -9,14 +9,14 @@ from urllib.error import HTTPError, URLError
 from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.8
+# THUY LOI AI - TECHNICAL MODULE V1.10
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.8.0",
+    version="1.10.0",
 )
 
 # ============================================================
@@ -51,7 +51,7 @@ def fetch_apps_script_api_(api, params=None):
     req = Request(
         url,
         headers={
-            "User-Agent": "THUY-LOI-AI-Technical/1.8",
+            "User-Agent": "THUY-LOI-AI-Technical/1.10",
             "Accept": "application/json,text/plain,*/*",
             "Cache-Control": "no-cache",
         }
@@ -227,6 +227,18 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   .table{display:none}.mobile-data{display:block}.data-toolbar{padding:10px}.page-info{margin-left:0;width:100%}
 }
 @media(max-width:430px){.toolbar{grid-template-columns:1fr}.toolbar .control:first-child{grid-column:auto}.summary-grid,.trend-grid{grid-template-columns:1fr 1fr}.title{font-size:16px}}
+
+/* V1.10 - Quick Report preview */
+.report-btn{white-space:nowrap}
+.report-modal{position:fixed;inset:0;z-index:9999;background:rgba(4,12,22,.72);display:none;align-items:center;justify-content:center;padding:18px}
+.report-modal.show{display:flex}
+.report-modal-card{width:min(980px,100%);height:min(90vh,900px);background:var(--panel,#fff);color:var(--text,#152238);border:1px solid var(--line,#dce4ee);border-radius:18px;box-shadow:0 25px 80px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden}
+.report-modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line,#dce4ee);font-weight:800}
+.report-modal-actions{display:flex;gap:7px;align-items:center}
+.report-close{border:0;border-radius:10px;padding:8px 12px;cursor:pointer;background:var(--soft,#eef3f8);color:inherit}
+.report-preview{background:#fff;color:#111;overflow:auto;padding:28px;flex:1}
+.report-preview h1{text-align:center;font-size:20px;margin:0 0 12px}.report-preview h2{font-size:15px;margin:20px 0 7px;border-bottom:1px solid #777;padding-bottom:4px}.report-preview p{margin:6px 0;line-height:1.5}.report-preview table{border-collapse:collapse;width:100%;margin:8px 0}.report-preview th,.report-preview td{border:1px solid #777;padding:6px;text-align:left;vertical-align:top}.report-preview th{font-weight:bold;background:#eee}.report-preview ul{margin-top:5px}.report-preview .note{font-style:italic;color:#444}.report-preview .footer{margin-top:22px;font-size:12px;color:#555}
+@media(max-width:700px){.report-btn{flex:1;min-width:0}.report-preview{padding:16px}.report-modal{padding:8px}.report-modal-card{height:94vh;border-radius:14px}}
 </style>
 </head>
 
@@ -300,9 +312,10 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
       <input id="gridFrom" class="data-date" type="date" title="Từ ngày" onchange="applyDataFilter()">
       <input id="gridTo" class="data-date" type="date" title="Đến ngày" onchange="applyDataFilter()">
       <div class="export-group">
-        <button class="ghost-btn" style="min-height:40px;padding:0 11px" onclick="exportCSV()">CSV</button>
-        <button class="primary-btn" style="min-height:40px;padding:0 11px" onclick="exportExcel()">Excel</button><button class="ghost-btn" style="min-height:40px;padding:0 11px" onclick="exportQuickReportWord()">📄 Báo cáo nhanh</button>
-        <button class="ghost-btn" style="min-height:40px;padding:0 11px" onclick="clearDataFilter()">Xóa lọc</button>
+        <button class="primary-btn" style="min-height:40px;padding:0 11px" onclick="exportExcel()">Excel</button>
+        <button class="ghost-btn report-btn" style="min-height:40px;padding:0 11px" onclick="previewQuickReport()">👁️ Xem trước</button>
+        <button class="ghost-btn report-btn" style="min-height:40px;padding:0 11px" onclick="shareQuickReportZalo()">💬 Gửi Zalo</button>
+        <button class="primary-btn report-btn" style="min-height:40px;padding:0 11px" onclick="downloadQuickReportWord()">⬇️ Tải về</button>
       </div>
       <div class="page-info" id="pageInfo">0 bản ghi</div>
     </div>
@@ -311,7 +324,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div id="pagination" class="pagination"></div>
   </section>
 
-  <div class="footer">THUY LOI AI · Technical Module V1.9 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.10 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -524,10 +537,6 @@ function applyDataFilter(){
   });
   currentPage=1;renderTable();
 }
-function clearDataFilter(){
-  ['dataSearch','gridFrom','gridTo'].forEach(id=>document.getElementById(id).value='');
-  applyDataFilter();
-}
 function applyCustomDateRange(){
   const from=document.getElementById('fromDate'),to=document.getElementById('toDate');
   if(from.value&&to.value&&from.value>to.value)to.value=from.value;
@@ -545,16 +554,6 @@ function exportRows(){
 }
 function exportFileStamp(){
   return new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-}
-function exportCSV(){
-  const rows=exportRows();
-  if(!rows.length){alert('Không có dữ liệu phù hợp để xuất.');return}
-  const headers=['Ngày','Giờ','Công trình','Thông số','Giá trị','Đơn vị'];
-  const lines=[headers,...rows.map(r=>headers.map(h=>`"${String(r[h]??'').replace(/"/g,'""')}"`))];
-  const csv='\ufeff'+lines.map(a=>a.join(',')).join('\r\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
-  const url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download=`THUY_LOI_AI_Du_lieu_${exportFileStamp()}.csv`;a.click();URL.revokeObjectURL(url);
 }
 function exportExcel(){
   const rows=exportRows();
@@ -616,8 +615,8 @@ function reportAnalysis(data){
   else if(latest)assessment='Mực nước hiện tại thấp hơn MNDBT; tiếp tục theo dõi xu thế mực nước, lượng mưa và các yếu tố vận hành liên quan.';
   return {r,pts,latest,first,bt,gc,totalRain,rainPoints,rainPeak,increase,min,max,maxRise,maxDrop,abnormal,trend24,trend72,trend168,rate24,projected,forecast,assessment};
 }
-function exportQuickReportWord(){
-  if(!currentData||!Array.isArray(currentData.water)||!currentData.water.length){alert('Chưa có dữ liệu mực nước để lập Báo cáo nhanh.');return}
+function buildQuickReportHtml(){
+  if(!currentData||!Array.isArray(currentData.water)||!currentData.water.length)return null
   const a=reportAnalysis(currentData), d=currentData, facility=d.facility||f.value||'Chưa xác định';
   const rainRows=(d.rainfall||[]).map(x=>{
     const name=x.parameter||'Lượng mưa', fromApi=Number((d.rainfallTotalsByParameter||{})[name]);
@@ -645,10 +644,69 @@ function exportQuickReportWord(){
 <h2>6. Dự kiến diễn biến</h2><p>${escapeHtml(a.forecast)}</p>
 <h2>7. Kiến nghị theo dõi</h2><ul><li>Tiếp tục cập nhật mực nước và lượng mưa theo tần suất quy định của công trình.</li><li>Đối chiếu diễn biến với MNDBT, MNDGC và quy trình vận hành hồ/công trình hiện hành.</li><li>Nếu mực nước tăng nhanh, tiến sát/vượt ngưỡng hoặc lượng mưa tăng mạnh, tăng cường theo dõi và thực hiện chế độ báo cáo/cảnh báo theo quy định.</li><li>Đánh giá đồng thời lượng mưa, xu thế mực nước và tình trạng vận hành trước khi quyết định điều hành.</li></ul>
 <p class="note">Lưu ý: “Dự kiến diễn biến” là ngoại suy xu hướng từ số liệu quan trắc đang có, chỉ mang tính tham khảo; không phải dự báo khí tượng thủy văn chính thức và không thay thế quy trình vận hành hoặc quyết định của người có thẩm quyền. Tiêu chí biến động đáng chú ý ≥ 0,30 m giữa hai lần đo là tiêu chí phân tích của báo cáo, không phải ngưỡng quy chuẩn.</p>
-<div class="footer">THUY LOI AI · Báo cáo nhanh tự động từ dữ liệu đang hiển thị trên Dashboard.</div></body></html>`;
-  const blob=new Blob(['\ufeff',html],{type:'application/msword;charset=utf-8'});
-  const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`Bao_cao_nhanh_${String(facility).replace(/[^a-zA-Z0-9À-ỹ _-]/g,'_')}_${exportFileStamp()}.doc`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+<div class="footer">THUY LOI AI · Báo cáo nhanh tự động từ dữ liệu đang hiển thị trên Dashboard.</div>
+</body></html>`;
+  return html;
 }
+
+function reportPlainTextFromHtml(html){
+  const box=document.createElement('div');
+  box.innerHTML=html;
+  return (box.innerText||box.textContent||'').trim();
+}
+function reportFileName(){
+  const facility=currentData?.facility||f.value||'Cong_trinh';
+  return `Bao_cao_nhanh_${String(facility).replace(/[^a-zA-Z0-9À-ỹ _-]/g,'_')}_${exportFileStamp()}.doc`;
+}
+function requireQuickReport(){
+  const html=buildQuickReportHtml();
+  if(!html){alert('Chưa có dữ liệu mực nước để lập Báo cáo nhanh.');return null}
+  return html;
+}
+function previewQuickReport(){
+  const html=requireQuickReport();if(!html)return;
+  document.getElementById('reportPreview').innerHTML=html;
+  document.getElementById('reportModal').classList.add('show');
+  document.body.style.overflow='hidden';
+}
+function closeReportPreview(){
+  document.getElementById('reportModal').classList.remove('show');
+  document.body.style.overflow='';
+}
+async function shareQuickReportZalo(){
+  const html=requireQuickReport();if(!html)return;
+  const text=reportPlainTextFromHtml(html);
+  const file=new File(['\ufeff',html],reportFileName(),{type:'application/msword'});
+  try{
+    if(navigator.share){
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({title:'Báo cáo nhanh - '+(currentData?.facility||f.value||''),text:'Báo cáo nhanh Thủy lợi',files:[file]});
+        return;
+      }
+      await navigator.share({title:'Báo cáo nhanh - '+(currentData?.facility||f.value||''),text:text.slice(0,6000)});
+      return;
+    }
+  }catch(err){
+    if(err&&err.name==='AbortError')return;
+    console.warn('Không thể dùng Web Share:',err);
+  }
+  try{
+    if(navigator.clipboard)await navigator.clipboard.writeText(text.slice(0,10000));
+  }catch(err){console.warn('Clipboard không khả dụng:',err)}
+  alert('Đã chuẩn bị nội dung Báo cáo nhanh. Zalo sẽ được mở để bạn chọn người/nhóm và dán nội dung. Nếu thiết bị hỗ trợ chia sẻ tệp, hãy chọn Zalo trong bảng Chia sẻ.');
+  window.open('https://chat.zalo.me/','_blank','noopener,noreferrer');
+}
+function downloadQuickReportWord(){
+  const html=requireQuickReport();if(!html)return;
+  const blob=new Blob(['\ufeff',html],{type:'application/msword;charset=utf-8'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=reportFileName();document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// Giữ tên hàm cũ để không phá các tích hợp/onclick cũ nếu còn tồn tại.
+function exportQuickReportWord(){downloadQuickReportWord()}
+document.getElementById('reportModal').addEventListener('click',e=>{if(e.target.id==='reportModal')closeReportPreview()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReportPreview()});
 
 function renderTable(){
   const total=filteredRows.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(currentPage>pages)currentPage=pages;
@@ -744,6 +802,12 @@ parameter.addEventListener('change',loadChartData);period.addEventListener('chan
 async function refreshModule(){if(!f.value){setSelectedFacility();resetData();return}setSelectedFacility();await loadParameters();await loadChartData()}
 loadFacilities();
 </script>
+<div id="reportModal" class="report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
+  <div class="report-modal-card">
+    <div class="report-modal-head"><span id="reportModalTitle">📄 Xem trước Báo cáo nhanh</span><div class="report-modal-actions"><button class="ghost-btn" style="min-height:36px;padding:0 11px" onclick="shareQuickReportZalo()">💬 Gửi Zalo</button><button class="primary-btn" style="min-height:36px;padding:0 11px" onclick="downloadQuickReportWord()">⬇️ Tải về</button><button class="report-close" onclick="closeReportPreview()">✕</button></div></div>
+    <div id="reportPreview" class="report-preview"></div>
+  </div>
+</div>
 </body>
 </html>
 '''
@@ -801,8 +865,8 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.9.0","status":"ok","stage":4,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.10.0","status":"ok","stage":4,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("technical_module:app", host="0.0.0.0", port=8001, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")), reload=False)
