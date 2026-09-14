@@ -9,14 +9,14 @@ from urllib.error import HTTPError, URLError
 from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.16.0
+# THUY LOI AI - TECHNICAL MODULE V1.17.0
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.16.0",
+    version="1.17.0",
 )
 
 # ============================================================
@@ -320,7 +320,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   </section>
 
 
-  <div class="footer">THUY LOI AI · Technical Module V1.16.0 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.17.0 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -523,23 +523,47 @@ async function loadChartData(){
   try{
     const from=document.getElementById('fromDate').value,to=document.getElementById('toDate').value;
     const year=from?String(new Date(from+'T12:00:00').getFullYear()):String(new Date().getFullYear());
+    /*
+     * QUAN TRỌNG V1.17:
+     * Apps Script chart API của hệ thống cũ dùng waterParameter='' để tự
+     * xác định chuỗi mực nước. Không được bắt đầu bằng tên đoán như 'H (m)',
+     * vì Apps Script có thể trả lỗi ngay khi tên không khớp và làm mất cơ hội
+     * lấy chuỗi mặc định.
+     */
     const candidates=[];
-    const addCandidate=v=>{v=String(v||'').trim();if(v&&!candidates.includes(v))candidates.push(v)};
+    const addCandidate=v=>{
+      v=String(v??'').trim();
+      if(!candidates.includes(v))candidates.push(v);
+    };
+    /* 1) Luôn thử chế độ mặc định của Apps Script trước. */
+    addCandidate('');
+    /* 2) Sau đó mới thử tên thực tế lấy từ /api/parameters. */
     addCandidate(selectedWaterParameter);
-    (Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[]).forEach(x=>{if(typeof x==='string')addCandidate(x);else if(x&&typeof x==='object')addCandidate(x.name||x.parameter||x.label||x.value)});
-    addCandidate('H (m)'); addCandidate('H'); addCandidate('Mực nước'); addCandidate('');
-    let result=null,lastData=null;
+    (Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[]).forEach(x=>{
+      if(typeof x==='string')addCandidate(x);
+      else if(x&&typeof x==='object')addCandidate(x.name||x.parameter||x.label||x.value);
+    });
+    addCandidate('H (m)'); addCandidate('H'); addCandidate('Mực nước'); addCandidate('HTL (m)'); addCandidate('HTL');
+
+    let result=null,lastData=null,lastError=null;
     for(const candidate of candidates){
-      const params=new URLSearchParams({facility:f.value,year,days:String(periodDays())});
-      if(from)params.set('fromDate',from);
-      if(to)params.set('toDate',to);
-      if(candidate)params.set('waterParameter',candidate);
-      const r=await fetchJson('/api/chart?'+params.toString(),{},1);
-      lastData=r.data||{};
-      const raw=normalizeRawWaterSeries(lastData);
-      if(raw.length){result=r;break;}
-      result=r;
+      try{
+        const params=new URLSearchParams({facility:f.value,year,days:String(periodDays())});
+        if(from)params.set('fromDate',from);
+        if(to)params.set('toDate',to);
+        /* candidate='' => KHÔNG gửi waterParameter, giữ đúng contract cũ. */
+        if(candidate)params.set('waterParameter',candidate);
+        const r=await fetchJson('/api/chart?'+params.toString(),{},0);
+        lastData=r.data||{};
+        const raw=normalizeRawWaterSeries(lastData);
+        if(raw.length){result=r;break;}
+        result=r;
+      }catch(candidateErr){
+        lastError=candidateErr;
+        console.warn('Không lấy được chuỗi với waterParameter =',candidate||'(mặc định)',candidateErr);
+      }
     }
+    if(!result && lastError)throw lastError;
     currentData=result?.data||lastData||{};
     const normalized=normalizeRawWaterSeries(currentData);
     if(normalized.length)currentData.water=normalized;
@@ -1019,7 +1043,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.16.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.17.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
