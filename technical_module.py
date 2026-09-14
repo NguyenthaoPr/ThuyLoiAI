@@ -22,13 +22,13 @@ except ImportError:  # pragma: no cover
     GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V2.5.0
+# THUY LOI AI - TECHNICAL MODULE V2.6.0
 # DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
 # Doc truc tiep AI_DATA bang Google Sheets API.
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.5.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.6.0")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -326,8 +326,35 @@ def _rain_total(rainfall):
         if _classify_parameter(item.get("parameter"))=="RAINFALL_C24": c24.extend(item.get("data",[]))
     return round(float(c24[-1]["value"]),3) if c24 else None
 
-def _build_chart(facility, year, days, from_date, to_date):
+def _build_chart(facility, year, days, from_date, to_date, hours=0):
     rows=[r for r in _data_rows() if _row_facility(r)==facility]
+
+    # Cửa sổ nhanh: lấy theo mốc quan trắc mới nhất của chính công trình.
+    # Nếu người dùng chọn Từ ngày/Đến ngày thì bộ lọc ngày được ưu tiên.
+    quick_cutoff=None
+    if not from_date and not to_date and hours:
+        latest_dt=None
+        for _r in rows:
+            _dt=_row_datetime(_r,year)
+            if _dt and (latest_dt is None or _dt>latest_dt):
+                latest_dt=_dt
+        if latest_dt:
+            quick_cutoff=latest_dt-timedelta(hours=int(hours))
+
+    def _in_window(dt):
+        if not dt:
+            return False
+        if from_date or to_date:
+            return _in_window(dt)
+        if quick_cutoff is not None:
+            return quick_cutoff <= dt <= latest_dt
+        # Khi không truyền hours, giữ tương thích với API cũ:
+        # days > 0 được tính từ mốc mới nhất của công trình.
+        if days and days > 0:
+            if latest_dt is None:
+                return True
+            return latest_dt-timedelta(days=int(days)) <= dt <= latest_dt
+        return True
     all_names=[]
     for r in rows:
         p=_row_parameter(r)
@@ -339,14 +366,14 @@ def _build_chart(facility, year, days, from_date, to_date):
         for r in rows:
             if _row_parameter(r)!=water_name: continue
             dt=_row_datetime(r,year); value=_row_value(r)
-            if dt and value is not None and _date_filter(dt,from_date,to_date): water.append({"time":dt.isoformat(),"value":value})
+            if dt and value is not None and _in_window(dt): water.append({"time":dt.isoformat(),"value":value})
     water.sort(key=lambda x:x["time"])
     rain_map={}
     for r in rows:
         p=_row_parameter(r); code=_classify_parameter(p)
         if code not in {"RAINFALL","RAINFALL_T1","RAINFALL_C24"}: continue
         dt=_row_datetime(r,year); value=_row_value(r)
-        if dt and value is not None and _date_filter(dt,from_date,to_date): rain_map.setdefault(p,[]).append({"time":dt.isoformat(),"value":value})
+        if dt and value is not None and _in_window(dt): rain_map.setdefault(p,[]).append({"time":dt.isoformat(),"value":value})
     rainfall=[]
     for p,data in rain_map.items():
         data.sort(key=lambda x:x["time"]); rainfall.append({"parameter":p,"code":_classify_parameter(p),"data":data})
@@ -354,7 +381,7 @@ def _build_chart(facility, year, days, from_date, to_date):
     for x in rainfall:
         if _classify_parameter(x["parameter"])=="RAINFALL_C24" and x["data"]: totals[x["parameter"]]=round(float(x["data"][-1]["value"]),3)
     limits=_limits(rows)
-    return {"facility":facility,"year":year,"days":days,"limits":limits,"waterParameter":water_name,"water":water,"waterVariants":_series([r for r in rows if _date_filter(_row_datetime(r,year),from_date,to_date)],year,{"WATER_LEVEL","WATER_LEVEL_UPSTREAM","WATER_LEVEL_DOWNSTREAM"}),"rainfall":rainfall,"rainfallTotalsByParameter":totals,"totalRainfall":_rain_total(rainfall),"source":"google_sheets","sheet":GOOGLE_SHEET_NAME,"range":GOOGLE_SHEETS_RANGE}
+    return {"facility":facility,"year":year,"days":days,"limits":limits,"waterParameter":water_name,"water":water,"waterVariants":_series([r for r in rows if _in_window(_row_datetime(r,year))],year,{"WATER_LEVEL","WATER_LEVEL_UPSTREAM","WATER_LEVEL_DOWNSTREAM"}),"rainfall":rainfall,"rainfallTotalsByParameter":totals,"totalRainfall":_rain_total(rainfall),"source":"google_sheets","sheet":GOOGLE_SHEET_NAME,"range":GOOGLE_SHEETS_RANGE}
 
 HTML = r'''<!doctype html>
 <html lang="vi">
@@ -615,6 +642,66 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     padding-right:10px!important;
   }
 }
+
+/* ============================================================
+   BỘ LỌC THỜI GIAN V2.6 — QUICK RANGE MOBILE
+   ============================================================ */
+.period-control{min-width:0}
+.period-quick{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:5px;
+  margin-top:1px;
+}
+.period-quick button{
+  min-width:0;
+  min-height:36px;
+  padding:0 5px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface2);
+  color:var(--text);
+  font-size:11px;
+  font-weight:850;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.period-quick button.active{
+  color:#fff;
+  border-color:var(--primary);
+  background:linear-gradient(135deg,var(--primary),var(--primary2));
+  box-shadow:0 5px 14px rgba(8,120,201,.16);
+}
+.period-quick button:active{transform:translateY(1px)}
+
+.date-filter{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+  align-items:stretch;
+}
+.date-filter .date-box{min-width:0}
+.date-filter .date-apply{min-width:190px}
+
+@media(max-width:760px){
+  .period-quick{gap:4px}
+  .period-quick button{font-size:10.5px;min-height:34px;padding:0 3px}
+  .date-filter{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:7px;
+  }
+  .date-filter .date-apply{
+    grid-column:1/-1;
+    width:100%;
+    min-width:0;
+  }
+}
+
+@media(max-width:430px){
+  .period-quick{gap:3px}
+  .period-quick button{font-size:9.5px;min-height:33px;border-radius:9px}
+  .date-filter{gap:6px}
+  .date-box{padding:9px 9px}
+  .date-box label{font-size:9px}
+}
 </style>
 </head>
 
@@ -641,13 +728,29 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 
   <section class="toolbar">
     <div class="control"><label>CÔNG TRÌNH</label><select id="facility"><option value="">Đang tải công trình...</option></select></div>
-    <div class="control"><label>THỜI GIAN</label><select id="period"><option value="24 gio">24 giờ</option><option value="3 ngay">3 ngày</option><option value="7 ngay" selected>7 ngày</option><option value="30 ngay">30 ngày</option><option value="90 ngay">90 ngày</option></select></div>
+    <div class="control period-control">
+      <label>THỜI GIAN QUAN TRẮC</label>
+      <div class="period-quick" id="periodQuick" role="group" aria-label="Khoảng thời gian nhanh">
+        <button type="button" data-range="6h" onclick="selectQuickPeriod('6h')">6h</button>
+        <button type="button" data-range="12h" onclick="selectQuickPeriod('12h')">12h</button>
+        <button type="button" data-range="24h" onclick="selectQuickPeriod('24h')">24h</button>
+        <button type="button" data-range="3d" onclick="selectQuickPeriod('3d')">3 ngày</button>
+        <button type="button" data-range="7d" class="active" onclick="selectQuickPeriod('7d')">7 ngày</button>
+      </div>
+      <select id="period" aria-hidden="true" tabindex="-1" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
+        <option value="6 gio">6 giờ</option>
+        <option value="12 gio">12 giờ</option>
+        <option value="24 gio">24 giờ</option>
+        <option value="3 ngay">3 ngày</option>
+        <option value="7 ngay" selected>7 ngày</option>
+      </select>
+    </div>
     <button class="ghost-btn" onclick="checkConnections()">🧪 Kiểm tra kết nối</button><button class="primary-btn" onclick="refreshModule()">↻ Làm mới</button>
   </section>
 
   <section class="date-filter">
-    <div class="date-box"><label>TỪ NGÀY</label><input id="fromDate" type="date" onchange="applyCustomDateRange()"></div>
-    <div class="date-box"><label>ĐẾN NGÀY</label><input id="toDate" type="date" onchange="applyCustomDateRange()"></div>
+    <div class="date-box"><label>TỪ NGÀY</label><input id="fromDate" type="date"></div>
+    <div class="date-box"><label>ĐẾN NGÀY</label><input id="toDate" type="date"></div>
     <button class="primary-btn date-apply" style="min-height:44px" onclick="applyCustomDateRange()">📅 Áp dụng khoảng ngày</button>
     <div class="report-wrap">
       <button id="quickReportBtn" class="ghost-btn report-btn" style="min-height:44px;width:100%" onclick="toggleQuickReportActions()">📄 Báo cáo nhanh</button>
@@ -721,7 +824,36 @@ function localDateEnd(v){return v?new Date(v+'T23:59:59.999'):null}
 
 
 function setSelectedFacility(){return f.value||'Chưa chọn'}
-function periodDays(){return ({'24 gio':1,'3 ngay':3,'7 ngay':7,'30 ngay':30,'90 ngay':90})[period.value]||7}
+
+let selectedQuickPeriod='7d';
+
+function quickPeriodMeta(key){
+  return ({
+    '6h':{value:'6 gio',hours:6,days:1},
+    '12h':{value:'12 gio',hours:12,days:1},
+    '24h':{value:'24 gio',hours:24,days:1},
+    '3d':{value:'3 ngay',hours:0,days:3},
+    '7d':{value:'7 ngay',hours:0,days:7}
+  })[key]||{value:'7 ngay',hours:0,days:7};
+}
+
+function selectQuickPeriod(key){
+  const meta=quickPeriodMeta(key);
+  selectedQuickPeriod=key;
+  period.value=meta.value;
+
+  document.querySelectorAll('#periodQuick button[data-range]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.range===key);
+  });
+
+  // Chọn khoảng nhanh thì xóa khoảng ngày tùy chọn để tránh xung đột.
+  document.getElementById('fromDate').value='';
+  document.getElementById('toDate').value='';
+
+  if(f.value)loadChartData();
+}
+
+function periodDays(){return ({'6 gio':1,'12 gio':1,'24 gio':1,'3 ngay':3,'7 ngay':7})[period.value]||7}
 function formatNumber(v,digits=2){if(v===null||v===undefined||v==='')return '—';const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—'}
 function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
@@ -834,6 +966,11 @@ function applyCustomDateRange(){
     alert('Ngày bắt đầu không được lớn hơn ngày kết thúc.');
     return;
   }
+  if(!from&&!to){
+    selectQuickPeriod(selectedQuickPeriod||'7d');
+    return;
+  }
+  document.querySelectorAll('#periodQuick button[data-range]').forEach(btn=>btn.classList.remove('active'));
   if(!f.value){
     resetData('Chọn công trình để tải dữ liệu.');
     return;
@@ -860,8 +997,19 @@ async function loadChartData(){
   try{
     const from=document.getElementById('fromDate').value,to=document.getElementById('toDate').value;
     const year=from?String(new Date(from+'T12:00:00').getFullYear()):String(new Date().getFullYear());
-    const params=new URLSearchParams({facility:f.value,year,days:String(periodDays())});
-    if(from)params.set('fromDate',from);if(to)params.set('toDate',to);
+    const meta=quickPeriodMeta(selectedQuickPeriod);
+    const params=new URLSearchParams({
+      facility:f.value,
+      year,
+      days:String(meta.days),
+      hours:String(meta.hours)
+    });
+    if(from||to){
+      params.delete('hours');
+      params.set('days','0');
+      if(from)params.set('fromDate',from);
+      if(to)params.set('toDate',to);
+    }
     const result=await fetchJson('/api/chart?'+params.toString(),{},1);
     currentData=result.data||{};
     const normalized=normalizeRawWaterSeries(currentData);
@@ -1669,8 +1817,9 @@ async function loadFacilities(){
   }finally{f.disabled=false}
 }
 f.addEventListener('change',async()=>{setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');await loadParameters();await loadChartData()});
-period.addEventListener('change',loadChartData);
+period.addEventListener('change',()=>loadChartData());
 async function refreshModule(){if(!f.value){setSelectedFacility();resetData();return}setSelectedFacility();await loadParameters();await loadChartData()}
+selectQuickPeriod('7d');
 loadFacilities();
 </script>
 <div id="reportModal" class="report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
@@ -1711,9 +1860,9 @@ def api_parameters(facility: str):
         return JSONResponse(status_code=502,content={"ok":False,"source":"google_sheets","error":str(exc)})
 
 @app.get("/api/chart")
-def api_chart(facility: str, year: int=2026, days: int=7, waterParameter: str="", rainfallParameters: str="", fromDate: str="", toDate: str=""):
+def api_chart(facility: str, year: int=2026, days: int=7, hours: int=0, waterParameter: str="", rainfallParameters: str="", fromDate: str="", toDate: str=""):
     try:
-        data=_build_chart(facility,year,days,fromDate,toDate)
+        data=_build_chart(facility,year,days,fromDate,toDate,hours)
         # Nếu client chỉ yêu cầu một tên mực nước cụ thể và tên đó tồn tại, dùng tên đó.
         if waterParameter:
             rows=[r for r in _data_rows() if _row_facility(r)==facility and _row_parameter(r)==waterParameter]
