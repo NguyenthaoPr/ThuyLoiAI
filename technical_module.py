@@ -1,463 +1,1105 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-import json
-import os
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+// ============================================================
+// THUY LOI AI - TECHNICAL API GATEWAY V1.0
+// ============================================================
+// MỤC ĐÍCH:
+// - API ĐỌC RIÊNG cho module "Thông số kỹ thuật".
+// - Đọc trực tiếp sheet AI_DATA.
+// - KHÔNG ghi / sửa / xóa AI_DATA.
+// - KHÔNG thay thế Apps Script hiện tại của THỦY LỢI AI.
+// - Có thể triển khai thành một Web App Apps Script RIÊNG.
+//
+// KIẾN TRÚC:
+// Google Sheet AI_DATA
+//        │
+//        ▼
+// Technical API (Code.gs này)
+//        │
+//        ├── api=facilities
+//        ├── api=parameters
+//        └── api=chart
+//        │
+//        ▼
+// technical_module.py
+//
+// API hỗ trợ thêm kiểu truy vấn cũ:
+// ?cong_trinh=...&thong_so=...&ngay=...&gio=...
+// để không làm mất khả năng tương thích.
+// ============================================================
 
-# ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.4
-# BUOC 1: GIAO DIEN DOC LAP
-# Khong import, khong sua server.py
-# ============================================================
+const TECHNICAL_CONFIG = {
+  // ID Google Sheet THỦY LỢI AI - DATA
+  SPREADSHEET_ID: '1SJU9aCRZGWeAeHw6UfY_08HK8-A34kIlnrEiPJNEnko',
 
-app = FastAPI(
-    title="THUY LOI AI - Thong so ky thuat",
-    version="1.5.0",
-)
+  AI_SHEET_NAME: 'AI_DATA',
 
-# ============================================================
-# BƯỚC 3.2 - KẾT NỐI APPS SCRIPT API
-# Chỉ đọc dữ liệu. Không ghi/sửa/xóa AI_DATA.
-# Backend proxy giúp trình duyệt không phải gọi trực tiếp
-# Apps Script, tránh vấn đề CORS.
-# ============================================================
-APPS_SCRIPT_API_URL = os.getenv(
-    "APPS_SCRIPT_API_URL",
-    "https://script.google.com/macros/s/AKfycbzP3yXgeBs0WDuvQdrYa4ptJSeK9cHnCe0lrM78pR1WVohagQyOjn8LFtBB7QhmltWupQ/exec"
-)
+  CACHE_SECONDS: 30,
 
-def fetch_apps_script_api_(api, params=None):
-    query = {"api": api}
-    if params:
-        query.update({k: v for k, v in params.items() if v not in (None, "")})
-    url = APPS_SCRIPT_API_URL + "?" + urlencode(query)
+  VERSION: 'TECHNICAL-API-V1.0'
+};
 
-    req = Request(
-        url,
-        headers={
-            "User-Agent": "THUY-LOI-AI-Technical/1.1"
-        }
-    )
+// ============================================================
+// 01. RESPONSE ENGINE
+// ============================================================
 
-    with urlopen(req, timeout=20) as response:
-        raw = response.read().decode("utf-8")
-
-    data = json.loads(raw)
-    if not data.get("ok"):
-        raise RuntimeError(data.get("error") or "Apps Script API trả lỗi.")
-    return data
-
-HTML = '''
-<!doctype html>
-<html lang="vi">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>THUY LOI AI - Thong so ky thuat</title>
-<style>
-:root{--bg:#f4f7fb;--card:#fff;--text:#172033;--muted:#687386;--line:#e5eaf1;--primary:#1769aa;--ok:#168a55;--warn:#c78300}
-*{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
-.header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line)}
-.header-inner,.container{max-width:1400px;margin:auto}
-.header-inner{padding:14px 18px;display:flex;align-items:center;justify-content:space-between}
-.brand{display:flex;gap:10px;align-items:center}.icon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:#e8f3fc;font-size:22px}
-.title{font-weight:800;font-size:18px}.sub{font-size:12px;color:var(--muted);margin-top:2px}
-.status{font-size:12px;color:var(--ok)}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:5px}
-.container{padding:18px}
-.toolbar{display:grid;grid-template-columns:1.5fr .8fr .8fr auto;gap:10px;margin-bottom:16px}
-.control,.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(30,50,80,.08)}
-.control{padding:10px 12px}.control label{display:block;color:var(--muted);font-size:11px;margin-bottom:5px}
-select{width:100%;border:0;outline:0;background:transparent;font:inherit;font-weight:600;color:var(--text)}
-button{border:0;border-radius:12px;background:var(--primary);color:white;font-weight:700;padding:0 18px;cursor:pointer}
-.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
-.card{padding:16px}.label{color:var(--muted);font-size:12px;margin-bottom:8px}.value{font-size:25px;font-weight:800}.unit{font-size:12px;color:var(--muted);margin-top:4px}.ok{color:var(--ok)}
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}.panel{overflow:hidden}
-.head{padding:15px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
-.head-title{font-weight:800}.head-sub{font-size:12px;color:var(--muted);margin-top:3px}
-.chart{height:360px;padding:16px}.placeholder{height:100%;border:1px dashed #b8c5d5;border-radius:12px;display:grid;place-items:center;text-align:center;color:var(--muted);background:repeating-linear-gradient(0deg,transparent 0,transparent 39px,#edf1f6 40px),repeating-linear-gradient(90deg,transparent 0,transparent 39px,#edf1f6 40px)}
-.pills{display:flex;flex-wrap:wrap;gap:8px}.pill{border:1px solid var(--line);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--muted);background:#fafbfd}
-table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}th{font-size:11px;color:var(--muted)}
-.table{overflow-x:auto}.empty{text-align:center;color:var(--muted);padding:26px}.mobile-data{display:none;padding:10px}.data-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px}.data-item .dt{font-size:11px;color:var(--muted);margin-bottom:4px}.data-item .pn{font-weight:700;font-size:14px}.data-item .pv{font-weight:800;font-size:18px}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-item{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fafbfd}.summary-label{font-size:11px;color:var(--muted);margin-bottom:5px}.summary-value{font-weight:800;font-size:17px}.summary-note{font-size:12px;color:var(--muted);margin-top:3px}.rain-series{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.rain-chip{border:1px solid var(--line);border-radius:999px;padding:7px 10px;background:#fff;font-size:12px}.trend-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px}.trend-item{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}.trend-label{font-size:11px;color:var(--muted);margin-bottom:5px}.trend-value{font-weight:800;font-size:17px}.trend-note{font-size:11px;color:var(--muted);margin-top:3px}
-.footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 10px 28px}
-@media(max-width:1050px){.cards{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}}
-@media(max-width:720px){.container{padding:12px}.toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:13px}.value{font-size:21px}.chart{height:300px;padding:10px}button{min-height:48px}.summary-grid{grid-template-columns:1fr 1fr}.trend-grid{grid-template-columns:1fr 1fr}.table{display:none}.mobile-data{display:block}}
-@media(max-width:430px){.toolbar{grid-template-columns:1fr}.toolbar .control:first-child{grid-column:auto}}
-</style>
-</head>
-<body>
-<header class="header"><div class="header-inner">
-<div class="brand"><div class="icon">⚙️</div><div><div class="title">THUY LOI AI</div><div class="sub">Thong so ky thuat</div></div></div>
-<div class="status"><span class="dot"></span>Module doc lap</div>
-</div></header>
-
-<main class="container">
-<section class="toolbar">
-<div class="control"><label>CONG TRINH</label>
-<select id="facility">
-<option value="">Đang tải công trình...</option>
-</select></div>
-<div class="control"><label>THONG SO</label>
-<select id="parameter"><option>Muc nuoc</option><option>HTL</option><option>HHL</option><option>Luong mua</option></select></div>
-<div class="control"><label>THOI GIAN</label>
-<select id="period"><option>24 gio</option><option>3 ngay</option><option selected>7 ngay</option><option>30 ngay</option><option>90 ngay</option></select></div>
-<button onclick="refreshModule()">↻ Lam moi</button>
-</section>
-
-<section class="cards">
-<div class="card"><div class="label">MUC NUOC HIEN TAI</div><div class="value" id="water">—</div><div class="unit">m</div></div>
-<div class="card"><div class="label">TRANG THAI</div><div class="value ok" id="state">—</div><div class="unit" id="stateDetail">Chưa có dữ liệu</div></div>
-<div class="card"><div class="label">MNDBT</div><div class="value" id="mndbt">—</div><div class="unit">m</div></div>
-<div class="card"><div class="label">MNDGC</div><div class="value" id="mndgc">—</div><div class="unit">m</div></div>
-<div class="card"><div class="label">TONG LUONG MUA</div><div class="value" id="rainTotal">—</div><div class="unit">mm</div></div>
-</section>
-
-<section class="grid">
-<div class="panel"><div class="head"><div><div class="head-title">Bieu do dien bien</div><div class="head-sub">Muc nuoc va luong mua theo thoi gian</div></div>
-<div class="pills" id="rainPills"><span class="pill">X</span><span class="pill">X T1</span><span class="pill">X C24</span></div></div>
-<div class="chart"><div id="chartArea" class="placeholder"><div><div style="font-size:32px">📈</div><b>Đang chờ dữ liệu</b><br>Chọn công trình để tải dữ liệu thực tế.</div></div></div></div>
-
-<div class="panel"><div class="head"><div><div class="head-title">Thong tin cong trinh</div><div class="head-sub">Khu vuc thong tin ky thuat</div></div></div>
-<div style="padding:16px"><div class="card" style="box-shadow:none;margin-bottom:10px"><div class="label">CONG TRINH DANG CHON</div><b id="selected">Chua chon</b></div>
-<div class="card" style="box-shadow:none"><div class="label">TRAM MUA</div><div class="pills"><span class="pill">X</span><span class="pill">X T1</span><span class="pill">X C24</span></div></div></div></div>
-</section>
-
-<section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Tom tat ky thuat</div><div class="head-sub">Phan tich so lieu tu du lieu thuc te, khong tu dong gan muc canh bao</div></div></div><div id="technicalSummary" style="padding:16px"><div class="empty">Chọn công trình để phân tích.</div></div></section>
-<section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Du lieu gan nhat</div><div class="head-sub">Dữ liệu thực tế từ AI_DATA qua Apps Script API</div></div></div>
-<div class="table"><table><thead><tr><th>Ngay</th><th>Gio</th><th>Cong trinh</th><th>Thong so</th><th>Gia tri</th><th>Don vi</th></tr></thead>
-<tbody id="dataBody"><tr><td colspan="6" class="empty">Chọn công trình để tải dữ liệu.</td></tr></tbody></table></div><div id="mobileData" class="mobile-data"></div></section>
-<div class="footer">THUY LOI AI · Technical Module V1.5 · Bước 3.6 — Xu hướng mực nước</div>
-</main>
-
-<script>
-const f=document.getElementById('facility');
-const parameter=document.getElementById('parameter');
-const period=document.getElementById('period');
-const s=document.getElementById('selected');
-const water=document.getElementById('water');
-const state=document.getElementById('state');
-const stateDetail=document.getElementById('stateDetail');
-const mndbt=document.getElementById('mndbt');
-const rainPills=document.getElementById('rainPills');
-const mndgc=document.getElementById('mndgc');
-const rainTotal=document.getElementById('rainTotal');
-const dataBody=document.getElementById('dataBody');
-const chartArea=document.getElementById('chartArea');
-const technicalSummary=document.getElementById('technicalSummary');
-const mobileData=document.getElementById('mobileData');
-
-let currentParameters={waterLevel:[],rainfall:[]};
-let currentData=null;
-
-function setSelectedFacility(){
-  s.textContent = f.value || 'Chưa chọn';
+function jsonResponse_(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-function periodDays(){
-  const map={'24 gio':1,'3 ngay':3,'7 ngay':7,'30 ngay':30,'90 ngay':90};
-  return map[period.value] || 7;
-}
+function successResponse_(api, data, extra) {
+  const result = {
+    ok: true,
+    api: api,
+    data: data,
+    version: TECHNICAL_CONFIG.VERSION,
+    timestamp: new Date().toISOString()
+  };
 
-function formatNumber(v, digits=2){
-  if(v===null || v===undefined || v==='') return '—';
-  const n=Number(v);
-  if(!Number.isFinite(n)) return '—';
-  return n.toLocaleString('vi-VN',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-}
-
-function resetData(message='Chọn công trình để tải dữ liệu.'){
-  water.textContent='—';
-  state.textContent='—';
-  stateDetail.textContent='Chưa có dữ liệu';
-  mndbt.textContent='—';
-  mndgc.textContent='—';
-  rainTotal.textContent='—';
-  dataBody.innerHTML='<tr><td colspan="6" class="empty">'+message+'</td></tr>';
-  chartArea.innerHTML='<div><div style="font-size:32px">📈</div><b>'+message+'</b></div>';
-  technicalSummary.innerHTML='<div class="empty">'+message+'</div>';
-  mobileData.innerHTML='';
-}
-
-async function loadParameters(){
-  if(!f.value) return;
-  try{
-    const response=await fetch('/api/parameters?facility='+encodeURIComponent(f.value));
-    const result=await response.json();
-    if(!response.ok || !result.ok) throw new Error(result.error || 'Không tải được thông số.');
-    currentParameters=result.data || {waterLevel:[],rainfall:[]};
-
-    // Hiển thị đúng các chuỗi mưa thực tế mà công trình có.
-    const rainList=currentParameters.rainfall||[];
-    rainPills.innerHTML=rainList.length
-      ? rainList.map(x=>'<span class="pill">'+escapeHtml(x.replace(/\s*\([^)]*\)/g,''))+'</span>').join('')
-      : '<span class="pill">Không có chuỗi mưa</span>';
-
-    // Giữ lựa chọn Mực nước tổng quát và bổ sung thông số thực tế.
-    const options=[
-      {label:'Mực nước',value:''},
-      ...(currentParameters.waterLevel||[]).map(x=>({label:x,value:x})),
-      ...(rainList).map(x=>({label:x,value:x}))
-    ];
-    parameter.innerHTML='';
-    const seen=new Set();
-    options.forEach(o=>{
-      if(seen.has(o.value+'|'+o.label)) return;
-      seen.add(o.value+'|'+o.label);
-      const opt=document.createElement('option');
-      opt.value=o.value; opt.textContent=o.label; parameter.appendChild(opt);
+  if (extra && typeof extra === 'object') {
+    Object.keys(extra).forEach(function(key) {
+      result[key] = extra[key];
     });
-  }catch(err){
-    console.error(err);
-    parameter.innerHTML='<option value="">Không tải được thông số</option>';
   }
+
+  return result;
 }
 
-async function loadChartData(){
-  if(!f.value){ resetData(); return; }
-  state.textContent='Đang tải...';
-  stateDetail.textContent='Đang lấy dữ liệu thực tế từ AI_DATA';
-  try{
-    const params=new URLSearchParams({
-      facility:f.value,
-      year:String(new Date().getFullYear()),
-      days:String(periodDays())
+function errorResponse_(api, error, details) {
+  const result = {
+    ok: false,
+    api: api || '',
+    error: String(error || 'Lỗi không xác định'),
+    version: TECHNICAL_CONFIG.VERSION,
+    timestamp: new Date().toISOString()
+  };
+
+  if (details) {
+    result.details = details;
+  }
+
+  return result;
+}
+
+// ============================================================
+// 02. QUERY PARAMETER ENGINE
+// ============================================================
+// Apps Script chuẩn đã có e.parameter.
+// Hàm này có thêm lớp bảo vệ cho trường hợp hệ thống triển khai
+// hoặc URL trung gian truyền toàn bộ query string vào biến api.
+// Ví dụ lỗi trước đây:
+// api = "parameters&facility=Hồ Đồng Tiến (H14)"
+// ============================================================
+
+function parseQueryString_(queryString) {
+  const result = {};
+
+  if (!queryString) {
+    return result;
+  }
+
+  String(queryString)
+    .split('&')
+    .forEach(function(part) {
+      if (!part) return;
+
+      const equalIndex = part.indexOf('=');
+      let key = equalIndex >= 0 ? part.substring(0, equalIndex) : part;
+      let value = equalIndex >= 0 ? part.substring(equalIndex + 1) : '';
+
+      try {
+        key = decodeURIComponent(key.replace(/\+/g, ' '));
+      } catch (err) {
+        key = key.replace(/\+/g, ' ');
+      }
+
+      try {
+        value = decodeURIComponent(value.replace(/\+/g, ' '));
+      } catch (err) {
+        value = value.replace(/\+/g, ' ');
+      }
+
+      if (key) {
+        result[key] = value;
+      }
     });
-    const selected=parameter.value;
-    if(selected){
-      const isRain=(currentParameters.rainfall||[]).includes(selected);
-      if(!isRain) params.set('waterParameter',selected);
-      else params.set('rainfallParameters',selected);
+
+  return result;
+}
+
+function getRequestParams_(e) {
+  const params = {};
+
+  if (e && e.parameter) {
+    Object.keys(e.parameter).forEach(function(key) {
+      params[key] = e.parameter[key];
+    });
+  }
+
+  // Bổ sung từ queryString nếu có.
+  if (e && e.queryString) {
+    const parsed = parseQueryString_(e.queryString);
+    Object.keys(parsed).forEach(function(key) {
+      if (params[key] === undefined || params[key] === '') {
+        params[key] = parsed[key];
+      }
+    });
+  }
+
+  // KHẮC PHỤC TRỰC TIẾP TRƯỜNG HỢP:
+  // api = "parameters&facility=..."
+  const rawApi = String(params.api || '').trim();
+
+  if (rawApi.indexOf('&') >= 0) {
+    const apiParts = parseQueryString_(rawApi);
+    const firstPart = rawApi.split('&')[0];
+
+    params.api = firstPart;
+
+    Object.keys(apiParts).forEach(function(key) {
+      if (key !== firstPart && (params[key] === undefined || params[key] === '')) {
+        params[key] = apiParts[key];
+      }
+    });
+  }
+
+  // Một số hệ thống có thể truyền action thay vì api.
+  if (!params.api && params.action) {
+    params.api = params.action;
+  }
+
+  return params;
+}
+
+function clean_(value) {
+  return String(value === undefined || value === null ? '' : value).trim();
+}
+
+// ============================================================
+// 03. DATA SOURCE
+// ============================================================
+
+function getAIDataSheet_() {
+  const ss = SpreadsheetApp.openById(TECHNICAL_CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(TECHNICAL_CONFIG.AI_SHEET_NAME);
+
+  if (!sheet) {
+    throw new Error(
+      'Không tìm thấy sheet ' + TECHNICAL_CONFIG.AI_SHEET_NAME
+    );
+  }
+
+  return sheet;
+}
+
+function getAIData_() {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'TECHNICAL_AI_DATA_V1';
+
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (err) {
+      // Cache lỗi thì đọc lại sheet.
     }
-
-    const response=await fetch('/api/chart?'+params.toString());
-    const result=await response.json();
-    if(!response.ok || !result.ok) throw new Error(result.error || 'Không tải được dữ liệu.');
-    currentData=result.data;
-    renderData(currentData);
-  }catch(err){
-    console.error(err);
-    state.textContent='Lỗi dữ liệu';
-    resetData(err.message || 'Không tải được dữ liệu.');
   }
+
+  const sheet = getAIDataSheet_();
+  const data = sheet.getDataRange().getDisplayValues();
+
+  if (!data || data.length < 2) {
+    throw new Error('AI_DATA chưa có dữ liệu.');
+  }
+
+  // Cache chỉ khi kích thước hợp lý.
+  // Nếu dữ liệu quá lớn, không ép cache để tránh lỗi giới hạn cache.
+  try {
+    const text = JSON.stringify(data);
+    if (text.length < 900000) {
+      cache.put(cacheKey, text, TECHNICAL_CONFIG.CACHE_SECONDS);
+    }
+  } catch (err) {
+    // Không làm hỏng API chỉ vì cache.
+  }
+
+  return data;
 }
 
-function renderData(data){
-  const waterSeries=Array.isArray(data.water)?data.water:[];
-  const latest=waterSeries.length ? waterSeries[waterSeries.length-1] : null;
-  water.textContent=latest ? formatNumber(latest.value) : '—';
-  state.textContent=latest ? 'Có dữ liệu' : 'Chưa có mực nước';
-  if(latest){
-    const latestDate=new Date(latest.time);
-    stateDetail.textContent='Cập nhật '+latestDate.toLocaleString('vi-VN');
-  }else if(data.updatedAt){
-    stateDetail.textContent='API cập nhật '+new Date(data.updatedAt).toLocaleString('vi-VN');
-  }else{
-    stateDetail.textContent='Không có mực nước trong khoảng chọn';
-  }
-  mndbt.textContent=data.limits && data.limits.mndbt!=null ? formatNumber(data.limits.mndbt) : '—';
-  mndgc.textContent=data.limits && data.limits.mndgc!=null ? formatNumber(data.limits.mndgc) : '—';
-  rainTotal.textContent=data.totalRainfall!=null ? formatNumber(data.totalRainfall) : '—';
+// ============================================================
+// 04. HEADER / COLUMN ENGINE
+// ============================================================
 
-  const rows=[];
-  waterSeries.slice().reverse().slice(0,10).forEach(p=>{ const d=new Date(p.time); rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'m'}); });
-  (data.rainfall||[]).forEach(series=>{ series.data.slice().reverse().slice(0,10).forEach(p=>{ const d=new Date(p.time); rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'mm'}); }); });
-  rows.sort((a,b)=>b.time-a.time);
-  const limited=rows.slice(0,20);
-  dataBody.innerHTML=limited.length ? limited.map(r=>'<tr><td>'+r.time.toLocaleDateString('vi-VN')+'</td><td>'+String(r.time.getHours()).padStart(2,'0')+':00</td><td>'+escapeHtml(r.facility)+'</td><td>'+escapeHtml(r.parameter)+'</td><td>'+formatNumber(r.value)+'</td><td>'+r.unit+'</td></tr>').join('') : '<tr><td colspan="6" class="empty">Không có dữ liệu trong khoảng thời gian đã chọn.</td></tr>';
-  mobileData.innerHTML=limited.length ? limited.map(r=>'<div class="data-item"><div class="dt">'+r.time.toLocaleDateString('vi-VN')+' · '+String(r.time.getHours()).padStart(2,'0')+':00</div><div class="pn">'+escapeHtml(r.parameter)+'</div><div class="pv">'+formatNumber(r.value)+' '+r.unit+'</div></div>').join('') : '<div class="empty">Không có dữ liệu trong khoảng thời gian đã chọn.</div>';
-  renderTechnicalSummary(data,waterSeries);
-  renderSimpleChart(data);
-}
+function buildColumnMap_(headers) {
+  const map = {};
 
-function renderTechnicalSummary(data, waterSeries){
-  const latest=waterSeries.length?waterSeries[waterSeries.length-1]:null; const previous=waterSeries.length>1?waterSeries[waterSeries.length-2]:null;
-  const mndbt=Number(data.limits&&data.limits.mndbt), mndgc=Number(data.limits&&data.limits.mndgc), h=latest?Number(latest.value):null;
-  const delta=(latest&&previous)?h-Number(previous.value):null;
-  let relation='Chưa đủ dữ liệu để so sánh';
-  if(Number.isFinite(h)&&Number.isFinite(mndbt)&&Number.isFinite(mndgc)) relation=h<mndbt?'Mực nước đang thấp hơn MNDBT':(h<=mndgc?'Mực nước nằm từ MNDBT đến MNDGC':'Mực nước cao hơn MNDGC');
-  else if(Number.isFinite(h)&&Number.isFinite(mndbt)) relation=h<mndbt?'Mực nước đang thấp hơn MNDBT':'Mực nước không thấp hơn MNDBT';
-  const rain=(data.rainfall||[]).filter(s=>Array.isArray(s.data)&&s.data.length);
-  const rainChips=rain.map(s=>'<span class="rain-chip"><b>'+escapeHtml(s.parameter)+'</b>: '+formatNumber((data.rainfallTotalsByParameter||{})[s.parameter])+' mm</span>').join('');
-  technicalSummary.innerHTML='<div class="summary-grid">'
-    +'<div class="summary-item"><div class="summary-label">SO VOI MNDBT</div><div class="summary-value">'+(Number.isFinite(h)&&Number.isFinite(mndbt)?formatNumber(h-mndbt)+' m':'—')+'</div><div class="summary-note">'+relation+'</div></div>'
-    +'<div class="summary-item"><div class="summary-label">SO VOI MNDGC</div><div class="summary-value">'+(Number.isFinite(h)&&Number.isFinite(mndgc)?formatNumber(h-mndgc)+' m':'—')+'</div><div class="summary-note">'+(Number.isFinite(h)&&Number.isFinite(mndgc)?(h<=mndgc?'Chưa vượt MNDGC':'Đã vượt MNDGC'):'Chưa đủ giới hạn')+'</div></div>'
-    +'<div class="summary-item"><div class="summary-label">BIEN DONG GAN NHAT</div><div class="summary-value">'+(delta!==null?(delta>=0?'+':'')+formatNumber(delta)+' m':'—')+'</div><div class="summary-note">'+(delta!==null?'So với lần đo liền trước':'Chưa đủ 2 lần đo')+'</div></div></div>'
-    +renderTrendHtml(waterSeries)
-    +(rainChips?'<div class="summary-label" style="margin-top:14px">LUONG MUA THEO TUNG CHUOI</div><div class="rain-series">'+rainChips+'</div>':'');
-}
-
-function renderTrendHtml(series){
-  const points=series.map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
-  if(!points.length) return '';
-  const latest=points[points.length-1];
-  function windowStats(hours){
-    const start=new Date(latest.time.getTime()-hours*3600000);
-    const inWindow=points.filter(p=>p.time>=start&&p.time<=latest.time);
-    if(inWindow.length<2) return null;
-    const first=inWindow[0], last=latest;
-    return {delta:last.value-first.value,min:Math.min(...inWindow.map(p=>p.value)),max:Math.max(...inWindow.map(p=>p.value)),count:inWindow.length,first:first.time};
-  }
-  const w24=windowStats(24), w72=windowStats(72), w168=windowStats(168);
-  function card(label,stats){
-    if(!stats) return '<div class="trend-item"><div class="trend-label">'+label+'</div><div class="trend-value">—</div><div class="trend-note">Chưa đủ 2 lần đo</div></div>';
-    const d=stats.delta;
-    const sign=d>0?'+':'';
-    const direction=d>0?'Tăng':(d<0?'Giảm':'Ổn định');
-    return '<div class="trend-item"><div class="trend-label">'+label+'</div><div class="trend-value">'+sign+formatNumber(d)+' m</div><div class="trend-note">'+direction+' · '+stats.count+' lần đo</div></div>';
-  }
-  const min=Math.min(...points.map(p=>p.value)), max=Math.max(...points.map(p=>p.value));
-  return '<div class="summary-label" style="margin-top:16px">XU HUONG MUC NUOC</div><div class="trend-grid">'
-    +card('24 GIO',w24)+card('3 NGAY',w72)+card('7 NGAY',w168)
-    +'<div class="trend-item"><div class="trend-label">THAP NHAT</div><div class="trend-value">'+formatNumber(min)+' m</div><div class="trend-note">Trong khoảng đang chọn</div></div>'
-    +'<div class="trend-item"><div class="trend-label">CAO NHAT</div><div class="trend-value">'+formatNumber(max)+' m</div><div class="trend-note">Trong khoảng đang chọn</div></div>'
-    +'</div>';
-}
-
-function escapeHtml(v){
-  return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function renderSimpleChart(data){
-  const waterSeries=Array.isArray(data.water)?data.water:[];
-  const rainfallSeries=Array.isArray(data.rainfall)?data.rainfall:[];
-  const validRain=rainfallSeries.filter(x=>x.data&&x.data.length);
-  if(!waterSeries.length && !validRain.length){
-    chartArea.innerHTML='<div><div style="font-size:32px">📈</div><b>Không có dữ liệu</b><br>Trong khoảng thời gian đã chọn.</div>';
-    return;
-  }
-
-  const W=900,H=340,L=62,R=62,T=35,B=48;
-  const allTimes=[...waterSeries.map(p=>p.time),...validRain.flatMap(s=>s.data.map(p=>p.time))];
-  const minT=Math.min(...allTimes), maxT=Math.max(...allTimes);
-  const wx=waterSeries.map(p=>Number(p.value)).filter(Number.isFinite);
-  const rv=validRain.flatMap(s=>s.data.map(p=>Number(p.value))).filter(Number.isFinite);
-  let minW=wx.length?Math.min(...wx):0, maxW=wx.length?Math.max(...wx):1;
-  if(maxW===minW){minW-=1;maxW+=1;} else {const pad=(maxW-minW)*.12;minW-=pad;maxW+=pad;}
-  const maxR=rv.length?Math.max(...rv):1;
-  const x=t=>L+(maxT===minT?0.5:(t-minT)/(maxT-minT))*(W-L-R);
-  const yW=v=>T+(maxW-v)/(maxW-minW)*(H-T-B);
-  const yR=v=>T+(1-v/(maxR||1))*(H-T-B);
-  const waterPts=waterSeries.map(p=>x(p.time)+','+yW(Number(p.value))).join(' ');
-  const rainBars=[];
-  validRain.forEach(series=>series.data.forEach(p=>{
-    const bw=7;
-    const yy=yR(Number(p.value));
-    rainBars.push('<rect x="'+(x(p.time)-bw/2)+'" y="'+yy+'" width="'+bw+'" height="'+Math.max(0,H-B-yy)+'" opacity=".55"><title>'+escapeHtml(series.parameter)+': '+formatNumber(p.value)+' mm</title></rect>');
-  }));
-
-  const grid=[];
-  for(let i=0;i<=4;i++){
-    const yy=T+i*(H-T-B)/4;
-    const val=maxW-i*(maxW-minW)/4;
-    grid.push('<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#e5eaf1"/><text x="'+(L-8)+'" y="'+(yy+4)+'" text-anchor="end" font-size="11" fill="#687386">'+formatNumber(val)+'</text>');
-  }
-
-  // Hiển thị MNDBT/MNDGC nếu nguồn đã cung cấp, chỉ để tham chiếu.
-  const limitLines=[];
-  const limits=data.limits||{};
-  [['mndbt','MNDBT'],['mndgc','MNDGC']].forEach(([key,label])=>{
-    const v=Number(limits[key]);
-    if(Number.isFinite(v) && v>=minW && v<=maxW){
-      const yy=yW(v);
-      limitLines.push('<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#9aa6b5" stroke-dasharray="6 5"/><text x="'+(W-R-4)+'" y="'+(yy-5)+'" text-anchor="end" font-size="10" fill="#687386">'+label+' '+formatNumber(v)+'</text>');
+  headers.forEach(function(header, index) {
+    const key = clean_(header);
+    if (key) {
+      map[key] = index;
     }
   });
 
-  const points=waterSeries.map(p=>'<circle cx="'+x(p.time)+'" cy="'+yW(Number(p.value))+'" r="3.2" fill="#1769aa"><title>'+new Date(p.time).toLocaleString('vi-VN')+': '+formatNumber(p.value)+' m</title></circle>').join('');
-  const legend='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:12px;color:#687386">'
-    +(waterSeries.length?'<span>━ <b>Mực nước</b></span>':'')
-    +(validRain.length?'<span>▮ <b>Lượng mưa</b></span>':'')
-    +'</div>';
-
-  chartArea.innerHTML=legend+'<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="calc(100% - 25px)" role="img" aria-label="Biểu đồ mực nước và lượng mưa">'
-    +grid.join('')+limitLines.join('')+rainBars.join('')
-    +(waterPts?'<polyline points="'+waterPts+'" fill="none" stroke="#1769aa" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>':'')
-    +points
-    +'<text x="'+L+'" y="18" font-size="12" fill="#687386">H (m)</text><text x="'+(W-R)+'" y="18" text-anchor="end" font-size="12" fill="#687386">Mưa (mm)</text>'
-    +'</svg>';
+  return map;
 }
 
-async function loadFacilities(){
-  f.disabled=true;
-  f.innerHTML='<option value="">Đang tải công trình...</option>';
-  try{
-    const response=await fetch('/api/facilities');
-    const result=await response.json();
-    if(!response.ok || !result.ok) throw new Error(result.error || 'Không tải được danh sách công trình.');
-    const facilities=Array.isArray(result.data)?result.data:[];
-    f.innerHTML='<option value="">Chọn công trình...</option>';
-    facilities.forEach(name=>{
-      const option=document.createElement('option'); option.value=name; option.textContent=name; f.appendChild(option);
-    });
-    if(!facilities.length){ f.innerHTML='<option value="">Không có công trình</option>'; s.textContent='Không có dữ liệu'; }
-  }catch(err){
-    console.error(err); f.innerHTML='<option value="">Lỗi tải dữ liệu</option>'; s.textContent='Không kết nối được API';
-  }finally{ f.disabled=false; }
+function requireColumns_(map) {
+  const required = [
+    'Ngày',
+    'Giờ',
+    'Công trình',
+    'Thông số',
+    'Đơn vị đo',
+    'Giá trị'
+  ];
+
+  const missing = required.filter(function(name) {
+    return map[name] === undefined;
+  });
+
+  if (missing.length) {
+    throw new Error(
+      'AI_DATA thiếu cột: ' + missing.join(', ')
+    );
+  }
 }
 
-f.addEventListener('change',async()=>{
-  setSelectedFacility();
-  resetData('Đang tải dữ liệu thực tế...');
-  await loadParameters();
-  await loadChartData();
-});
-parameter.addEventListener('change',loadChartData);
-period.addEventListener('change',loadChartData);
+// ============================================================
+// 05. NORMALIZATION
+// ============================================================
 
-async function refreshModule(){
-  if(!f.value){ setSelectedFacility(); resetData(); return; }
-  setSelectedFacility();
-  await loadParameters();
-  await loadChartData();
+function normalizeText_(value) {
+  return clean_(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-loadFacilities();
-</script>
-</body>
-</html>
-'''
+function stripUnit_(value) {
+  return normalizeText_(value)
+    .replace(/\s*\([^)]*\)\s*$/g, '')
+    .trim();
+}
 
-@app.get("/api/facilities")
-def api_facilities():
-    """Proxy danh sách công trình từ Apps Script API."""
-    return fetch_apps_script_api_("facilities")
+function numberValue_(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
 
-@app.get("/api/parameters")
-def api_parameters(facility: str):
-    """Proxy bộ thông số thực tế của một công trình từ Apps Script."""
-    return fetch_apps_script_api_("parameters", {"facility": facility})
+  let text = clean_(value);
+  if (!text) return null;
 
-@app.get("/api/chart")
-def api_chart(
-    facility: str,
-    year: int = 2026,
-    days: int = 7,
-    waterParameter: str = "",
-    rainfallParameters: str = "",
-    fromDate: str = "",
-    toDate: str = "",
-):
-    """Proxy dữ liệu mực nước/lượng mưa và giới hạn kỹ thuật từ Apps Script."""
-    rain = [x.strip() for x in rainfallParameters.split(",") if x.strip()]
-    return fetch_apps_script_api_("chart", {
-        "facility": facility,
-        "year": year,
-        "days": days,
-        "waterParameter": waterParameter,
-        "rainfallParameters": ",".join(rain),
-        "fromDate": fromDate,
-        "toDate": toDate,
+  // Hỗ trợ số dạng Việt Nam: 1.234,56 và số dạng 1234.56.
+  text = text.replace(/\s/g, '');
+
+  if (text.indexOf(',') >= 0 && text.indexOf('.') >= 0) {
+    if (text.lastIndexOf(',') > text.lastIndexOf('.')) {
+      text = text.replace(/\./g, '').replace(',', '.');
+    } else {
+      text = text.replace(/,/g, '');
+    }
+  } else if (text.indexOf(',') >= 0) {
+    text = text.replace(',', '.');
+  }
+
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeDay_(value) {
+  const text = clean_(value);
+  if (!text) return null;
+
+  const n = Number(text);
+  if (Number.isFinite(n)) return Math.trunc(n);
+
+  const match = text.match(/(\d{1,2})/);
+  return match ? Number(match[1]) : null;
+}
+
+function normalizeHour_(value) {
+  const text = clean_(value);
+  if (!text) return null;
+
+  const match = text.match(/\d{1,2}/);
+  if (!match) return null;
+
+  const hour = Number(match[0]);
+  return Number.isFinite(hour) ? hour : null;
+}
+
+function pad2_(n) {
+  return String(n).padStart(2, '0');
+}
+
+// ============================================================
+// 06. FACILITIES API
+// ============================================================
+
+function getFacilities_() {
+  const data = getAIData_();
+  const map = buildColumnMap_(data[0]);
+  requireColumns_(map);
+
+  const colFacility = map['Công trình'];
+  const set = {};
+
+  for (let r = 1; r < data.length; r++) {
+    const name = clean_(data[r][colFacility]);
+    if (name) {
+      set[name] = true;
+    }
+  }
+
+  return Object.keys(set).sort(function(a, b) {
+    return a.localeCompare(b, 'vi');
+  });
+}
+
+// ============================================================
+// 07. PARAMETER API
+// ============================================================
+
+function classifyParameter_(parameter, unit) {
+  const p = normalizeText_(parameter);
+  const u = normalizeText_(unit);
+
+  // Mực nước / cao trình mực nước.
+  const water =
+    p === 'h' ||
+    p === 'muc nuoc' ||
+    p === 'htl' ||
+    p === 'hhl' ||
+    p === 'nnm' ||
+    p.indexOf('muc nuoc ') === 0;
+
+  // Lượng mưa: chỉ nhận diện các trường hợp rõ ràng.
+  // Không coi X (m) hoặc X độ mở là mưa.
+  const rainfall =
+    p === 'mua' ||
+    p === 'luong mua' ||
+    p.indexOf('luong mua ') === 0 ||
+    p.indexOf('mua ') === 0 ||
+    (/^x\b/.test(p) && u.indexOf('mm') >= 0) ||
+    p.indexOf('x24') === 0 && u.indexOf('mm') >= 0;
+
+  return {
+    water: water,
+    rainfall: rainfall
+  };
+}
+
+function getFacilityParameters_(facility) {
+  const requested = clean_(facility);
+  if (!requested) {
+    throw new Error('Thiếu tên công trình.');
+  }
+
+  const data = getAIData_();
+  const map = buildColumnMap_(data[0]);
+  requireColumns_(map);
+
+  const colFacility = map['Công trình'];
+  const colParameter = map['Thông số'];
+  const colUnit = map['Đơn vị đo'];
+
+  const keyFacility = normalizeText_(requested);
+  const waterSet = {};
+  const rainSet = {};
+  const otherSet = {};
+
+  for (let r = 1; r < data.length; r++) {
+    const rowFacility = normalizeText_(data[r][colFacility]);
+
+    const matched =
+      rowFacility === keyFacility ||
+      rowFacility.indexOf(keyFacility + ' (') === 0 ||
+      rowFacility.indexOf(keyFacility + ' -') === 0;
+
+    if (!matched) continue;
+
+    const parameter = clean_(data[r][colParameter]);
+    const unit = clean_(data[r][colUnit]);
+    if (!parameter) continue;
+
+    const type = classifyParameter_(parameter, unit);
+
+    if (type.water) {
+      waterSet[parameter] = true;
+    } else if (type.rainfall) {
+      rainSet[parameter] = true;
+    } else {
+      otherSet[parameter] = true;
+    }
+  }
+
+  return {
+    facility: requested,
+    waterLevel: Object.keys(waterSet).sort(function(a, b) {
+      return a.localeCompare(b, 'vi');
+    }),
+    rainfall: Object.keys(rainSet).sort(function(a, b) {
+      return a.localeCompare(b, 'vi');
+    }),
+    other: Object.keys(otherSet).sort(function(a, b) {
+      return a.localeCompare(b, 'vi');
     })
+  };
+}
 
-@app.get("/", response_class=HTMLResponse)
-def technical_dashboard():
-    return HTML
+// ============================================================
+// 08. DATE ENGINE
+// ============================================================
 
-@app.get("/health")
-def health():
-    return {"module":"technical_module","version":"1.4","status":"ok","stage":3,"mode":"apps_script_proxy"}
+function parseDateInput_(value) {
+  const text = clean_(value);
+  if (!text) return null;
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("technical_module:app", host="0.0.0.0", port=8001, reload=False)
+  // yyyy-mm-dd
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    return new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3])
+    );
+  }
+
+  // dd/mm/yyyy
+  match = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match) {
+    return new Date(
+      Number(match[3]),
+      Number(match[2]) - 1,
+      Number(match[1])
+    );
+  }
+
+  return null;
+}
+
+function dateKey_(year, month, day) {
+  return year + '-' + pad2_(month) + '-' + pad2_(day);
+}
+
+function rowDate_(row, map, fallbackYear) {
+  const day = normalizeDay_(row[map['Ngày']]);
+  const month = map['Tháng'] !== undefined
+    ? normalizeDay_(row[map['Tháng']])
+    : null;
+
+  if (!day || !month) return null;
+
+  const year = Number(fallbackYear) || new Date().getFullYear();
+  return new Date(year, month - 1, day);
+}
+
+function dateOnly_(date) {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  );
+}
+
+function daysBetween_(a, b) {
+  const ms = dateOnly_(b).getTime() - dateOnly_(a).getTime();
+  return Math.round(ms / 86400000);
+}
+
+// ============================================================
+// 09. WATER PARAMETER SELECTION
+// ============================================================
+// Không tự cộng HTL/HHL/H.
+// Nếu người dùng không chọn cụ thể, ưu tiên một chuỗi đại diện:
+// H -> Mực nước -> NNM -> HTL -> HHL.
+// ============================================================
+
+function chooseWaterParameter_(rows, requested) {
+  if (requested) {
+    return requested;
+  }
+
+  const priority = [
+    'H',
+    'Mực nước',
+    'NNM',
+    'HTL',
+    'HHL'
+  ];
+
+  const available = {};
+  rows.forEach(function(item) {
+    available[item.parameter] = true;
+  });
+
+  for (let i = 0; i < priority.length; i++) {
+    if (available[priority[i]]) {
+      return priority[i];
+    }
+  }
+
+  // Nếu tên có đơn vị hoặc cách ghi khác, thử theo normalized key.
+  const normalizedPriority = priority.map(normalizeText_);
+  for (let i = 0; i < rows.length; i++) {
+    const key = normalizeText_(rows[i].parameter);
+    if (normalizedPriority.indexOf(key) >= 0) {
+      return rows[i].parameter;
+    }
+  }
+
+  return '';
+}
+
+// ============================================================
+// 10. TECHNICAL LIMITS
+// ============================================================
+
+function findLimit_(rows, names) {
+  const keys = names.map(normalizeText_);
+
+  for (let i = 0; i < rows.length; i++) {
+    const p = normalizeText_(rows[i].parameter);
+    if (keys.indexOf(p) >= 0) {
+      const n = numberValue_(rows[i].value);
+      if (n !== null) return n;
+    }
+  }
+
+  return null;
+}
+
+// ============================================================
+// 11. CHART DATA ENGINE
+// ============================================================
+
+function getChartData_(request) {
+  const facility = clean_(request.facility);
+  if (!facility) {
+    throw new Error('Thiếu facility.');
+  }
+
+  const requestedYear = Number(request.year) || new Date().getFullYear();
+  const requestedDays = Math.max(1, Number(request.days) || 7);
+  const requestedWater = clean_(request.waterParameter);
+  const rainfallParameterText = clean_(request.rainfallParameters);
+  const requestedRainfall = rainfallParameterText
+    ? rainfallParameterText.split(',').map(function(x) { return clean_(x); }).filter(Boolean)
+    : [];
+
+  const data = getAIData_();
+  const map = buildColumnMap_(data[0]);
+  requireColumns_(map);
+
+  const colFacility = map['Công trình'];
+  const colParameter = map['Thông số'];
+  const colUnit = map['Đơn vị đo'];
+  const colValue = map['Giá trị'];
+
+  const keyFacility = normalizeText_(facility);
+  const rows = [];
+
+  // ----------------------------------------------------------
+  // A. Đọc các dòng đúng công trình + đúng năm.
+  // ----------------------------------------------------------
+  for (let r = 1; r < data.length; r++) {
+    const row = data[r];
+    const rowFacility = normalizeText_(row[colFacility]);
+
+    const matched =
+      rowFacility === keyFacility ||
+      rowFacility.indexOf(keyFacility + ' (') === 0 ||
+      rowFacility.indexOf(keyFacility + ' -') === 0;
+
+    if (!matched) continue;
+
+    const date = rowDate_(row, map, requestedYear);
+    if (!date || date.getFullYear() !== requestedYear) continue;
+
+    const hour = normalizeHour_(row[map['Giờ']]);
+    const parameter = clean_(row[colParameter]);
+    const unit = clean_(row[colUnit]);
+    const value = numberValue_(row[colValue]);
+
+    if (!parameter || value === null) continue;
+
+    rows.push({
+      date: date,
+      hour: hour === null ? 0 : hour,
+      parameter: parameter,
+      unit: unit,
+      value: value
+    });
+  }
+
+  if (!rows.length) {
+    return {
+      facility: facility,
+      from: null,
+      to: null,
+      water: [],
+      rainfall: [],
+      rainfallPoints: [],
+      totalRainfall: null,
+      rainfallTotalsByParameter: {},
+      limits: {
+        mndbt: null,
+        mndgc: null
+      },
+      count: 0,
+      updatedAt: null
+    };
+  }
+
+  // ----------------------------------------------------------
+  // B. Xác định khoảng thời gian.
+  // ----------------------------------------------------------
+  let fromDate = parseDateInput_(request.fromDate);
+  let toDate = parseDateInput_(request.toDate);
+
+  const allDates = rows.map(function(item) { return dateOnly_(item.date); });
+  const maxDate = new Date(Math.max.apply(null, allDates.map(function(d) { return d.getTime(); })));
+  const minDate = new Date(Math.min.apply(null, allDates.map(function(d) { return d.getTime(); })));
+
+  if (!toDate) {
+    toDate = maxDate;
+  } else {
+    toDate = dateOnly_(toDate);
+  }
+
+  if (!fromDate) {
+    fromDate = new Date(toDate.getTime() - (requestedDays - 1) * 86400000);
+  } else {
+    fromDate = dateOnly_(fromDate);
+  }
+
+  // Không cho khoảng yêu cầu vượt ra ngoài năm đang chọn.
+  const yearStart = new Date(requestedYear, 0, 1);
+  const yearEnd = new Date(requestedYear, 11, 31);
+  if (fromDate < yearStart) fromDate = yearStart;
+  if (toDate > yearEnd) toDate = yearEnd;
+
+  // ----------------------------------------------------------
+  // C. Lọc theo khoảng ngày.
+  // ----------------------------------------------------------
+  const inRange = rows.filter(function(item) {
+    const d = dateOnly_(item.date);
+    return d >= fromDate && d <= toDate;
+  });
+
+  // ----------------------------------------------------------
+  // D. Tách nhóm mực nước / mưa / giới hạn.
+  // ----------------------------------------------------------
+  const waterRows = [];
+  const rainfallRows = [];
+  const limitRows = [];
+
+  inRange.forEach(function(item) {
+    const p = normalizeText_(item.parameter);
+    const type = classifyParameter_(item.parameter, item.unit);
+
+    if (p === 'mndbt' || p === 'mndgc') {
+      limitRows.push(item);
+      return;
+    }
+
+    if (type.water) {
+      waterRows.push(item);
+      return;
+    }
+
+    if (type.rainfall) {
+      rainfallRows.push(item);
+    }
+  });
+
+  // Giới hạn kỹ thuật nên lấy toàn bộ dữ liệu công trình trong năm,
+  // vì có thể MNDBT/MNDGC không lặp lại ở từng ngày.
+  const allLimitRows = rows.filter(function(item) {
+    const p = normalizeText_(item.parameter);
+    return p === 'mndbt' || p === 'mndgc';
+  });
+
+  const mndbt = findLimit_(allLimitRows, ['MNDBT']);
+  const mndgc = findLimit_(allLimitRows, ['MNDGC']);
+
+  // ----------------------------------------------------------
+  // E. Chọn chuỗi mực nước.
+  // ----------------------------------------------------------
+  const selectedWaterParameter = chooseWaterParameter_(waterRows, requestedWater);
+
+  const selectedWaterRows = selectedWaterParameter
+    ? waterRows.filter(function(item) {
+        return normalizeText_(item.parameter) === normalizeText_(selectedWaterParameter);
+      })
+    : [];
+
+  selectedWaterRows.sort(function(a, b) {
+    return a.date.getTime() + a.hour * 3600000 -
+           (b.date.getTime() + b.hour * 3600000);
+  });
+
+  const water = selectedWaterRows.map(function(item) {
+    const time = new Date(
+      item.date.getFullYear(),
+      item.date.getMonth(),
+      item.date.getDate(),
+      item.hour || 0,
+      0,
+      0
+    );
+
+    return {
+      time: time.toISOString(),
+      parameter: item.parameter,
+      value: item.value,
+      unit: item.unit || 'm'
+    };
+  });
+
+  // ----------------------------------------------------------
+  // F. Tách từng chuỗi mưa, KHÔNG cộng các trạm vào nhau.
+  // ----------------------------------------------------------
+  const rainfallNames = {};
+  rainfallRows.forEach(function(item) {
+    rainfallNames[item.parameter] = true;
+  });
+
+  let selectedRainNames = Object.keys(rainfallNames);
+
+  if (requestedRainfall.length) {
+    selectedRainNames = selectedRainNames.filter(function(name) {
+      return requestedRainfall.some(function(requested) {
+        return normalizeText_(requested) === normalizeText_(name);
+      });
+    });
+  }
+
+  selectedRainNames.sort(function(a, b) {
+    return a.localeCompare(b, 'vi');
+  });
+
+  const rainfall = [];
+  const rainfallTotalsByParameter = {};
+
+  selectedRainNames.forEach(function(name) {
+    const seriesRows = rainfallRows
+      .filter(function(item) {
+        return normalizeText_(item.parameter) === normalizeText_(name);
+      })
+      .sort(function(a, b) {
+        return a.date.getTime() + a.hour * 3600000 -
+               (b.date.getTime() + b.hour * 3600000);
+      });
+
+    const seriesData = seriesRows.map(function(item) {
+      const time = new Date(
+        item.date.getFullYear(),
+        item.date.getMonth(),
+        item.date.getDate(),
+        item.hour || 0,
+        0,
+        0
+      );
+
+      return {
+        time: time.toISOString(),
+        parameter: item.parameter,
+        value: item.value,
+        unit: item.unit || 'mm'
+      };
+    });
+
+    const total = seriesRows.reduce(function(sum, item) {
+      return sum + item.value;
+    }, 0);
+
+    rainfallTotalsByParameter[name] = total;
+
+    rainfall.push({
+      parameter: name,
+      unit: seriesRows.length ? (seriesRows[0].unit || 'mm') : 'mm',
+      data: seriesData,
+      total: total
+    });
+  });
+
+  // CHỦ Ý:
+  // Nếu có nhiều chuỗi mưa, không cộng chúng thành một con số
+  // "tổng lượng mưa" vì có thể là các trạm khác nhau.
+  let totalRainfall = null;
+  if (rainfall.length === 1) {
+    totalRainfall = rainfall[0].total;
+  }
+
+  // ----------------------------------------------------------
+  // G. Cập nhật cuối cùng.
+  // ----------------------------------------------------------
+  let updatedAt = null;
+  if (water.length) {
+    updatedAt = water[water.length - 1].time;
+  } else if (rainfall.length) {
+    const allRainTimes = rainfall.reduce(function(acc, series) {
+      return acc.concat(series.data.map(function(p) { return p.time; }));
+    }, []);
+
+    if (allRainTimes.length) {
+      updatedAt = allRainTimes.sort().pop();
+    }
+  }
+
+  return {
+    facility: facility,
+    from: fromDate.toISOString().substring(0, 10),
+    to: toDate.toISOString().substring(0, 10),
+    water: water,
+    rainfall: rainfall,
+    rainfallPoints: rainfall.reduce(function(acc, series) {
+      return acc.concat(series.data);
+    }, []),
+    totalRainfall: totalRainfall,
+    rainfallTotalsByParameter: rainfallTotalsByParameter,
+    limits: {
+      mndbt: mndbt,
+      mndgc: mndgc
+    },
+    selectedWaterParameter: selectedWaterParameter,
+    count: water.length + rainfall.reduce(function(sum, s) { return sum + s.data.length; }, 0),
+    updatedAt: updatedAt,
+    source: 'AI_DATA'
+  };
+}
+
+// ============================================================
+// 12. LEGACY QUERY API
+// ============================================================
+// Giữ một API đọc đơn giản tương thích với doGet cũ:
+// ?cong_trinh=...&thong_so=...&ngay=...&gio=...
+// ============================================================
+
+function queryLegacyAIData_(params) {
+  const facility = clean_(params.cong_trinh || params.congTrinh);
+  const parameter = clean_(params.thong_so || params.thongSo);
+  const day = clean_(params.ngay);
+  const hour = clean_(params.gio);
+
+  if (!facility) {
+    return {
+      success: false,
+      error: 'Thiếu tên công trình',
+      query: {
+        congTrinh: facility,
+        thongSo: parameter,
+        ngay: day,
+        gio: hour
+      },
+      engine: 'AI_DATA'
+    };
+  }
+
+  const data = getAIData_();
+  const map = buildColumnMap_(data[0]);
+  requireColumns_(map);
+
+  const keyFacility = normalizeText_(facility);
+  const keyParameter = normalizeText_(parameter);
+
+  const results = [];
+
+  for (let r = 1; r < data.length; r++) {
+    const row = data[r];
+    const rowFacility = normalizeText_(row[map['Công trình']]);
+    const matchedFacility =
+      rowFacility === keyFacility ||
+      rowFacility.indexOf(keyFacility + ' (') === 0 ||
+      rowFacility.indexOf(keyFacility + ' -') === 0;
+
+    if (!matchedFacility) continue;
+
+    if (day && clean_(row[map['Ngày']]) !== day) continue;
+    if (hour && clean_(row[map['Giờ']]) !== hour) continue;
+
+    const rowParameter = clean_(row[map['Thông số']]);
+
+    if (parameter) {
+      const rowKey = normalizeText_(rowParameter);
+      const strippedRowKey = stripUnit_(rowParameter);
+      const matchedParameter =
+        rowKey === keyParameter ||
+        strippedRowKey === stripUnit_(parameter);
+
+      if (!matchedParameter) continue;
+    }
+
+    results.push({
+      thang: map['Tháng'] !== undefined ? row[map['Tháng']] : '',
+      ngay: row[map['Ngày']],
+      gio: row[map['Giờ']],
+      don_vi: map['Đơn vị'] !== undefined ? row[map['Đơn vị']] : '',
+      cong_trinh: row[map['Công trình']],
+      hang_muc: map['Hạng mục'] !== undefined ? row[map['Hạng mục']] : '',
+      thong_so: rowParameter,
+      don_vi_do: row[map['Đơn vị đo']],
+      gia_tri: row[map['Giá trị']],
+      nguon_du_lieu: map['Nguồn dữ liệu'] !== undefined ? row[map['Nguồn dữ liệu']] : 'AI_DATA'
+    });
+  }
+
+  return {
+    success: true,
+    count: results.length,
+    data: results,
+    query: {
+      congTrinh: facility,
+      thongSo: parameter,
+      ngay: day,
+      gio: hour
+    },
+    engine: 'AI_DATA',
+    source: 'AI_DATA',
+    timestamp: new Date().toISOString()
+  };
+}
+
+// ============================================================
+// 13. MAIN doGet
+// ============================================================
+
+function doGet(e) {
+  const started = new Date();
+  let params = {};
+  let api = '';
+
+  try {
+    params = getRequestParams_(e);
+    api = clean_(params.api).toLowerCase();
+
+    // --------------------------------------------------------
+    // HEALTH
+    // --------------------------------------------------------
+    if (api === 'health' || api === 'ping') {
+      return jsonResponse_(successResponse_(api, {
+        status: 'ok',
+        service: 'THUY LOI AI - Technical API',
+        sheet: TECHNICAL_CONFIG.AI_SHEET_NAME
+      }));
+    }
+
+    // --------------------------------------------------------
+    // FACILITIES
+    // --------------------------------------------------------
+    if (api === 'facilities') {
+      const facilities = getFacilities_();
+      return jsonResponse_(successResponse_('facilities', facilities, {
+        count: facilities.length
+      }));
+    }
+
+    // --------------------------------------------------------
+    // PARAMETERS
+    // --------------------------------------------------------
+    if (api === 'parameters') {
+      const facility = clean_(params.facility || params.cong_trinh || params.congTrinh);
+      const result = getFacilityParameters_(facility);
+
+      return jsonResponse_(successResponse_('parameters', result, {
+        facility: facility
+      }));
+    }
+
+    // --------------------------------------------------------
+    // CHART
+    // --------------------------------------------------------
+    if (api === 'chart') {
+      const result = getChartData_(params);
+
+      return jsonResponse_(successResponse_('chart', result, {
+        facility: result.facility,
+        count: result.count,
+        elapsedMs: new Date().getTime() - started.getTime()
+      }));
+    }
+
+    // --------------------------------------------------------
+    // LEGACY / CHAT API
+    // --------------------------------------------------------
+    // Không có api nhưng có cong_trinh/congTrinh:
+    // giữ khả năng truy vấn cũ.
+    if (
+      params.cong_trinh ||
+      params.congTrinh
+    ) {
+      return jsonResponse_(queryLegacyAIData_(params));
+    }
+
+    // --------------------------------------------------------
+    // API KHÔNG HỢP LỆ
+    // --------------------------------------------------------
+    return jsonResponse_(errorResponse_(api, 'API không hợp lệ', {
+      supported: [
+        'health',
+        'facilities',
+        'parameters',
+        'chart',
+        'legacy: cong_trinh/thong_so/ngay/gio'
+      ]
+    }));
+
+  } catch (error) {
+    console.error(error);
+
+    return jsonResponse_(errorResponse_(api, error.message || error, {
+      elapsedMs: new Date().getTime() - started.getTime()
+    }));
+  }
+}
+
+// ============================================================
+// 14. TEST FUNCTIONS
+// ============================================================
+// Chạy các hàm này trong Apps Script trước khi deploy.
+// ============================================================
+
+function testTechnicalFacilities() {
+  const result = getFacilities_();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function testTechnicalParameters() {
+  const result = getFacilityParameters_('Hồ Đồng Tiến (H14)');
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function testTechnicalChart() {
+  const result = getChartData_({
+    facility: 'Hồ Đồng Tiến (H14)',
+    year: 2026,
+    days: 7,
+    waterParameter: '',
+    rainfallParameters: ''
+  });
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function testTechnicalHealth() {
+  const result = {
+    ok: true,
+    version: TECHNICAL_CONFIG.VERSION,
+    sheet: TECHNICAL_CONFIG.AI_SHEET_NAME,
+    timestamp: new Date().toISOString()
+  };
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+// ============================================================
+// HẾT CODE
+// ============================================================
