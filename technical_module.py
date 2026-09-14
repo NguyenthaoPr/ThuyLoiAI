@@ -9,14 +9,14 @@ from urllib.error import HTTPError, URLError
 from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.15.0
+# THUY LOI AI - TECHNICAL MODULE V1.16.0
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.15.0",
+    version="1.16.0",
 )
 
 # ============================================================
@@ -320,7 +320,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   </section>
 
 
-  <div class="footer">THUY LOI AI · Technical Module V1.15.0 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.16.0 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -329,6 +329,7 @@ const water=document.getElementById('water'), state=document.getElementById('sta
 const stateDetail=document.getElementById('stateDetail'), mndbt=document.getElementById('mndbt'), mndgc=document.getElementById('mndgc'), rainTotal=document.getElementById('rainTotal');
 const technicalSummary=document.getElementById('technicalSummary'), alertBanner=document.getElementById('alertBanner');
 let currentParameters={waterLevel:[],rainfall:[]},currentData=null,hydroChart=null;
+let selectedWaterParameter='Mực nước';
 let alertSoundEnabled=false,lastAlertLevel='normal';
 
 function toggleAlertSound(){
@@ -447,9 +448,29 @@ function toggleTheme(){
 (function initTheme(){const dark=localStorage.getItem('tlai-theme')==='dark';if(dark)document.documentElement.classList.add('dark');document.getElementById('themeBtn').textContent=dark?'☀️':'🌙'})();
 
 async function loadParameters(){
-  /* V1.15: giao diện không còn ô Thông số; module cố định Mực nước và tự chọn chuỗi mưa từ API. */
-  currentParameters={waterLevel:[],rainfall:[]};
-  return true;
+  /* V1.16: ẩn ô Thông số nhưng vẫn phải đọc API parameters để biết TÊN THỰC của cột mực nước. */
+  if(!f.value)return false;
+  try{
+    const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value),{},1);
+    currentParameters=result.data||{waterLevel:[],rainfall:[]};
+    const raw=Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[];
+    const names=raw.map(x=>{
+      if(typeof x==='string')return x.trim();
+      if(x&&typeof x==='object')return String(x.name||x.parameter||x.label||x.value||'').trim();
+      return '';
+    }).filter(Boolean);
+    const norm=v=>String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[()\[\]{}]/g,' ').replace(/\s+/g,' ').trim();
+    const exactH=names.find(n=>/^h(?:\s*\(m\))?$/i.test(n));
+    const semantic=names.find(n=>norm(n)==='muc nuoc' || norm(n).startsWith('muc nuoc '));
+    const htl=names.find(n=>/^htl(?:\s*\(m\))?$/i.test(n));
+    selectedWaterParameter=exactH||semantic||htl||names[0]||'Mực nước';
+    return true;
+  }catch(err){
+    console.warn('Không đọc được /api/parameters, dùng tham số dự phòng:',err);
+    currentParameters={waterLevel:[],rainfall:[]};
+    selectedWaterParameter='Mực nước';
+    return false;
+  }
 }
 
 function exportFileStamp(){
@@ -471,18 +492,58 @@ function applyCustomDateRange(){
   loadChartData();
 }
 
+function normalizeRawWaterSeries(data){
+  let raw=data&&(data.water??data.waterLevel??data.waterSeries??data.waterData);
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw))raw=Array.isArray(raw.data)?raw.data:(Array.isArray(raw.series)?raw.series:[]);
+  if(!Array.isArray(raw))raw=[];
+  if(!raw.length && Array.isArray(data&&data.series)){
+    raw=data.series.filter(p=>{
+      const n=String(p&&((p.parameter??p.name??p.param??p.thongSo??p.thong_so)||'')).toLowerCase();
+      return /muc\s*nuoc|mực\s*nước|^h(?:\s*\(m\))?$|^htl/.test(n);
+    });
+  }
+  if(!raw.length && Array.isArray(data&&data.rows)){
+    raw=data.rows.filter(p=>{
+      const n=String(p&&((p.parameter??p.name??p.param??p.thongSo??p.thong_so)||'')).toLowerCase();
+      return /muc\s*nuoc|mực\s*nước|^h(?:\s*\(m\))?$|^htl/.test(n);
+    });
+  }
+  return raw.map(p=>{
+    if(Array.isArray(p))return {time:p[0],value:p[1]};
+    if(!p||typeof p!=='object')return null;
+    const time=p.time??p.timestamp??p.datetime??p.dateTime??p.ngayGio??p.ngay_gio??p.ngay??p.date;
+    const value=p.value??p.val??p.giaTri??p.gia_tri??p.H??p.h??p.mucNuoc??p.muc_nuoc;
+    return {...p,time,value};
+  }).filter(Boolean);
+}
+
 async function loadChartData(){
   if(!f.value){resetData();return}
   state.textContent='Đang tải...';stateDetail.textContent='Đang lấy dữ liệu thực tế từ AI_DATA';
   try{
-    const params=new URLSearchParams({facility:f.value,year:String(new Date().getFullYear()),days:String(periodDays())});
     const from=document.getElementById('fromDate').value,to=document.getElementById('toDate').value;
-    if(from)params.set('fromDate',from);
-    if(to)params.set('toDate',to);
-    /* Không còn bộ chọn Thông số; luôn yêu cầu Mực nước mặc định. Apps Script sẽ trả chuỗi mưa theo cấu hình. */
-    params.set('waterParameter','Mực nước');
-    const result=await fetchJson('/api/chart?'+params.toString());
-    currentData=result.data;renderData(currentData);
+    const year=from?String(new Date(from+'T12:00:00').getFullYear()):String(new Date().getFullYear());
+    const candidates=[];
+    const addCandidate=v=>{v=String(v||'').trim();if(v&&!candidates.includes(v))candidates.push(v)};
+    addCandidate(selectedWaterParameter);
+    (Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[]).forEach(x=>{if(typeof x==='string')addCandidate(x);else if(x&&typeof x==='object')addCandidate(x.name||x.parameter||x.label||x.value)});
+    addCandidate('H (m)'); addCandidate('H'); addCandidate('Mực nước'); addCandidate('');
+    let result=null,lastData=null;
+    for(const candidate of candidates){
+      const params=new URLSearchParams({facility:f.value,year,days:String(periodDays())});
+      if(from)params.set('fromDate',from);
+      if(to)params.set('toDate',to);
+      if(candidate)params.set('waterParameter',candidate);
+      const r=await fetchJson('/api/chart?'+params.toString(),{},1);
+      lastData=r.data||{};
+      const raw=normalizeRawWaterSeries(lastData);
+      if(raw.length){result=r;break;}
+      result=r;
+    }
+    currentData=result?.data||lastData||{};
+    const normalized=normalizeRawWaterSeries(currentData);
+    if(normalized.length)currentData.water=normalized;
+    renderData(currentData);
   }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu.')}
 }
 
@@ -532,6 +593,7 @@ function renderData(data){
   data.water=waterSeries.map(p=>({...p,time:p.time.toISOString()}));
   water.textContent=latest?formatNumber(latest.value):'—';state.textContent=latest?'Có dữ liệu':'Chưa có mực nước';
   if(latest){const d=parseDataTime(latest.time);stateDetail.textContent='Cập nhật '+d.toLocaleString('vi-VN');document.getElementById('waterNote').textContent='Lần đo mới nhất'}
+  else { stateDetail.textContent='Chưa tìm thấy chuỗi mực nước'; document.getElementById('waterNote').textContent='Đã thử các tên thông số mực nước'; }
   mndbt.textContent=data.limits&&data.limits.mndbt!=null?formatNumber(data.limits.mndbt):'—';
   mndgc.textContent=data.limits&&data.limits.mndgc!=null?formatNumber(data.limits.mndgc):'—';
   rainTotal.textContent=data.totalRainfall!=null?formatNumber(data.totalRainfall):'—';
@@ -539,7 +601,7 @@ function renderData(data){
   try{renderHydroChart(data)}catch(chartErr){
     console.warn('Biểu đồ chưa tải được:',chartErr);
     const canvas=document.getElementById('hydroChart');
-    if(canvas){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.font='14px Arial';ctx.fillStyle=document.documentElement.classList.contains('dark')?'#9fb0c6':'#687386';ctx.textAlign='center';ctx.fillText('Biểu đồ chưa tải được · Số liệu KPI vẫn hoạt động',canvas.width/2,canvas.height/2);}
+    if(canvas){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.font='14px Arial';ctx.fillStyle=document.documentElement.classList.contains('dark')?'#9fb0c6':'#687386';ctx.textAlign='center';ctx.fillText(window.Chart?'Biểu đồ không có chuỗi hợp lệ':'Chart.js chưa tải được',canvas.width/2,canvas.height/2);}
   }
 }
 
@@ -568,11 +630,15 @@ function parseDataTime(value){
   const d=new Date(raw);return Number.isFinite(d.getTime())?d:null;
 }
 function normalizeSeries(series){
-  return (Array.isArray(series)?series:[]).map(p=>({
-    ...p,
-    time:parseDataTime(p&&p.time),
-    value:Number(p&&p.value)
-  })).filter(p=>p.time&&Number.isFinite(p.time.getTime())&&Number.isFinite(p.value)).sort((a,b)=>a.time-b.time);
+  let raw=series;
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw))raw=Array.isArray(raw.data)?raw.data:(Array.isArray(raw.series)?raw.series:[]);
+  if(!Array.isArray(raw))raw=[];
+  return raw.map(p=>{
+    if(Array.isArray(p))return {time:parseDataTime(p[0]),value:Number(p[1])};
+    const time=p&& (p.time??p.timestamp??p.datetime??p.dateTime??p.ngayGio??p.ngay_gio??p.ngay??p.date);
+    const value=p&& (p.value??p.val??p.giaTri??p.gia_tri??p.H??p.h??p.mucNuoc??p.muc_nuoc);
+    return {...(p||{}),time:parseDataTime(time),value:Number(value)};
+  }).filter(p=>p.time&&Number.isFinite(p.time.getTime())&&Number.isFinite(p.value)).sort((a,b)=>a.time-b.time);
 }
 
 function reportDateRange(series){
@@ -953,7 +1019,7 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.15.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.16.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
