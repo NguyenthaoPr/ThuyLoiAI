@@ -22,13 +22,13 @@ except ImportError:  # pragma: no cover
     GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V2.7.0
+# THUY LOI AI - TECHNICAL MODULE V2.8.0
 # DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
 # Doc truc tiep AI_DATA bang Google Sheets API.
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.7.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.8.0")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -168,35 +168,89 @@ def _get_session():
         _session = AuthorizedSession(_build_credentials())
     return _session
 
-def _read_public_sheet_values():
-    """Đọc AI_DATA trực tiếp từ Google Sheet công khai, không qua Apps Script.
-    Dùng endpoint xuất CSV của Google Sheets; không ghi/sửa dữ liệu.
-    """
-    params = urlencode({"format": "csv", "gid": GOOGLE_SHEET_GID})
-    url = f"https://docs.google.com/spreadsheets/d/{quote(GOOGLE_SHEETS_ID, safe='')}/export?{params}"
-    req = urllib.request.Request(url, headers={"User-Agent": "THUY-LOI-AI/2.1"})
-    with urllib.request.urlopen(req, timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
-        raw = resp.read()
-    text = raw.decode("utf-8-sig", errors="replace")
-    # Nếu Google trả về trang HTML đăng nhập/quyền truy cập thì không coi là dữ liệu CSV.
-    head = text.lstrip()[:200].lower()
-    if head.startswith("<!doctype html") or "<html" in head:
-        raise RuntimeError("Google Sheet chưa cho phép đọc công khai bằng liên kết.")
-    rows = list(csv.reader(io.StringIO(text)))
-    if not rows or len(rows[0]) < 2:
-        raise RuntimeError("Google Sheet công khai không trả về dữ liệu CSV hợp lệ.")
+def _validate_ai_data_rows(rows, source_name="Google Sheet"):
+    """Xác nhận dữ liệu trả về đúng cấu trúc tab AI_DATA."""
+    if not isinstance(rows,list) or not rows:
+        raise RuntimeError(f"{source_name} không trả về dữ liệu.")
 
-    # Kiểm tra đúng tab AI_DATA. Nếu export nhầm RAW_DATA, dừng thay vì
-    # đưa dữ liệu sai cột lên giao diện (đây là nguyên nhân dropdown bị sai).
-    header = [str(x).strip().lower() for x in rows[0]]
-    expected = ["tháng", "ngày", "giờ", "đơn vị", "công trình", "hạng mục", "thông số", "thông số (đơn vị đo)", "giá trị"]
-    matches = sum(1 for i, v in enumerate(expected) if i < len(header) and header[i] == v)
-    if matches < 6:
+    def norm_header(v):
+        import unicodedata
+        x=unicodedata.normalize("NFD",str(v).replace("\ufeff",""))
+        x="".join(c for c in x if unicodedata.category(c)!="Mn")
+        return re.sub(r"\s+"," ",x.lower()).strip()
+
+    header=[norm_header(x) for x in rows[0]]
+    expected=[
+        "tháng","ngày","giờ","đơn vị","công trình","hạng mục",
+        "thông số","thông số (đơn vị đo)","giá trị"
+    ]
+    expected=[norm_header(x) for x in expected]
+
+    matches=sum(
+        1 for i,v in enumerate(expected)
+        if i<len(header) and header[i]==v
+    )
+    if matches<6:
         raise RuntimeError(
-            f"Đọc nhầm tab/cấu trúc Google Sheet: header nhận được {rows[0][:11]}. "
-            f"Đã khớp {matches}/9 cột AI_DATA. Kiểm tra GOOGLE_SHEET_GID."
+            f"{source_name} không đúng tab AI_DATA; "
+            f"header={rows[0][:11]}; khớp {matches}/9 cột."
         )
     return rows
+
+
+def _read_csv_url(url, source_name):
+    req=urllib.request.Request(
+        url,
+        headers={
+            "User-Agent":"Mozilla/5.0 THUY-LOI-AI/2.8",
+            "Accept":"text/csv,text/plain,*/*"
+        }
+    )
+    with urllib.request.urlopen(req,timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
+        raw=resp.read()
+
+    text=raw.decode("utf-8-sig",errors="replace").strip()
+    head=text[:500].lower()
+    if "<html" in head or "<!doctype" in head or "sign in" in head:
+        raise RuntimeError(
+            f"{source_name}: Google trả về HTML hoặc yêu cầu đăng nhập/quyền truy cập."
+        )
+
+    rows=list(csv.reader(io.StringIO(text)))
+    return _validate_ai_data_rows(rows,source_name)
+
+
+def _read_public_sheet_values():
+    """Đọc trực tiếp tab AI_DATA, KHÔNG qua Apps Script.
+
+    Hai đường đọc công khai được thử lần lượt:
+    1. Google Sheets CSV export theo GID.
+    2. Google Sheets GViz CSV theo GID.
+    """
+    urls=[
+        (
+            f"https://docs.google.com/spreadsheets/d/"
+            f"{quote(GOOGLE_SHEETS_ID,safe='')}/export?"
+            f"{urlencode({'format':'csv','gid':GOOGLE_SHEET_GID})}",
+            "Google Sheets CSV export"
+        ),
+        (
+            f"https://docs.google.com/spreadsheets/d/"
+            f"{quote(GOOGLE_SHEETS_ID,safe='')}/gviz/tq?"
+            f"{urlencode({'tqx':'out:csv','gid':GOOGLE_SHEET_GID})}",
+            "Google Sheets GViz CSV"
+        )
+    ]
+
+    errors=[]
+    for url,name in urls:
+        try:
+            return _read_csv_url(url,name)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+
+    raise RuntimeError(" | ".join(errors))
+
 
 def _cache_rows(values):
     with _cache_lock:
@@ -205,63 +259,142 @@ def _cache_rows(values):
     return values
 
 def _read_sheet_values(force=False):
-    now = monotonic()
+    now=monotonic()
+
     with _cache_lock:
-        if not force and _sheet_cache["rows"] is not None and now - _sheet_cache["loaded_at"] < GOOGLE_SHEETS_CACHE_SECONDS:
-            return _sheet_cache["rows"]
+        cached=_sheet_cache.get("rows")
+        loaded_at=float(_sheet_cache.get("loaded_at") or 0)
+        if (
+            not force
+            and cached is not None
+            and now-loaded_at<GOOGLE_SHEETS_CACHE_SECONDS
+        ):
+            return cached
 
-    public_error = None
+    errors=[]
+
+    # A. Sheet công khai — không cần Apps Script.
     if GOOGLE_SHEETS_PUBLIC:
-        try:
-            return _cache_rows(_read_public_sheet_values())
-        except Exception as exc:
-            public_error = str(exc)
+        for attempt in range(2):
+            try:
+                values=_read_public_sheet_values()
+                return _cache_rows(values)
+            except Exception as exc:
+                errors.append(f"Public lần {attempt+1}: {exc}")
+                if attempt==0:
+                    import time
+                    time.sleep(0.35)
 
-    # Fallback bảo mật: Google Sheets API + Service Account/API key.
-    encoded_range = quote(GOOGLE_SHEETS_RANGE, safe="")
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{quote(GOOGLE_SHEETS_ID, safe='')}/values/{encoded_range}"
-    params = {"majorDimension": "ROWS", "valueRenderOption": "UNFORMATTED_VALUE", "dateTimeRenderOption": "FORMATTED_STRING"}
+    # B. Google Sheets API — Service Account/API Key nếu được cấu hình.
+    encoded_range=quote(GOOGLE_SHEETS_RANGE,safe="")
+    url=(
+        f"https://sheets.googleapis.com/v4/spreadsheets/"
+        f"{quote(GOOGLE_SHEETS_ID,safe='')}/values/{encoded_range}"
+    )
+    params={
+        "majorDimension":"ROWS",
+        "valueRenderOption":"UNFORMATTED_VALUE",
+        "dateTimeRenderOption":"FORMATTED_STRING"
+    }
     if GOOGLE_SHEETS_API_KEY:
-        params["key"] = GOOGLE_SHEETS_API_KEY
+        params["key"]=GOOGLE_SHEETS_API_KEY
+
     try:
-        if GOOGLE_SHEETS_API_KEY and not (GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_B64 or GOOGLE_APPLICATION_CREDENTIALS):
-            req = urllib.request.Request(url + "?" + urlencode(params), headers={"User-Agent": "THUY-LOI-AI/2.1"})
-            with urllib.request.urlopen(req, timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
+        if GOOGLE_SHEETS_API_KEY and not (
+            GOOGLE_SERVICE_ACCOUNT_JSON
+            or GOOGLE_SERVICE_ACCOUNT_B64
+            or GOOGLE_APPLICATION_CREDENTIALS
+        ):
+            req=urllib.request.Request(
+                url+"?"+urlencode(params),
+                headers={"User-Agent":"THUY-LOI-AI/2.8"}
+            )
+            with urllib.request.urlopen(req,timeout=GOOGLE_SHEETS_TIMEOUT) as resp:
+                payload=json.loads(resp.read().decode("utf-8"))
         else:
-            resp = _get_session().get(url, params=params, timeout=GOOGLE_SHEETS_TIMEOUT)
-            if resp.status_code >= 400:
+            resp=_get_session().get(
+                url,params=params,timeout=GOOGLE_SHEETS_TIMEOUT
+            )
+            if resp.status_code>=400:
                 try:
-                    detail = resp.json().get("error", {}).get("message", resp.text[:300])
+                    detail=resp.json().get("error",{}).get(
+                        "message",resp.text[:400]
+                    )
                 except Exception:
-                    detail = resp.text[:300]
-                raise RuntimeError(f"Google Sheets API HTTP {resp.status_code}: {detail}")
-            payload = resp.json()
-    except RuntimeError as exc:
-        if public_error:
-            raise RuntimeError(f"Không đọc được Google Sheet trực tiếp. Public CSV: {public_error}. API: {exc}") from exc
-        raise
+                    detail=resp.text[:400]
+                raise RuntimeError(
+                    f"Google Sheets API HTTP {resp.status_code}: {detail}"
+                )
+            payload=resp.json()
+
+        values=payload.get("values") if isinstance(payload,dict) else None
+        if not isinstance(values,list) or not values:
+            raise RuntimeError(
+                f"Google Sheets API không có dữ liệu trong {GOOGLE_SHEETS_RANGE}."
+            )
+
+        return _cache_rows(
+            _validate_ai_data_rows(values,"Google Sheets API")
+        )
+
     except Exception as exc:
-        if public_error:
-            raise RuntimeError(f"Không đọc được Google Sheet trực tiếp. Public CSV: {public_error}. API: {exc}") from exc
-        raise RuntimeError(f"Không đọc được Google Sheet: {exc}") from exc
+        errors.append(f"Sheets API: {exc}")
 
-    values = payload.get("values") if isinstance(payload, dict) else None
-    if not isinstance(values, list) or not values:
-        raise RuntimeError(f"Google Sheet không có dữ liệu trong vùng {GOOGLE_SHEETS_RANGE}.")
-    return _cache_rows(values)
+    raise RuntimeError(
+        "Không đọc được AI_DATA trực tiếp từ Google Sheet. "
+        + " || ".join(errors)
+        + ". Chế độ này không sử dụng Apps Script."
+    )
 
-def _data_rows():
-    values = _read_sheet_values()
+
+# ============================================================
+# AI_DATA — CẤU TRÚC CỘT CỐ ĐỊNH
+# A Tháng
+# B Ngày
+# C Giờ
+# D Đơn vị
+# E Công trình
+# F Hạng mục
+# G Thông số
+# H Thông số (Đơn vị đo)
+# I Giá trị
+# J Cột nguồn
+# K Nguồn dữ liệu
+# ============================================================
+AI_COL_MONTH=0
+AI_COL_DAY=1
+AI_COL_HOUR=2
+AI_COL_UNIT=3
+AI_COL_FACILITY=4
+AI_COL_ITEM=5
+AI_COL_PARAMETER=7
+AI_COL_PARAMETER_LABEL=6
+AI_COL_VALUE=8
+AI_COL_SOURCE_COL=9
+AI_COL_SOURCE_NAME=10
+
+def _data_rows(force=False):
+    values=_read_sheet_values(force=force)
     rows=[]
     for raw in values[1:]:
-        row=list(raw)+[""]*(11-len(raw))
-        if any(str(x).strip() for x in row): rows.append(row[:11])
+        row=(list(raw)+[""]*11)[:11]
+        if not any(str(x).strip() for x in row):
+            continue
+        # Chỉ loại dòng rỗng/không có công trình; không đổi dữ liệu gốc.
+        if not str(row[AI_COL_FACILITY]).strip():
+            continue
+        rows.append(row)
     return rows
 
-def _row_facility(row): return str(row[4]).strip() if len(row)>4 else ""
-def _row_parameter(row): return str(row[7]).strip() if len(row)>7 else ""
-def _row_value(row): return _num(row[8] if len(row)>8 else None)
+def _row_facility(row):
+    return str(row[AI_COL_FACILITY]).strip() if len(row)>AI_COL_FACILITY else ""
+
+def _row_parameter(row):
+    # Cột H = Thông số (Đơn vị đo): HTL (m), HHL (m), X (mm), ...
+    return str(row[AI_COL_PARAMETER]).strip() if len(row)>AI_COL_PARAMETER else ""
+
+def _row_value(row):
+    return _num(row[AI_COL_VALUE] if len(row)>AI_COL_VALUE else None)
 
 def _row_datetime(row, year):
     try:
@@ -1768,6 +1901,97 @@ function renderHydroChart(data){
 
 function fitChart(){if(currentData)renderHydroChart(currentData)}
 
+async function fetchJson(url,options={},retries=1){
+  let lastError=null;
+  for(let attempt=0;attempt<=retries;attempt++){
+    try{
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),15000);
+      const response=await fetch(url,{
+        cache:'no-store',
+        headers:{'Accept':'application/json'},
+        signal:controller.signal,
+        ...options
+      });
+      clearTimeout(timer);
+
+      let payload=null;
+      try{payload=await response.json()}
+      catch(e){throw new Error(`Phản hồi không phải JSON (HTTP ${response.status}).`)}
+
+      if(!response.ok||payload?.ok===false){
+        throw new Error(
+          payload?.error||
+          payload?.message||
+          `API HTTP ${response.status}`
+        );
+      }
+      return payload;
+    }catch(err){
+      lastError=err;
+      if(attempt<retries){
+        await new Promise(resolve=>setTimeout(resolve,400*(attempt+1)));
+      }
+    }
+  }
+  throw lastError||new Error('Không kết nối được API.');
+}
+
+function resetData(message=''){
+  currentData=null;
+  water.textContent='—';
+  state.textContent='—';
+  stateDetail.textContent=message||'Chưa có dữ liệu';
+  mndbt.textContent='—';
+  mndgc.textContent='—';
+  rainTotal.textContent='—';
+  document.getElementById('waterNote').textContent='Chưa có dữ liệu';
+  document.getElementById('technicalSummary').innerHTML='<div class="empty">'+(message||'Chọn công trình để tải dữ liệu.')+'</div>';
+  if(hydroChart){
+    hydroChart.destroy();
+    hydroChart=null;
+  }
+}
+
+function setDataError(message){
+  currentData=null;
+  water.textContent='—';
+  state.textContent='Lỗi dữ liệu';
+  stateDetail.textContent=String(message||'Không đọc được Google Sheet.').slice(0,240);
+  mndbt.textContent='—';
+  mndgc.textContent='—';
+  rainTotal.textContent='—';
+  document.getElementById('waterNote').textContent='Kiểm tra kết nối Google Sheet';
+  document.getElementById('technicalSummary').innerHTML=
+    '<div class="empty">'+String(message||'Không đọc được Google Sheet.')+'</div>';
+  if(hydroChart){
+    hydroChart.destroy();
+    hydroChart=null;
+  }
+}
+
+async function checkConnections(){
+  const oldState=state.textContent;
+  state.textContent='Đang kiểm tra...';
+  stateDetail.textContent='Đang kiểm tra trực tiếp AI_DATA';
+  try{
+    const result=await fetchJson('/api/connection?ts='+Date.now(),{cache:'no-store'},0);
+    if(result.google_sheets_ok){
+      state.textContent='Kết nối OK';
+      stateDetail.textContent=`AI_DATA · ${result.rows} dòng · ${result.google_sheets_ms} ms`;
+      // Sau khi kết nối OK, tải lại đúng công trình + khoảng thời gian hiện tại.
+      if(f.value)await loadChartData();
+    }else{
+      state.textContent='Mất kết nối';
+      stateDetail.textContent=String(result.google_sheets_error||result.message||'Không đọc được AI_DATA').slice(0,240);
+    }
+  }catch(err){
+    state.textContent=oldState||'Lỗi kết nối';
+    stateDetail.textContent=String(err.message||err).slice(0,240);
+    setDataError(err.message||'Không đọc được Google Sheet.');
+  }
+}
+
 async function loadFacilities(){
   f.disabled=true;f.innerHTML='<option value="">⏳ Đang tải công trình...</option>';
   try{
@@ -1795,7 +2019,13 @@ async function loadFacilities(){
   }finally{f.disabled=false}
 }
 f.addEventListener('change',async()=>{setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');await loadParameters();await loadChartData()});
-async function refreshModule(){if(!f.value){setSelectedFacility();resetData();return}setSelectedFacility();await loadParameters();await loadChartData()}
+async function refreshModule(){
+  if(!f.value){setSelectedFacility();resetData();return}
+  setSelectedFacility();
+  try{await fetchJson('/api/connection?ts='+Date.now(),{cache:'no-store'},0)}catch(e){}
+  await loadParameters();
+  await loadChartData();
+}
 selectedQuickPeriod='7d';
 setQuickButtonsActive('7d');
 period.value=quickPeriodMeta('7d').value;
@@ -1878,11 +2108,34 @@ def api_chart(facility: str, year: int=2026, days: int=7, hours: int=0, waterPar
 def api_connection():
     started=monotonic()
     try:
-        rows=_data_rows(); elapsed=round((monotonic()-started)*1000)
-        return {"ok":True,"google_sheets_ok":True,"google_sheets_ms":elapsed,"rows":len(rows),"sheet":GOOGLE_SHEET_NAME,"range":GOOGLE_SHEETS_RANGE,"message":"Đọc trực tiếp Google Sheet thành công."}
+        # Nút "Kiểm tra kết nối" phải kiểm tra dữ liệu thật, không dùng cache.
+        rows=_data_rows(force=True)
+        elapsed=round((monotonic()-started)*1000)
+        return {
+            "ok":True,
+            "google_sheets_ok":True,
+            "google_sheets_ms":elapsed,
+            "rows":len(rows),
+            "sheet_id":GOOGLE_SHEETS_ID,
+            "sheet":GOOGLE_SHEET_NAME,
+            "gid":GOOGLE_SHEET_GID,
+            "range":GOOGLE_SHEETS_RANGE,
+            "message":"Đọc trực tiếp AI_DATA từ Google Sheet thành công."
+        }
     except RuntimeError as exc:
         elapsed=round((monotonic()-started)*1000)
-        return {"ok":True,"google_sheets_ok":False,"google_sheets_ms":elapsed,"rows":0,"google_sheets_error":str(exc),"message":"FastAPI hoạt động nhưng Google Sheet chưa thể truy cập."}
+        return {
+            "ok":True,
+            "google_sheets_ok":False,
+            "google_sheets_ms":elapsed,
+            "rows":0,
+            "sheet_id":GOOGLE_SHEETS_ID,
+            "sheet":GOOGLE_SHEET_NAME,
+            "gid":GOOGLE_SHEET_GID,
+            "range":GOOGLE_SHEETS_RANGE,
+            "google_sheets_error":str(exc),
+            "message":"FastAPI hoạt động nhưng AI_DATA chưa thể truy cập trực tiếp."
+        }
 
 @app.get("/", response_class=HTMLResponse)
 def technical_dashboard(): return HTML
