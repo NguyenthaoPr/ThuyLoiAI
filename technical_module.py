@@ -22,13 +22,13 @@ except ImportError:  # pragma: no cover
     GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V2.3.0
+# THUY LOI AI - TECHNICAL MODULE V2.4.0
 # DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
 # Doc truc tiep AI_DATA bang Google Sheets API.
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.3.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.4.0")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -537,6 +537,40 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 .report-preview{background:#fff;color:#111;overflow:auto;padding:28px;flex:1}
 .report-preview h1{text-align:center;font-size:20px;margin:0 0 12px}.report-preview h2{font-size:15px;margin:20px 0 7px;border-bottom:1px solid #777;padding-bottom:4px}.report-preview p{margin:6px 0;line-height:1.5}.report-preview table{border-collapse:collapse;width:100%;margin:8px 0}.report-preview th,.report-preview td{border:1px solid #777;padding:6px;text-align:left;vertical-align:top}.report-preview th{font-weight:bold;background:#eee}.report-preview ul{margin-top:5px}.report-preview .note{font-style:italic;color:#444}.report-preview .footer{margin-top:22px;font-size:12px;color:#555}
 @media(max-width:700px){.report-btn{flex:1;min-width:0}.report-preview{padding:16px}.report-modal{padding:8px}.report-modal-card{height:94vh;border-radius:14px}}
+
+/* ============================================================
+   BIỂU ĐỒ DIỄN BIẾN — MOBILE FULL BLEED V2.4
+   ============================================================ */
+@media(max-width:720px){
+  .panel:has(#hydroChart){
+    margin-left:0!important;
+    margin-right:0!important;
+    padding-left:0!important;
+    padding-right:0!important;
+    border-left:0!important;
+    border-right:0!important;
+    border-radius:0!important;
+  }
+  .panel:has(#hydroChart) .chart-wrap{
+    width:100%!important;
+    max-width:none!important;
+    margin-left:0!important;
+    margin-right:0!important;
+    padding-left:0!important;
+    padding-right:0!important;
+    border-radius:0!important;
+  }
+  .panel:has(#hydroChart) .panel-head{
+    padding-left:12px!important;
+    padding-right:12px!important;
+  }
+}
+@media(max-width:430px){
+  .panel:has(#hydroChart) .panel-head{
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+}
 </style>
 </head>
 
@@ -1135,35 +1169,79 @@ function renderTrendHtml(series){
 
 function renderHydroChart(data){
   // ============================================================
-  // BIỂU ĐỒ THỦY VĂN V2.3
-  // - Trục X: thời gian quan trắc thực
-  // - Trục Y trái: HTL (m), MNDBT, MNDGC
-  // - Trục Y phải: X (mm)
-  // - Tooltip: mode=index, intersect=false
-  // - Không nội suy, không làm mượt, giữ đúng thời điểm nguồn
-  // - Tối ưu hiển thị điện thoại
+  // BIỂU ĐỒ DIỄN BIẾN V2.4
+  // Y trái: HTL (m), MNDBT, MNDGC
+  // Y phải: X (mm)
+  // HTL: line + fill nền nhạt
+  // Mưa: bar màu động theo cường độ
+  // Tooltip: index + intersect=false
+  // Mobile: full-bleed, legend gọn
   // ============================================================
   const ws=normalizeSeries(data.water);
-  const rain=(data.rainfall||[]).flatMap(s=>normalizeSeries(s&&s.data).map(p=>({
+
+  const rain=(data.rainfall||[]).flatMap(s=>{
+    const arr=normalizeSeries(s&&s.data);
+    return arr.map(p=>({
+      x:p.time.getTime(),
+      y:p.value,
+      name:s&&s.parameter?s.parameter:'X (mm)'
+    }));
+  }).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+
+  const waterPts=ws.map(p=>({
     x:p.time.getTime(),
-    y:p.value,
-    name:s.parameter||'X (mm)'
-  })));
-  const waterPts=ws.map(p=>({x:p.time.getTime(),y:p.value}));
-  const bt=Number(data.limits&&data.limits.mndbt),gc=Number(data.limits&&data.limits.mndgc);
+    y:p.value
+  })).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+
+  const bt=Number(data.limits&&data.limits.mndbt);
+  const gc=Number(data.limits&&data.limits.mndgc);
 
   if(hydroChart)hydroChart.destroy();
+
   const canvas=document.getElementById('hydroChart');
   if(!canvas)return;
   if(!waterPts.length&&!rain.length)return;
 
   const dark=document.documentElement.classList.contains('dark');
-  const grid=dark?'rgba(170,195,220,.10)':'rgba(50,85,120,.10)';
   const textColor=dark?'#9fb0c6':'#687386';
+  const grid=dark?'rgba(170,195,220,.10)':'rgba(50,85,120,.10)';
 
-  // Khoảng thời gian thực giữa các lần quan trắc, dùng để xác định độ rộng cột.
-  const allTimes=[...waterPts.map(p=>p.x),...rain.map(p=>p.x)].filter(Number.isFinite).sort((a,b)=>a-b);
-  const minX=allTimes[0],maxX=allTimes[allTimes.length-1];
+  const allTimes=[...waterPts.map(p=>p.x),...rain.map(p=>p.x)]
+    .filter(Number.isFinite)
+    .sort((a,b)=>a-b);
+
+  const minX=allTimes.length?allTimes[0]:Date.now();
+  const maxX=allTimes.length?allTimes[allTimes.length-1]:minX+3600000;
+
+  // ------------------------------------------------------------
+  // MƯA ĐỘNG MÀU:
+  // alpha 0.20 -> 0.70 theo tỷ lệ với đỉnh mưa.
+  // Mưa lớn >= 70% đỉnh và >= 20 mm -> đỏ đậm.
+  // ------------------------------------------------------------
+  const maxRain=rain.length?Math.max(...rain.map(p=>Math.max(0,p.y))):0;
+  const redThreshold=Math.max(20,maxRain*0.70);
+
+  function rainColor(value){
+    const v=Math.max(0,Number(value)||0);
+    if(v>=redThreshold){
+      const ratio=maxRain>0?Math.min(1,v/maxRain):1;
+      const alpha=0.60+(0.10*ratio);
+      return `rgba(190,35,35,${alpha.toFixed(3)})`;
+    }
+    const ratio=maxRain>0?Math.min(1,v/maxRain):0;
+    const alpha=0.20+(0.50*ratio);
+    return `rgba(45,135,185,${alpha.toFixed(3)})`;
+  }
+
+  const rainBackground=rain.map(p=>rainColor(p.y));
+  const rainBorder=rain.map(p=>{
+    const v=Number(p.y)||0;
+    return v>=redThreshold
+      ?'rgba(150,25,25,0.90)'
+      :'rgba(45,115,165,0.65)';
+  });
+
+  // Độ rộng cột theo khoảng cách quan trắc thực.
   let intervalMs=60*60*1000;
   if(allTimes.length>1){
     const diffs=[];
@@ -1179,29 +1257,36 @@ function renderHydroChart(data){
 
   const isMobile=window.matchMedia&&window.matchMedia('(max-width:720px)').matches;
   const isSmall=window.matchMedia&&window.matchMedia('(max-width:430px)').matches;
-  const barThickness=isSmall?10:(isMobile?14:18);
+
+  const maxBar=isSmall?14:(isMobile?18:24);
+  const computedBar=Math.max(5,Math.min(maxBar,Math.round(
+    Math.sqrt(Math.max(1,intervalMs/3600000))*7
+  )));
+
   const pointRadius=isSmall?2:isMobile?2.5:3;
   const lineWidth=isMobile?2.5:3;
 
   const datasets=[];
 
-  // Lượng mưa: luôn dùng trục phải.
+  // LƯỢNG MƯA — TRỤC PHẢI.
   if(rain.length){
     datasets.push({
       type:'bar',
       label:'X (mm)',
       data:rain,
       yAxisID:'rain',
-      backgroundColor:dark?'rgba(71,214,181,.42)':'rgba(72,142,180,.36)',
-      borderColor:dark?'rgba(71,214,181,.72)':'rgba(72,142,180,.58)',
+      backgroundColor:rainBackground,
+      borderColor:rainBorder,
       borderWidth:1,
-      barThickness:barThickness,
-      maxBarThickness:20,
-      borderRadius:isMobile?2:3
+      barThickness:computedBar,
+      maxBarThickness:maxBar,
+      borderRadius:isMobile?2:3,
+      categoryPercentage:0.90,
+      barPercentage:0.90
     });
   }
 
-  // HTL: đường mực nước thượng lưu trên trục trái.
+  // HTL — TRỤC TRÁI + TÔ NỀN NHẠT.
   if(waterPts.length){
     datasets.push({
       type:'line',
@@ -1209,45 +1294,58 @@ function renderHydroChart(data){
       data:waterPts,
       yAxisID:'water',
       borderColor:dark?'#20c5ef':'#0878c9',
-      backgroundColor:'transparent',
+      backgroundColor:dark
+        ?'rgba(32,197,239,0.10)'
+        :'rgba(8,120,201,0.10)',
+      fill:true,
       borderWidth:lineWidth,
       pointRadius:pointRadius,
       pointHoverRadius:isMobile?5:6,
-      pointHitRadius:10,
+      pointHitRadius:12,
       tension:0,
       spanGaps:false
     });
   }
 
-  // Hai đường giới hạn ngang.
+  // MNDBT — ĐƯỜNG NGANG ĐỨT NÉT.
   if(Number.isFinite(bt)){
     datasets.push({
       type:'line',
       label:'MNDBT',
-      data:waterPts.length?waterPts.map(p=>({x:p.x,y:bt})):[{x:minX,y:bt},{x:maxX,y:bt}],
+      data:waterPts.length
+        ?waterPts.map(p=>({x:p.x,y:bt}))
+        :[{x:minX,y:bt},{x:maxX,y:bt}],
       yAxisID:'water',
       borderColor:dark?'#ffb13b':'#d88900',
+      backgroundColor:'transparent',
       borderWidth:isMobile?1.5:2,
       borderDash:[7,5],
       pointRadius:0,
       pointHitRadius:0,
       tension:0,
-      spanGaps:true
+      spanGaps:true,
+      fill:false
     });
   }
+
+  // MNDGC — ĐƯỜNG NGANG ĐỨT NÉT.
   if(Number.isFinite(gc)){
     datasets.push({
       type:'line',
       label:'MNDGC',
-      data:waterPts.length?waterPts.map(p=>({x:p.x,y:gc})):[{x:minX,y:gc},{x:maxX,y:gc}],
+      data:waterPts.length
+        ?waterPts.map(p=>({x:p.x,y:gc}))
+        :[{x:minX,y:gc},{x:maxX,y:gc}],
       yAxisID:'water',
       borderColor:dark?'#ff684e':'#e14b32',
+      backgroundColor:'transparent',
       borderWidth:isMobile?1.5:2,
       borderDash:[5,5],
       pointRadius:0,
       pointHitRadius:0,
       tension:0,
-      spanGaps:true
+      spanGaps:true,
+      fill:false
     });
   }
 
@@ -1259,15 +1357,19 @@ function renderHydroChart(data){
       animation:false,
       parsing:false,
 
-      // Yêu cầu: xem đồng thời các chuỗi tại cùng mốc thời gian.
-      interaction:{mode:'index',intersect:false,axis:'x'},
+      // TOOLTIP ĐỒNG THỜI TẠI CÙNG MỐC THỜI GIAN.
+      interaction:{
+        mode:'index',
+        intersect:false,
+        axis:'x'
+      },
 
       layout:{
         padding:{
           top:2,
-          right:isMobile?4:8,
+          right:isMobile?1:8,
           bottom:0,
-          left:isMobile?4:8
+          left:isMobile?1:8
         }
       },
 
@@ -1280,16 +1382,15 @@ function renderHydroChart(data){
             color:textColor,
             usePointStyle:true,
             pointStyle:'line',
-            boxWidth:isMobile?10:14,
-            boxHeight:isMobile?7:9,
-            padding:isMobile?8:14,
-            font:{size:isSmall?9:isMobile?10:11,weight:'700'},
-            generateLabels(chart){
-              const labels=Chart.defaults.plugins.legend.labels.generateLabels(chart);
-              return labels.map(item=>{
-                item.text=item.text==='Mực nước'?'HTL (m)':item.text;
-                return item;
-              });
+            boxWidth:isSmall?8:(isMobile?10:14),
+            boxHeight:isSmall?6:(isMobile?7:9),
+            padding:isSmall?5:(isMobile?7:14),
+            font:{
+              size:isSmall?8:(isMobile?9:11),
+              weight:'700'
+            },
+            filter(item){
+              return ['HTL (m)','X (mm)','MNDBT','MNDGC'].includes(item.text);
             }
           },
           onClick:null
@@ -1299,8 +1400,8 @@ function renderHydroChart(data){
           mode:'index',
           intersect:false,
           displayColors:true,
-          titleMarginBottom:6,
-          padding:isMobile?8:10,
+          padding:isMobile?7:10,
+          titleMarginBottom:5,
           boxPadding:3,
           callbacks:{
             title(items){
@@ -1343,15 +1444,22 @@ function renderHydroChart(data){
             maxRotation:0,
             minRotation:0,
             autoSkip:true,
-            maxTicksLimit:isSmall?5:isMobile?6:8,
-            font:{size:isMobile?9:10},
+            maxTicksLimit:isSmall?5:(isMobile?6:8),
+            font:{size:isMobile?8.5:10},
             callback(value){
               const d=new Date(Number(value));
               if(!Number.isFinite(d.getTime()))return '';
               if(periodDays()<=1){
-                return d.toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',hour:'2-digit'});
+                return d.toLocaleString('vi-VN',{
+                  day:'2-digit',
+                  month:'2-digit',
+                  hour:'2-digit'
+                });
               }
-              return d.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'});
+              return d.toLocaleDateString('vi-VN',{
+                day:'2-digit',
+                month:'2-digit'
+              });
             }
           },
           grid:{color:grid},
@@ -1363,6 +1471,7 @@ function renderHydroChart(data){
           }
         },
 
+        // TRỤC TRÁI — MỰC NƯỚC.
         water:{
           type:'linear',
           position:'left',
@@ -1371,12 +1480,12 @@ function renderHydroChart(data){
             display:true,
             text:'HTL (m)',
             color:textColor,
-            font:{size:isMobile?10:11,weight:'700'}
+            font:{size:isMobile?9.5:11,weight:'700'}
           },
           ticks:{
             color:textColor,
             maxTicksLimit:isMobile?6:8,
-            font:{size:isMobile?9:10},
+            font:{size:isMobile?8.5:10},
             callback(value){return formatNumber(value);}
           },
           grid:{
@@ -1385,6 +1494,7 @@ function renderHydroChart(data){
           }
         },
 
+        // TRỤC PHẢI — LƯỢNG MƯA.
         rain:{
           type:'linear',
           position:'right',
@@ -1393,12 +1503,12 @@ function renderHydroChart(data){
             display:true,
             text:'X (mm)',
             color:textColor,
-            font:{size:isMobile?10:11,weight:'700'}
+            font:{size:isMobile?9.5:11,weight:'700'}
           },
           ticks:{
             color:textColor,
             maxTicksLimit:isMobile?5:7,
-            font:{size:isMobile?9:10},
+            font:{size:isMobile?8.5:10},
             callback(value){return formatNumber(value);}
           },
           grid:{drawOnChartArea:false}
