@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.4.0",
+    version="1.5.0",
 )
 
 # ============================================================
@@ -79,10 +79,10 @@ button{border:0;border-radius:12px;background:var(--primary);color:white;font-we
 .chart{height:360px;padding:16px}.placeholder{height:100%;border:1px dashed #b8c5d5;border-radius:12px;display:grid;place-items:center;text-align:center;color:var(--muted);background:repeating-linear-gradient(0deg,transparent 0,transparent 39px,#edf1f6 40px),repeating-linear-gradient(90deg,transparent 0,transparent 39px,#edf1f6 40px)}
 .pills{display:flex;flex-wrap:wrap;gap:8px}.pill{border:1px solid var(--line);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--muted);background:#fafbfd}
 table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}th{font-size:11px;color:var(--muted)}
-.table{overflow-x:auto}.empty{text-align:center;color:var(--muted);padding:26px}.mobile-data{display:none;padding:10px}.data-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px}.data-item .dt{font-size:11px;color:var(--muted);margin-bottom:4px}.data-item .pn{font-weight:700;font-size:14px}.data-item .pv{font-weight:800;font-size:18px}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-item{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fafbfd}.summary-label{font-size:11px;color:var(--muted);margin-bottom:5px}.summary-value{font-weight:800;font-size:17px}.summary-note{font-size:12px;color:var(--muted);margin-top:3px}.rain-series{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.rain-chip{border:1px solid var(--line);border-radius:999px;padding:7px 10px;background:#fff;font-size:12px}
+.table{overflow-x:auto}.empty{text-align:center;color:var(--muted);padding:26px}.mobile-data{display:none;padding:10px}.data-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px}.data-item .dt{font-size:11px;color:var(--muted);margin-bottom:4px}.data-item .pn{font-weight:700;font-size:14px}.data-item .pv{font-weight:800;font-size:18px}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-item{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fafbfd}.summary-label{font-size:11px;color:var(--muted);margin-bottom:5px}.summary-value{font-weight:800;font-size:17px}.summary-note{font-size:12px;color:var(--muted);margin-top:3px}.rain-series{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.rain-chip{border:1px solid var(--line);border-radius:999px;padding:7px 10px;background:#fff;font-size:12px}.trend-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px}.trend-item{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}.trend-label{font-size:11px;color:var(--muted);margin-bottom:5px}.trend-value{font-weight:800;font-size:17px}.trend-note{font-size:11px;color:var(--muted);margin-top:3px}
 .footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 10px 28px}
 @media(max-width:1050px){.cards{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}}
-@media(max-width:720px){.container{padding:12px}.toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:13px}.value{font-size:21px}.chart{height:300px;padding:10px}button{min-height:48px}.summary-grid{grid-template-columns:1fr 1fr}.table{display:none}.mobile-data{display:block}}
+@media(max-width:720px){.container{padding:12px}.toolbar{grid-template-columns:1fr 1fr}.toolbar .control:first-child{grid-column:1/-1}.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:13px}.value{font-size:21px}.chart{height:300px;padding:10px}button{min-height:48px}.summary-grid{grid-template-columns:1fr 1fr}.trend-grid{grid-template-columns:1fr 1fr}.table{display:none}.mobile-data{display:block}}
 @media(max-width:430px){.toolbar{grid-template-columns:1fr}.toolbar .control:first-child{grid-column:auto}}
 </style>
 </head>
@@ -127,7 +127,7 @@ table{width:100%;border-collapse:collapse;min-width:620px}th,td{padding:11px 14p
 <section class="panel" style="margin-top:16px"><div class="head"><div><div class="head-title">Du lieu gan nhat</div><div class="head-sub">Dữ liệu thực tế từ AI_DATA qua Apps Script API</div></div></div>
 <div class="table"><table><thead><tr><th>Ngay</th><th>Gio</th><th>Cong trinh</th><th>Thong so</th><th>Gia tri</th><th>Don vi</th></tr></thead>
 <tbody id="dataBody"><tr><td colspan="6" class="empty">Chọn công trình để tải dữ liệu.</td></tr></tbody></table></div><div id="mobileData" class="mobile-data"></div></section>
-<div class="footer">THUY LOI AI · Technical Module V1.4 · Bước 3.5 — Phân tích dữ liệu & mobile</div>
+<div class="footer">THUY LOI AI · Technical Module V1.5 · Bước 3.6 — Xu hướng mực nước</div>
 </main>
 
 <script>
@@ -220,7 +220,7 @@ async function loadChartData(){
   try{
     const params=new URLSearchParams({
       facility:f.value,
-      year:'2026',
+      year:String(new Date().getFullYear()),
       days:String(periodDays())
     });
     const selected=parameter.value;
@@ -283,7 +283,35 @@ function renderTechnicalSummary(data, waterSeries){
     +'<div class="summary-item"><div class="summary-label">SO VOI MNDBT</div><div class="summary-value">'+(Number.isFinite(h)&&Number.isFinite(mndbt)?formatNumber(h-mndbt)+' m':'—')+'</div><div class="summary-note">'+relation+'</div></div>'
     +'<div class="summary-item"><div class="summary-label">SO VOI MNDGC</div><div class="summary-value">'+(Number.isFinite(h)&&Number.isFinite(mndgc)?formatNumber(h-mndgc)+' m':'—')+'</div><div class="summary-note">'+(Number.isFinite(h)&&Number.isFinite(mndgc)?(h<=mndgc?'Chưa vượt MNDGC':'Đã vượt MNDGC'):'Chưa đủ giới hạn')+'</div></div>'
     +'<div class="summary-item"><div class="summary-label">BIEN DONG GAN NHAT</div><div class="summary-value">'+(delta!==null?(delta>=0?'+':'')+formatNumber(delta)+' m':'—')+'</div><div class="summary-note">'+(delta!==null?'So với lần đo liền trước':'Chưa đủ 2 lần đo')+'</div></div></div>'
+    +renderTrendHtml(waterSeries)
     +(rainChips?'<div class="summary-label" style="margin-top:14px">LUONG MUA THEO TUNG CHUOI</div><div class="rain-series">'+rainChips+'</div>':'');
+}
+
+function renderTrendHtml(series){
+  const points=series.map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
+  if(!points.length) return '';
+  const latest=points[points.length-1];
+  function windowStats(hours){
+    const start=new Date(latest.time.getTime()-hours*3600000);
+    const inWindow=points.filter(p=>p.time>=start&&p.time<=latest.time);
+    if(inWindow.length<2) return null;
+    const first=inWindow[0], last=latest;
+    return {delta:last.value-first.value,min:Math.min(...inWindow.map(p=>p.value)),max:Math.max(...inWindow.map(p=>p.value)),count:inWindow.length,first:first.time};
+  }
+  const w24=windowStats(24), w72=windowStats(72), w168=windowStats(168);
+  function card(label,stats){
+    if(!stats) return '<div class="trend-item"><div class="trend-label">'+label+'</div><div class="trend-value">—</div><div class="trend-note">Chưa đủ 2 lần đo</div></div>';
+    const d=stats.delta;
+    const sign=d>0?'+':'';
+    const direction=d>0?'Tăng':(d<0?'Giảm':'Ổn định');
+    return '<div class="trend-item"><div class="trend-label">'+label+'</div><div class="trend-value">'+sign+formatNumber(d)+' m</div><div class="trend-note">'+direction+' · '+stats.count+' lần đo</div></div>';
+  }
+  const min=Math.min(...points.map(p=>p.value)), max=Math.max(...points.map(p=>p.value));
+  return '<div class="summary-label" style="margin-top:16px">XU HUONG MUC NUOC</div><div class="trend-grid">'
+    +card('24 GIO',w24)+card('3 NGAY',w72)+card('7 NGAY',w168)
+    +'<div class="trend-item"><div class="trend-label">THAP NHAT</div><div class="trend-value">'+formatNumber(min)+' m</div><div class="trend-note">Trong khoảng đang chọn</div></div>'
+    +'<div class="trend-item"><div class="trend-label">CAO NHAT</div><div class="trend-value">'+formatNumber(max)+' m</div><div class="trend-note">Trong khoảng đang chọn</div></div>'
+    +'</div>';
 }
 
 function escapeHtml(v){
