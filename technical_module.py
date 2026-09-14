@@ -37,7 +37,7 @@ def _safe_error_message(exc):
     if isinstance(exc, URLError):
         reason = getattr(exc, "reason", None)
         return f"Không kết nối được Apps Script: {reason or 'lỗi mạng/DNS.'}"
-    if isinstance(exc, TimeoutError) or exc.__class__.__name__ in ('timeout','socket.timeout'):
+    if isinstance(exc, TimeoutError):
         return f"Apps Script timeout sau {APPS_SCRIPT_TIMEOUT:g} giây."
     if isinstance(exc, json.JSONDecodeError):
         return "Apps Script trả về dữ liệu không phải JSON hợp lệ."
@@ -47,8 +47,7 @@ def fetch_apps_script_api_(api, params=None):
     query = {"api": api}
     if params:
         query.update({k: v for k, v in params.items() if v not in (None, "")})
-    separator = "&" if "?" in APPS_SCRIPT_API_URL else "?"
-    url = APPS_SCRIPT_API_URL + separator + urlencode(query)
+    url = APPS_SCRIPT_API_URL + "?" + urlencode(query)
     req = Request(
         url,
         headers={
@@ -93,6 +92,7 @@ HTML = r'''<!doctype html>
 
 <!-- Chart.js chỉ dùng cho lớp hiển thị biểu đồ; API/backend hiện tại không thay đổi. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -159,19 +159,6 @@ button{cursor:pointer}
 .alert-banner.show{display:flex}.alert-banner.warn{border-color:rgba(216,137,0,.45);background:linear-gradient(90deg,rgba(216,137,0,.13),var(--surface))}
 .alert-banner.danger{border-color:rgba(225,75,50,.55);background:linear-gradient(90deg,rgba(225,75,50,.15),var(--surface))}
 .alert-icon{font-size:20px}.alert-text{flex:1}.alert-title{font-weight:900}.alert-detail{font-size:12px;color:var(--muted);margin-top:2px}
-/* V1.8 - Connection Monitor */
-.connection-panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:14px}
-.connection-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.connection-title{font-weight:900;font-size:14px}.connection-sub{font-size:11px;color:var(--muted);margin-top:2px}
-.connection-btn{min-height:38px!important;padding:0 11px!important;border-radius:11px!important}
-.connection-grid{display:grid;grid-template-columns:repeat(4,1fr) auto;gap:8px;align-items:stretch}
-.connection-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface2);min-width:0}
-.connection-item b{display:block;font-size:11px}.connection-item small{display:block;color:var(--muted);font-size:10px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px}
-.conn-dot{width:9px;height:9px;min-width:9px;border-radius:50%;background:var(--muted);box-shadow:none}
-.conn-dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
-.conn-dot.warn{background:var(--warn);box-shadow:0 0 8px var(--warn)}
-.conn-dot.error{background:var(--danger);box-shadow:0 0 9px var(--danger);animation:alarmBlink .8s infinite}
-.connection-time{display:flex;align-items:center;justify-content:flex-end;color:var(--muted);font-size:10px;padding:0 3px;white-space:nowrap}
 .toolbar{display:grid;grid-template-columns:1.5fr .9fr .8fr auto;gap:10px;margin-bottom:16px}
 .control,.card,.panel{
   background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)
@@ -264,28 +251,11 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div class="alert-actions"><button id="soundBtn" class="sound-btn" onclick="toggleAlertSound()">🔕 Âm thanh tắt</button></div>
   </section>
 
-  <section id="connectionMonitor" class="connection-panel">
-    <div class="connection-head">
-      <div>
-        <div class="connection-title">🔌 Connection Monitor</div>
-        <div class="connection-sub">Theo dõi Frontend · FastAPI · Apps Script · AI_DATA</div>
-      </div>
-      <button id="connectionBtn" class="ghost-btn connection-btn" onclick="checkConnections()">🧪 Kiểm tra kết nối</button>
-    </div>
-    <div class="connection-grid">
-      <div class="connection-item"><span class="conn-dot ok" id="connFrontend"></span><div><b>Frontend</b><small id="connFrontendText">Sẵn sàng</small></div></div>
-      <div class="connection-item"><span class="conn-dot" id="connFastAPI"></span><div><b>FastAPI</b><small id="connFastAPIText">Đang kiểm tra</small></div></div>
-      <div class="connection-item"><span class="conn-dot" id="connApps"></span><div><b>Apps Script</b><small id="connAppsText">Chưa kiểm tra</small></div></div>
-      <div class="connection-item"><span class="conn-dot" id="connAI"></span><div><b>AI_DATA</b><small id="connAIText">Chờ Apps Script</small></div></div>
-      <div class="connection-time" id="connectionTime">Chưa kiểm tra</div>
-    </div>
-  </section>
-
   <section class="toolbar">
     <div class="control"><label>CÔNG TRÌNH</label><select id="facility"><option value="">Đang tải công trình...</option></select></div>
     <div class="control"><label>THÔNG SỐ</label><select id="parameter"><option value="">Mực nước</option></select></div>
     <div class="control"><label>THỜI GIAN</label><select id="period"><option value="24 gio">24 giờ</option><option value="3 ngay">3 ngày</option><option value="7 ngay" selected>7 ngày</option><option value="30 ngay">30 ngày</option><option value="90 ngay">90 ngày</option></select></div>
-    <button class="primary-btn" onclick="refreshModule()">↻ Làm mới</button>
+    <button class="ghost-btn" onclick="checkConnections()">🧪 Kiểm tra kết nối</button><button class="primary-btn" onclick="refreshModule()">↻ Làm mới</button>
   </section>
 
   <section class="date-filter">
@@ -331,7 +301,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
       <input id="gridTo" class="data-date" type="date" title="Đến ngày" onchange="applyDataFilter()">
       <div class="export-group">
         <button class="ghost-btn" style="min-height:40px;padding:0 11px" onclick="exportCSV()">CSV</button>
-        <button class="primary-btn" style="min-height:40px;padding:0 11px" onclick="exportExcel()">Excel</button>
+        <button class="primary-btn" style="min-height:40px;padding:0 11px" onclick="exportExcel()">Excel</button><button class="ghost-btn" style="min-height:40px;padding:0 11px" onclick="exportQuickReportWord()">📄 Báo cáo nhanh</button>
         <button class="ghost-btn" style="min-height:40px;padding:0 11px" onclick="clearDataFilter()">Xóa lọc</button>
       </div>
       <div class="page-info" id="pageInfo">0 bản ghi</div>
@@ -341,7 +311,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div id="pagination" class="pagination"></div>
   </section>
 
-  <div class="footer">THUY LOI AI · Technical Module V1.8 · Smart Control Room · Connection Monitor · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.9 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -406,47 +376,25 @@ async function fetchJson(url, options={}, retries=2){
   }
   throw lastError||new Error('Không kết nối được API.');
 }
-function setConn(id,state,text){
-  const dot=document.getElementById(id),label=document.getElementById(id+'Text');
-  dot.className='conn-dot '+(state||'');
-  label.textContent=text;
-}
-function setDataError(message){
-  state.textContent='Lỗi kết nối';stateDetail.textContent=message||'Không tải được dữ liệu.';
-  technicalSummary.innerHTML='<div class="empty">⚠️ '+escapeHtml(message||'Không tải được dữ liệu.')+'</div>';
-  const ab=document.getElementById('alertBanner');ab.className='alert-banner danger';
-  document.getElementById('alertIcon').textContent='🔴';
-  document.getElementById('alertTitle').textContent='MẤT KẾT NỐI DỮ LIỆU';
-  document.getElementById('alertDetail').textContent=message||'Không thể lấy dữ liệu từ Apps Script / AI_DATA.';
-  lastAlertLevel='danger';
-}
 async function checkConnections(){
-  const btn=document.getElementById('connectionBtn');btn.disabled=true;btn.textContent='⏳ Đang kiểm tra...';
-  setConn('connFrontend','ok','Trình duyệt hoạt động');
-  setConn('connFastAPI','','Đang kiểm tra...');
-  setConn('connApps','','Đang kiểm tra...');
-  setConn('connAI','','Đang kiểm tra...');
+  const buttons=[...document.querySelectorAll('button')].filter(b=>b.textContent.includes('Kiểm tra kết nối'));
+  buttons.forEach(b=>{b.disabled=true;b.textContent='⏳ Đang kiểm tra...'});
   try{
     const result=await fetchJson('/api/connection',{},0);
-    setConn('connFastAPI','ok',`Online · ${result.fastapi_ms||0} ms`);
     if(result.apps_script_ok){
-      setConn('connApps','ok',`Kết nối · ${result.apps_script_ms||0} ms`);
-      setConn('connAI','ok','Truy cập qua Apps Script');
-      document.getElementById('connectionTime').textContent='Kiểm tra lúc '+new Date().toLocaleTimeString('vi-VN');
+      alertBanner.className='alert-banner safe show';
+      document.getElementById('alertIcon').textContent='🟢';
+      document.getElementById('alertTitle').textContent='Kết nối dữ liệu OK';
+      document.getElementById('alertDetail').textContent=`FastAPI → Apps Script → AI_DATA hoạt động · ${result.apps_script_ms||0} ms`;
       return true;
     }
-    setConn('connApps','error',result.apps_script_error||'Apps Script lỗi');
-    setConn('connAI','error','Không truy cập được AI_DATA');
-    document.getElementById('connectionTime').textContent='Lỗi lúc '+new Date().toLocaleTimeString('vi-VN');
+    setDataError(result.apps_script_error||'Apps Script/AI_DATA không phản hồi.');
     return false;
   }catch(err){
-    setConn('connFastAPI','error',err.message||'FastAPI lỗi');
-    setConn('connApps','error','Không kiểm tra được');
-    setConn('connAI','error','Không kiểm tra được');
-    document.getElementById('connectionTime').textContent='Lỗi lúc '+new Date().toLocaleTimeString('vi-VN');
+    setDataError(err.message||'Không kiểm tra được kết nối.');
     return false;
   }finally{
-    btn.disabled=false;btn.textContent='🧪 Kiểm tra kết nối';
+    buttons.forEach(b=>{b.disabled=false;b.textContent='🧪 Kiểm tra kết nối'});
   }
 }
 
@@ -474,15 +422,13 @@ async function loadParameters(){
   if(!f.value)return;
   try{
     const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value));
-    currentParameters=result.data||result.parameters||{waterLevel:[],rainfall:[]};
-    const normalizeName=x=>typeof x==='string'?x:(x&&typeof x==='object'?(x.name||x.parameter||x.label||x.value||''):'');
-    const rainList=(Array.isArray(currentParameters.rainfall)?currentParameters.rainfall:[]).map(normalizeName).filter(Boolean);
-    const waterList=(Array.isArray(currentParameters.waterLevel)?currentParameters.waterLevel:[]).map(normalizeName).filter(Boolean);
+    currentParameters=result.data||{waterLevel:[],rainfall:[]};
+    const rainList=currentParameters.rainfall||[];
     rainPills.innerHTML=rainList.length?rainList.map(x=>'<span class="chip">'+escapeHtml(x.replace(/\s*\([^)]*\)/g,''))+'</span>').join(''):'<span class="chip">Không có chuỗi mưa</span>';
-    const options=[{label:'Mực nước',value:''},...waterList.map(x=>({label:x,value:x})),...rainList.map(x=>({label:x,value:x}))];
+    const options=[{label:'Mực nước',value:''},...(currentParameters.waterLevel||[]).map(x=>({label:x,value:x})),...rainList.map(x=>({label:x,value:x}))];
     parameter.innerHTML='';const seen=new Set();
     options.forEach(o=>{const key=o.value+'|'+o.label;if(seen.has(key))return;seen.add(key);const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.label;parameter.appendChild(opt)})
-  }catch(err){console.error(err);parameter.innerHTML='<option value="">Không tải được thông số</option>';setConn('connAI','error',err.message||'AI_DATA lỗi')}
+  }catch(err){console.error(err);parameter.innerHTML='<option value="">Không tải được thông số</option>'}
 }
 
 async function loadChartData(){
@@ -494,11 +440,10 @@ async function loadChartData(){
     if(from)params.set('fromDate',from);
     if(to)params.set('toDate',to);
     const selected=parameter.value;
-    if(selected){const rainNames=(Array.isArray(currentParameters.rainfall)?currentParameters.rainfall:[]).map(x=>typeof x==='string'?x:(x&&typeof x==='object'?(x.name||x.parameter||x.label||x.value||''):''));const isRain=rainNames.includes(selected);if(!isRain)params.set('waterParameter',selected);else params.set('rainfallParameters',selected)}
+    if(selected){const isRain=(currentParameters.rainfall||[]).includes(selected);if(!isRain)params.set('waterParameter',selected);else params.set('rainfallParameters',selected)}
     const result=await fetchJson('/api/chart?'+params.toString());
-    currentData=result.data||result.chart||result; if(!currentData||typeof currentData!=='object')throw new Error('Dữ liệu biểu đồ không đúng cấu trúc.'); renderData(currentData);
-    setConn('connAI','ok','Dữ liệu thực tế đã tải');
-  }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu.');setConn('connAI','error',err.message||'AI_DATA lỗi')}
+    currentData=result.data;renderData(currentData);
+  }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu.')}
 }
 
 function evaluateAlert(data,latest){
@@ -544,7 +489,7 @@ function evaluateAlert(data,latest){
 
 function renderData(data){
   const waterSeries=Array.isArray(data.water)?data.water:[],latest=waterSeries.length?waterSeries[waterSeries.length-1]:null;
-  water.textContent=latest?formatNumber(latest.value):'—';state.textContent=latest?'Có dữ liệu':'Chưa có mực nước'; if(!latest){stateDetail.textContent='Không có mực nước trong khoảng đã chọn';document.getElementById('alertTitle').textContent='CHƯA CÓ DỮ LIỆU';document.getElementById('alertDetail').textContent='Apps Script đã phản hồi nhưng chưa có mực nước phù hợp.';document.getElementById('alertBanner').className='alert-banner warn';}
+  water.textContent=latest?formatNumber(latest.value):'—';state.textContent=latest?'Có dữ liệu':'Chưa có mực nước';
   if(latest){const d=new Date(latest.time);stateDetail.textContent='Cập nhật '+d.toLocaleString('vi-VN');document.getElementById('waterNote').textContent='Lần đo mới nhất'}
   mndbt.textContent=data.limits&&data.limits.mndbt!=null?formatNumber(data.limits.mndbt):'—';
   mndgc.textContent=data.limits&&data.limits.mndgc!=null?formatNumber(data.limits.mndgc):'—';
@@ -620,6 +565,91 @@ function exportExcel(){
   XLSX.writeFile(wb,`THUY_LOI_AI_Du_lieu_${exportFileStamp()}.xlsx`);
 }
 
+
+function reportDateRange(series){
+  const points=(series||[]).map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
+  const from=document.getElementById('fromDate').value, to=document.getElementById('toDate').value;
+  if(from||to)return {from:from||'—',to:to||'—',points};
+  if(points.length)return {from:points[0].time.toLocaleDateString('vi-VN'),to:points[points.length-1].time.toLocaleDateString('vi-VN'),points};
+  return {from:'—',to:'—',points:[]};
+}
+function fmtReportDate(d){return d instanceof Date?d.toLocaleString('vi-VN'):String(d||'—')}
+function reportAnalysis(data){
+  const r=reportDateRange(data.water||[]), pts=r.points, latest=pts[pts.length-1], first=pts[0];
+  const bt=Number(data.limits&&data.limits.mndbt), gc=Number(data.limits&&data.limits.mndgc);
+  const rainfallSeries=Array.isArray(data.rainfall)?data.rainfall:[];
+  const rainPoints=rainfallSeries.flatMap(x=>(Array.isArray(x.data)?x.data:[]).map(p=>({time:new Date(p.time),value:Number(p.value),name:x.parameter||'Lượng mưa'}))).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime()));
+  const totalRain=Number.isFinite(Number(data.totalRainfall))?Number(data.totalRainfall):rainPoints.reduce((sum,p)=>sum+(p.value||0),0);
+  const increase=latest&&first?latest.value-first.value:null;
+  const min=pts.length?Math.min(...pts.map(p=>p.value)):null, max=pts.length?Math.max(...pts.map(p=>p.value)):null;
+  const maxRise=pts.length>1?Math.max(...pts.slice(1).map((p,i)=>p.value-pts[i].value)):null;
+  const maxDrop=pts.length>1?Math.min(...pts.slice(1).map((p,i)=>p.value-pts[i].value)):null;
+  const abnormal=[];
+  const addAbnormal=x=>{if(x&&!abnormal.includes(x))abnormal.push(x)};
+  if(latest&&Number.isFinite(gc)&&latest.value>=gc)addAbnormal(`Mực nước mới nhất ${formatNumber(latest.value)} m chạm/vượt MNDGC ${formatNumber(gc)} m.`);
+  else if(max!==null&&Number.isFinite(gc)&&max>=gc)addAbnormal(`Trong kỳ có thời điểm mực nước chạm/vượt MNDGC ${formatNumber(gc)} m.`);
+  if(latest&&Number.isFinite(bt)&&latest.value>=bt)addAbnormal(`Mực nước mới nhất không thấp hơn MNDBT ${formatNumber(bt)} m.`);
+  else if(max!==null&&Number.isFinite(bt)&&max>=bt)addAbnormal(`Trong kỳ có thời điểm mực nước đạt/vượt MNDBT ${formatNumber(bt)} m.`);
+  for(let i=1;i<pts.length;i++){
+    const d=pts[i].value-pts[i-1].value, hours=(pts[i].time-pts[i-1].time)/3600000;
+    if(hours>0&&Math.abs(d)>=0.30)addAbnormal(`Biến động đáng chú ý: ${d>=0?'+':''}${formatNumber(d)} m trong ${hours.toFixed(1)} giờ so với lần đo trước.`);
+  }
+  const trendFor=hours=>{if(!latest)return null;const cutoff=latest.time.getTime()-hours*3600000,a=pts.filter(p=>p.time.getTime()>=cutoff);return a.length>1?latest.value-a[0].value:null};
+  const trend24=trendFor(24),trend72=trendFor(72),trend168=trendFor(168);
+  const rate24=trend24!==null?trend24/24:null;
+  const rainPeak=rainPoints.length?rainPoints.reduce((a,b)=>b.value>a.value?b:a):null;
+  let forecast='Chưa đủ dữ liệu để dự kiến xu hướng.';
+  const projected={h6:null,h12:null,h24:null,btHours:null,gcHours:null};
+  if(latest&&trend24!==null){
+    projected.h6=latest.value+trend24/4; projected.h12=latest.value+trend24/2; projected.h24=latest.value+trend24;
+    forecast=`Theo xu hướng 24 giờ gần nhất (ngoại suy tuyến tính, chỉ mang tính tham khảo): sau 6 giờ khoảng ${formatNumber(projected.h6)} m; 12 giờ khoảng ${formatNumber(projected.h12)} m; 24 giờ khoảng ${formatNumber(projected.h24)} m nếu điều kiện và xu hướng hiện tại tiếp diễn.`;
+    if(rate24>0){
+      if(Number.isFinite(bt)&&latest.value<bt)projected.btHours=(bt-latest.value)/rate24;
+      if(Number.isFinite(gc)&&latest.value<gc)projected.gcHours=(gc-latest.value)/rate24;
+      if(projected.btHours!==null&&projected.btHours<=24)forecast+=` Với tốc độ tăng trung bình hiện tại, có khả năng tiến đến MNDBT sau khoảng ${formatNumber(projected.btHours,1)} giờ.`;
+      if(projected.gcHours!==null&&projected.gcHours<=48)forecast+=` Với cùng xu hướng, có khả năng tiến đến MNDGC sau khoảng ${formatNumber(projected.gcHours,1)} giờ.`;
+    }
+  }
+  let assessment='Chưa đủ dữ liệu để đánh giá.';
+  if(latest&&Number.isFinite(gc)&&latest.value>=gc)assessment='Mực nước hiện tại chạm/vượt MNDGC; cần tăng cường kiểm tra, theo dõi và thực hiện chế độ vận hành/cảnh báo theo quy trình của công trình.';
+  else if(latest&&Number.isFinite(bt)&&latest.value>=bt)assessment='Mực nước hiện tại từ MNDBT trở lên; cần tiếp tục theo dõi diễn biến mực nước và lượng mưa, đồng thời đối chiếu quy trình vận hành.';
+  else if(latest)assessment='Mực nước hiện tại thấp hơn MNDBT; tiếp tục theo dõi xu thế mực nước, lượng mưa và các yếu tố vận hành liên quan.';
+  return {r,pts,latest,first,bt,gc,totalRain,rainPoints,rainPeak,increase,min,max,maxRise,maxDrop,abnormal,trend24,trend72,trend168,rate24,projected,forecast,assessment};
+}
+function exportQuickReportWord(){
+  if(!currentData||!Array.isArray(currentData.water)||!currentData.water.length){alert('Chưa có dữ liệu mực nước để lập Báo cáo nhanh.');return}
+  const a=reportAnalysis(currentData), d=currentData, facility=d.facility||f.value||'Chưa xác định';
+  const rainRows=(d.rainfall||[]).map(x=>{
+    const name=x.parameter||'Lượng mưa', fromApi=Number((d.rainfallTotalsByParameter||{})[name]);
+    const fallback=(Array.isArray(x.data)?x.data:[]).reduce((sum,p)=>sum+(Number(p.value)||0),0);
+    return {name,total:Number.isFinite(fromApi)?fromApi:fallback};
+  }).filter(x=>Number.isFinite(x.total));
+  const abnormalHtml=a.abnormal.length?a.abnormal.map(x=>`<li>${escapeHtml(x)}</li>`).join(''):'<li>Không phát hiện bất thường rõ rệt theo các tiêu chí tự động của báo cáo trong khoảng dữ liệu đã chọn.</li>';
+  const marginBT=a.latest&&Number.isFinite(a.bt)?a.latest.value-a.bt:null, marginGC=a.latest&&Number.isFinite(a.gc)?a.latest.value-a.gc:null;
+  const rainTable=rainRows.length?`<table><tr><th>Chuỗi mưa</th><th>Tổng lượng mưa</th></tr>${rainRows.map(x=>`<tr><td>${escapeHtml(x.name)}</td><td>${formatNumber(x.total)} mm</td></tr>`).join('')}</table>`:'<p>Chưa có số liệu tổng hợp lượng mưa theo chuỗi.</p>';
+  const trendText=x=>x===null?'—':(x>=0?'+':'')+formatNumber(x)+' m';
+  const peakRain=a.rainPeak?`${formatNumber(a.rainPeak.value)} mm tại ${fmtReportDate(a.rainPeak.time)}`:'—';
+  const latestText=a.latest?`${formatNumber(a.latest.value)} m tại ${fmtReportDate(a.latest.time)}`:'—';
+  const firstText=a.first?`${formatNumber(a.first.value)} m tại ${fmtReportDate(a.first.time)}`:'—';
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.45;color:#111}h1{text-align:center;font-size:17pt;margin:0 0 8px}h2{font-size:13pt;margin:16px 0 6px;border-bottom:1px solid #777;padding-bottom:3px}p{margin:5px 0}table{border-collapse:collapse;width:100%;margin:7px 0}th,td{border:1px solid #777;padding:6px;text-align:left;vertical-align:top}th{font-weight:bold;background:#eee}.meta td:first-child{width:28%;font-weight:bold}.note{font-style:italic;color:#444}.footer{margin-top:22px;font-size:9pt;color:#555}</style></head><body>
+<h1>BÁO CÁO NHANH DIỄN BIẾN MỰC NƯỚC – LƯỢNG MƯA</h1>
+<table class="meta"><tr><td>Công trình</td><td>${escapeHtml(facility)}</td></tr><tr><td>Thời gian</td><td>Từ ${escapeHtml(a.r.from)} đến ${escapeHtml(a.r.to)}</td></tr><tr><td>Ngày lập báo cáo</td><td>${fmtReportDate(new Date())}</td></tr></table>
+<h2>1. Tổng hợp số liệu quan trắc</h2><table><tr><th>Nội dung</th><th>Kết quả</th></tr>
+<tr><td>Số lần đo mực nước</td><td>${a.pts.length} lần</td></tr><tr><td>Mực nước đầu kỳ</td><td>${escapeHtml(firstText)}</td></tr><tr><td>Mực nước mới nhất</td><td>${escapeHtml(latestText)}</td></tr><tr><td>Mực nước thấp nhất</td><td>${a.min!==null?formatNumber(a.min)+' m':'—'}</td></tr><tr><td>Mực nước cao nhất</td><td>${a.max!==null?formatNumber(a.max)+' m':'—'}</td></tr><tr><td>Biến động đầu kỳ → cuối kỳ</td><td>${trendText(a.increase)}</td></tr><tr><td>Tăng lớn nhất giữa hai lần đo</td><td>${a.maxRise!==null?trendText(a.maxRise):'—'}</td></tr><tr><td>Giảm lớn nhất giữa hai lần đo</td><td>${a.maxDrop!==null?trendText(a.maxDrop):'—'}</td></tr><tr><td>Xu hướng 24 giờ</td><td>${trendText(a.trend24)}</td></tr><tr><td>Xu hướng 3 ngày</td><td>${trendText(a.trend72)}</td></tr><tr><td>Xu hướng 7 ngày</td><td>${trendText(a.trend168)}</td></tr><tr><td>Tổng lượng mưa</td><td>${formatNumber(a.totalRain)} mm</td></tr><tr><td>Lượng mưa lớn nhất ghi nhận</td><td>${escapeHtml(peakRain)}</td></tr></table>
+<h2>2. So sánh mực nước với MNDBT, MNDGC</h2><table><tr><th>Ngưỡng</th><th>Giá trị</th><th>Chênh lệch với H mới nhất</th><th>Đánh giá</th></tr>
+<tr><td>MNDBT</td><td>${Number.isFinite(a.bt)?formatNumber(a.bt)+' m':'—'}</td><td>${marginBT!==null?(marginBT>=0?'+':'')+formatNumber(marginBT)+' m':'—'}</td><td>${a.latest&&Number.isFinite(a.bt)?(a.latest.value>=a.bt?'Đạt/vượt MNDBT':'Thấp hơn MNDBT'):'Chưa đủ dữ liệu'}</td></tr>
+<tr><td>MNDGC</td><td>${Number.isFinite(a.gc)?formatNumber(a.gc)+' m':'—'}</td><td>${marginGC!==null?(marginGC>=0?'+':'')+formatNumber(marginGC)+' m':'—'}</td><td>${a.latest&&Number.isFinite(a.gc)?(a.latest.value>=a.gc?'CHẠM/VƯỢT MNDGC':'Chưa vượt MNDGC'):'Chưa đủ dữ liệu'}</td></tr></table>
+<h2>3. Tổng hợp lượng mưa</h2>${rainTable}
+<h2>4. Bất thường / điểm cần chú ý</h2><ul>${abnormalHtml}</ul>
+<h2>5. Nhận định kỹ thuật</h2><p>${escapeHtml(a.assessment)}</p>
+<h2>6. Dự kiến diễn biến</h2><p>${escapeHtml(a.forecast)}</p>
+<h2>7. Kiến nghị theo dõi</h2><ul><li>Tiếp tục cập nhật mực nước và lượng mưa theo tần suất quy định của công trình.</li><li>Đối chiếu diễn biến với MNDBT, MNDGC và quy trình vận hành hồ/công trình hiện hành.</li><li>Nếu mực nước tăng nhanh, tiến sát/vượt ngưỡng hoặc lượng mưa tăng mạnh, tăng cường theo dõi và thực hiện chế độ báo cáo/cảnh báo theo quy định.</li><li>Đánh giá đồng thời lượng mưa, xu thế mực nước và tình trạng vận hành trước khi quyết định điều hành.</li></ul>
+<p class="note">Lưu ý: “Dự kiến diễn biến” là ngoại suy xu hướng từ số liệu quan trắc đang có, chỉ mang tính tham khảo; không phải dự báo khí tượng thủy văn chính thức và không thay thế quy trình vận hành hoặc quyết định của người có thẩm quyền. Tiêu chí biến động đáng chú ý ≥ 0,30 m giữa hai lần đo là tiêu chí phân tích của báo cáo, không phải ngưỡng quy chuẩn.</p>
+<div class="footer">THUY LOI AI · Báo cáo nhanh tự động từ dữ liệu đang hiển thị trên Dashboard.</div></body></html>`;
+  const blob=new Blob(['\ufeff',html],{type:'application/msword;charset=utf-8'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`Bao_cao_nhanh_${String(facility).replace(/[^a-zA-Z0-9À-ỹ _-]/g,'_')}_${exportFileStamp()}.doc`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 function renderTable(){
   const total=filteredRows.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(currentPage>pages)currentPage=pages;
   const start=(currentPage-1)*PAGE_SIZE,rows=filteredRows.slice(start,start+PAGE_SIZE);
@@ -657,35 +687,24 @@ function renderTrendHtml(series){
 }
 
 function renderHydroChart(data){
-  const ws=(Array.isArray(data.water)?data.water:[]).map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
-  const rainSeries=Array.isArray(data.rainfall)?data.rainfall:[];
-  const rain=[];rainSeries.forEach(s=>(Array.isArray(s.data)?s.data:[]).forEach(p=>{const d=new Date(p.time),v=Number(p.value);if(Number.isFinite(v)&&Number.isFinite(d.getTime()))rain.push({time:d,value:v,name:s.parameter||'Lượng mưa'})}));
-  if(!window.Chart){
-    const box=document.getElementById('hydroChart');
-    if(box){const ctx=box.getContext('2d');ctx.clearRect(0,0,box.width,box.height);ctx.font='14px Arial';ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted');ctx.fillText('Biểu đồ chưa tải được thư viện Chart.js.',20,35)}
-    hydroChart=null;return;
-  }
-  if(hydroChart){try{hydroChart.destroy()}catch(e){}hydroChart=null}
+  const ws=(data.water||[]).map(p=>({x:new Date(p.time),y:Number(p.value)})).filter(p=>Number.isFinite(p.y));
+  const rain=(data.rainfall||[]).flatMap(s=>(s.data||[]).map(p=>({x:new Date(p.time),y:Number(p.value),name:s.parameter}))).filter(p=>Number.isFinite(p.y));
   const bt=Number(data.limits&&data.limits.mndbt),gc=Number(data.limits&&data.limits.mndgc);
-  const allTimes=[...ws.map(p=>p.time.getTime()),...rain.map(p=>p.time.getTime())].sort((a,b)=>a-b);
-  const labels=[...new Set(allTimes.map(t=>new Date(t).toISOString()))].map(x=>new Date(x));
-  const labelKey=d=>d.toISOString();
-  const labelText=labels.map(d=>d.toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}));
-  const findValue=(arr,label,name)=>{const target=labelKey(label);for(const p of arr){if(labelKey(p.time)===target&&(name==null||p.name===name))return p.value}return null};
+  if(hydroChart)hydroChart.destroy();
   const dark=document.documentElement.classList.contains('dark'),grid=dark?'rgba(170,195,220,.10)':'rgba(50,85,120,.10)',text=dark?'#9fb0c6':'#687386';
   const datasets=[];
-  const rainNames=[...new Set(rain.map(p=>p.name))];
-  rainNames.forEach((name,idx)=>datasets.push({type:'bar',label:name||'Lượng mưa',data:labels.map(d=>findValue(rain,d,name)),yAxisID:'rain',backgroundColor:dark?'rgba(71,214,181,.38)':'rgba(104,116,128,.38)',borderWidth:0,barPercentage:.72,categoryPercentage:.9}));
-  if(ws.length)datasets.push({type:'line',label:'Mực nước',data:labels.map(d=>findValue(ws,d)),yAxisID:'water',borderColor:dark?'#20c5ef':'#0878c9',backgroundColor:'transparent',borderWidth:3,pointRadius:2.5,pointHoverRadius:6,tension:.32,spanGaps:true});
-  if(Number.isFinite(bt))datasets.push({type:'line',label:'MNDBT',data:labels.map(()=>bt),yAxisID:'water',borderColor:dark?'#ffb13b':'#d88900',borderWidth:2,borderDash:[8,6],pointRadius:0});
-  if(Number.isFinite(gc))datasets.push({type:'line',label:'MNDGC',data:labels.map(()=>gc),yAxisID:'water',borderColor:dark?'#ff684e':'#e14b32',borderWidth:2,borderDash:[5,5],pointRadius:0});
+  if(rain.length)datasets.push({type:'bar',label:'Lượng mưa',data:rain,yAxisID:'rain',backgroundColor:dark?'rgba(71,214,181,.38)':'rgba(104,116,128,.38)',borderWidth:0,barPercentage:.72,categoryPercentage:.9});
+  if(ws.length)datasets.push({type:'line',label:'Mực nước',data:ws,yAxisID:'water',borderColor:dark?'#20c5ef':'#0878c9',backgroundColor:'transparent',borderWidth:3,pointRadius:2.5,pointHoverRadius:6,tension:.32});
+  if(Number.isFinite(bt))datasets.push({type:'line',label:'MNDBT',data:ws.length?ws.map(p=>({x:p.x,y:bt})):[],yAxisID:'water',borderColor:dark?'#ffb13b':'#d88900',borderWidth:2,borderDash:[8,6],pointRadius:0});
+  if(Number.isFinite(gc))datasets.push({type:'line',label:'MNDGC',data:ws.length?ws.map(p=>({x:p.x,y:gc})):[],yAxisID:'water',borderColor:dark?'#ff684e':'#e14b32',borderWidth:2,borderDash:[5,5],pointRadius:0});
   hydroChart=new Chart(document.getElementById('hydroChart'),{
-    data:{labels:labelText,datasets},
+    data:{datasets},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
       plugins:{legend:{labels:{color:text,usePointStyle:true,padding:14}},tooltip:{callbacks:{
-        label(ctx){const unit=ctx.dataset.yAxisID==='rain'?'mm':'m';return `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)} ${unit}`}
+        title(items){return items[0]?.parsed?.x?new Date(items[0].parsed.x).toLocaleString('vi-VN'):''},
+        label(ctx){return `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)} ${ctx.dataset.yAxisID==='rain'?'mm':'m'}`}
       }}},
-      scales:{x:{ticks:{color:text,maxRotation:0,autoSkip:true,maxTicksLimit:12},grid:{color:grid}},
+      scales:{x:{type:'time',time:{unit:periodDays()<=1?'hour':periodDays()<=7?'day':'day'},ticks:{color:text,maxRotation:0},grid:{color:grid}},
         water:{position:'left',title:{display:true,text:'H (m)',color:text},ticks:{color:text},grid:{color:grid}},
         rain:{position:'right',title:{display:true,text:'Mưa (mm)',color:text},ticks:{color:text},grid:{drawOnChartArea:false}}
       }}
@@ -695,15 +714,9 @@ function fitChart(){if(currentData)renderHydroChart(currentData)}
 
 async function loadFacilities(){
   f.disabled=true;f.innerHTML='<option value="">⏳ Đang tải công trình...</option>';
-  setConn('connFastAPI','','Đang kết nối...');
-  setConn('connApps','','Đang kiểm tra...');
-  setConn('connAI','','Chờ dữ liệu...');
   try{
     const result=await fetchJson('/api/facilities',{},2);
-    setConn('connFastAPI','ok','Online');
-    setConn('connApps','ok','Kết nối thành công');
-    setConn('connAI','ok','AI_DATA sẵn sàng');
-    let facilities=Array.isArray(result.data)?result.data:(Array.isArray(result.facilities)?result.facilities:[]);
+    let facilities=Array.isArray(result.data)?result.data:[];
     facilities=facilities.map(x=>{
       if(typeof x==='string')return x;
       if(x&&typeof x==='object')return x.name||x.facility||x['CÔNG TRÌNH']||x['Công trình']||x.value||'';
@@ -723,9 +736,6 @@ async function loadFacilities(){
     console.error(err);
     f.innerHTML='<option value="">🔴 Mất kết nối Apps Script</option>';
     s.textContent='Không kết nối được';
-    setConn('connFastAPI','error','API không phản hồi');
-    setConn('connApps','error',err.message||'Apps Script lỗi');
-    setConn('connAI','error','Không truy cập được');
     setDataError(err.message||'Không tải được danh sách công trình.');
   }finally{f.disabled=false}
 }
@@ -791,8 +801,8 @@ def technical_dashboard():
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.8.0","status":"ok","stage":4,"mode":"apps_script_proxy","connection_monitor":True}
+    return {"module":"technical_module","version":"1.9.0","status":"ok","stage":4,"mode":"apps_script_proxy"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")), reload=False)
+    uvicorn.run("technical_module:app", host="0.0.0.0", port=8001, reload=False)
