@@ -22,13 +22,13 @@ except ImportError:  # pragma: no cover
     GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V2.4.0
+# THUY LOI AI - TECHNICAL MODULE V2.5.0
 # DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
 # Doc truc tiep AI_DATA bang Google Sheets API.
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.4.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.5.0")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -566,6 +566,50 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
   }
 }
 @media(max-width:430px){
+  .panel:has(#hydroChart) .panel-head{
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+}
+
+/* ============================================================
+   BIỂU ĐỒ DIỄN BIẾN — MOBILE FULL BLEED V2.5
+   ============================================================ */
+@media (max-width:720px){
+  .panel:has(#hydroChart),
+  .panel:has(.chart-wrap){
+    margin-left:0!important;
+    margin-right:0!important;
+    padding-left:0!important;
+    padding-right:0!important;
+    width:100%!important;
+    max-width:none!important;
+    border-left:0!important;
+    border-right:0!important;
+    border-radius:0!important;
+  }
+
+  .panel:has(#hydroChart) .chart-wrap,
+  .panel:has(.chart-wrap) .chart-wrap{
+    width:100%!important;
+    max-width:none!important;
+    margin-left:0!important;
+    margin-right:0!important;
+    padding-left:0!important;
+    padding-right:0!important;
+    border-left:0!important;
+    border-right:0!important;
+    border-radius:0!important;
+    box-sizing:border-box!important;
+  }
+
+  .panel:has(#hydroChart) .panel-head{
+    padding-left:12px!important;
+    padding-right:12px!important;
+  }
+}
+
+@media (max-width:430px){
   .panel:has(#hydroChart) .panel-head{
     padding-left:10px!important;
     padding-right:10px!important;
@@ -1169,154 +1213,170 @@ function renderTrendHtml(series){
 
 function renderHydroChart(data){
   // ============================================================
-  // BIỂU ĐỒ DIỄN BIẾN V2.4
-  // Y trái: HTL (m), MNDBT, MNDGC
-  // Y phải: X (mm)
-  // HTL: line + fill nền nhạt
-  // Mưa: bar màu động theo cường độ
-  // Tooltip: index + intersect=false
-  // Mobile: full-bleed, legend gọn
+  // THỦY LỢI AI — BIỂU ĐỒ DIỄN BIẾN V2.5
+  //
+  // X-axis : thời gian quan trắc thực
+  // Y-left : HTL (m), MNDBT, MNDGC
+  // Y-right: X (mm)
+  //
+  // HTL    : line + fill nền nhạt, KHÔNG làm mượt / KHÔNG nối
+  //          xuyên qua điểm dữ liệu bị thiếu.
+  // Mưa    : bar đỏ đơn sắc, alpha 0.25 -> 0.95 theo giá trị.
+  //          Cột mảnh: barPercentage 0.5, categoryPercentage 0.7.
+  // Tooltip: mode=index, intersect=false.
+  // Mobile : full-bleed, legend gọn phía dưới.
   // ============================================================
-  const ws=normalizeSeries(data.water);
 
-  const rain=(data.rainfall||[]).flatMap(s=>{
-    const arr=normalizeSeries(s&&s.data);
-    return arr.map(p=>({
-      x:p.time.getTime(),
-      y:p.value,
-      name:s&&s.parameter?s.parameter:'X (mm)'
-    }));
-  }).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  const waterSeries=normalizeSeries(data?.water);
+  const waterPts=waterSeries
+    .map(p=>({x:p.time.getTime(),y:Number(p.value)}))
+    .filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
 
-  const waterPts=ws.map(p=>({
-    x:p.time.getTime(),
-    y:p.value
-  })).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  const rain=[];
+  (Array.isArray(data?.rainfall)?data.rainfall:[]).forEach(series=>{
+    const pts=normalizeSeries(series?.data);
+    pts.forEach(p=>{
+      const x=p.time.getTime();
+      const y=Number(p.value);
+      if(Number.isFinite(x)&&Number.isFinite(y)){
+        rain.push({
+          x:x,
+          y:y,
+          parameter:series?.parameter||'X (mm)'
+        });
+      }
+    });
+  });
 
-  const bt=Number(data.limits&&data.limits.mndbt);
-  const gc=Number(data.limits&&data.limits.mndgc);
+  // Giữ đúng thứ tự thời gian, đồng thời bảo vệ dữ liệu bất thường.
+  waterPts.sort((a,b)=>a.x-b.x);
+  rain.sort((a,b)=>a.x-b.x);
 
-  if(hydroChart)hydroChart.destroy();
+  const mndbt=Number(data?.limits?.mndbt);
+  const mndgc=Number(data?.limits?.mndgc);
+
+  if(hydroChart){
+    hydroChart.destroy();
+    hydroChart=null;
+  }
 
   const canvas=document.getElementById('hydroChart');
   if(!canvas)return;
+
+  // Không vẽ chart rỗng.
   if(!waterPts.length&&!rain.length)return;
 
   const dark=document.documentElement.classList.contains('dark');
-  const textColor=dark?'#9fb0c6':'#687386';
-  const grid=dark?'rgba(170,195,220,.10)':'rgba(50,85,120,.10)';
-
-  const allTimes=[...waterPts.map(p=>p.x),...rain.map(p=>p.x)]
-    .filter(Number.isFinite)
-    .sort((a,b)=>a-b);
-
-  const minX=allTimes.length?allTimes[0]:Date.now();
-  const maxX=allTimes.length?allTimes[allTimes.length-1]:minX+3600000;
+  const textColor=dark?'#a9b8c9':'#657286';
+  const gridColor=dark?'rgba(170,195,220,.11)':'rgba(50,85,120,.10)';
 
   // ------------------------------------------------------------
-  // MƯA ĐỘNG MÀU:
-  // alpha 0.20 -> 0.70 theo tỷ lệ với đỉnh mưa.
-  // Mưa lớn >= 70% đỉnh và >= 20 mm -> đỏ đậm.
+  // Trục thời gian: lấy đúng min/max của dữ liệu thực.
   // ------------------------------------------------------------
-  const maxRain=rain.length?Math.max(...rain.map(p=>Math.max(0,p.y))):0;
-  const redThreshold=Math.max(20,maxRain*0.70);
+  const allTimes=waterPts.map(p=>p.x).concat(rain.map(p=>p.x));
+  const minX=Math.min(...allTimes);
+  const maxX=Math.max(...allTimes);
+  const sameTimeRange=minX===maxX;
 
-  function rainColor(value){
+  // Nếu chỉ có một mốc, mở rộng nhẹ trục X để chart không co về một điểm.
+  const xMin=sameTimeRange?minX-30*60*1000:minX;
+  const xMax=sameTimeRange?maxX+30*60*1000:maxX;
+
+  // ------------------------------------------------------------
+  // Lượng mưa: toàn bộ tông đỏ.
+  // Alpha tăng tuyến tính 0.25 -> 0.95 theo giá trị thực.
+  // ------------------------------------------------------------
+  const maxRain=rain.length
+    ?Math.max(...rain.map(p=>Math.max(0,Number(p.y)||0)))
+    :0;
+
+  function rainAlpha(value){
     const v=Math.max(0,Number(value)||0);
-    if(v>=redThreshold){
-      const ratio=maxRain>0?Math.min(1,v/maxRain):1;
-      const alpha=0.60+(0.10*ratio);
-      return `rgba(190,35,35,${alpha.toFixed(3)})`;
-    }
+    if(maxRain<=0)return 0.25;
+    const ratio=Math.max(0,Math.min(1,v/maxRain));
+    return 0.25+(0.70*ratio);
+  }
+
+  function rainBackground(value){
+    return `rgba(185,28,28,${rainAlpha(value).toFixed(3)})`;
+  }
+
+  function rainBorder(value){
+    const v=Math.max(0,Number(value)||0);
     const ratio=maxRain>0?Math.min(1,v/maxRain):0;
-    const alpha=0.20+(0.50*ratio);
-    return `rgba(45,135,185,${alpha.toFixed(3)})`;
+    const alpha=0.45+(0.45*ratio);
+    return `rgba(150,20,20,${alpha.toFixed(3)})`;
   }
 
-  const rainBackground=rain.map(p=>rainColor(p.y));
-  const rainBorder=rain.map(p=>{
-    const v=Number(p.y)||0;
-    return v>=redThreshold
-      ?'rgba(150,25,25,0.90)'
-      :'rgba(45,115,165,0.65)';
-  });
+  const rainBackgroundColors=rain.map(p=>rainBackground(p.y));
+  const rainBorderColors=rain.map(p=>rainBorder(p.y));
 
-  // Độ rộng cột theo khoảng cách quan trắc thực.
-  let intervalMs=60*60*1000;
-  if(allTimes.length>1){
-    const diffs=[];
-    for(let i=1;i<allTimes.length;i++){
-      const d=allTimes[i]-allTimes[i-1];
-      if(d>0)diffs.push(d);
-    }
-    if(diffs.length){
-      diffs.sort((a,b)=>a-b);
-      intervalMs=diffs[Math.floor(diffs.length/2)];
-    }
-  }
-
-  const isMobile=window.matchMedia&&window.matchMedia('(max-width:720px)').matches;
-  const isSmall=window.matchMedia&&window.matchMedia('(max-width:430px)').matches;
-
-  const maxBar=isSmall?14:(isMobile?18:24);
-  const computedBar=Math.max(5,Math.min(maxBar,Math.round(
-    Math.sqrt(Math.max(1,intervalMs/3600000))*7
-  )));
-
-  const pointRadius=isSmall?2:isMobile?2.5:3;
-  const lineWidth=isMobile?2.5:3;
+  // ------------------------------------------------------------
+  // Độ rộng cột:
+  // barPercentage/categoryPercentage là yêu cầu chính.
+  // Không ép barThickness để Chart.js tự tính theo trục thời gian.
+  // ------------------------------------------------------------
+  const isMobile=window.matchMedia?.('(max-width:720px)').matches;
+  const isSmall=window.matchMedia?.('(max-width:430px)').matches;
 
   const datasets=[];
 
-  // LƯỢNG MƯA — TRỤC PHẢI.
+  // ------------------------------------------------------------
+  // X (mm) — TRỤC PHẢI.
+  // ------------------------------------------------------------
   if(rain.length){
     datasets.push({
       type:'bar',
       label:'X (mm)',
       data:rain,
       yAxisID:'rain',
-      backgroundColor:rainBackground,
-      borderColor:rainBorder,
+      backgroundColor:rainBackgroundColors,
+      borderColor:rainBorderColors,
       borderWidth:1,
-      barThickness:computedBar,
-      maxBarThickness:maxBar,
-      borderRadius:isMobile?2:3,
-      categoryPercentage:0.90,
-      barPercentage:0.90
+      barPercentage:0.5,
+      categoryPercentage:0.7,
+      borderRadius:isMobile?1:2,
+      maxBarThickness:isSmall?14:(isMobile?18:24)
     });
   }
 
-  // HTL — TRỤC TRÁI + TÔ NỀN NHẠT.
+  // ------------------------------------------------------------
+  // HTL — TRỤC TRÁI + FILL.
+  // ------------------------------------------------------------
   if(waterPts.length){
     datasets.push({
       type:'line',
       label:'HTL (m)',
       data:waterPts,
       yAxisID:'water',
-      borderColor:dark?'#20c5ef':'#0878c9',
+      borderColor:dark?'#1db9e8':'#0878c9',
       backgroundColor:dark
-        ?'rgba(32,197,239,0.10)'
+        ?'rgba(29,185,232,0.10)'
         :'rgba(8,120,201,0.10)',
       fill:true,
-      borderWidth:lineWidth,
-      pointRadius:pointRadius,
+      borderWidth:isMobile?2.5:3,
+      pointRadius:isSmall?1.8:(isMobile?2.2:3),
       pointHoverRadius:isMobile?5:6,
       pointHitRadius:12,
       tension:0,
-      spanGaps:false
+      spanGaps:false,
+      stepped:false
     });
   }
 
-  // MNDBT — ĐƯỜNG NGANG ĐỨT NÉT.
-  if(Number.isFinite(bt)){
+  // ------------------------------------------------------------
+  // MNDBT — đường ngang đứt nét.
+  // ------------------------------------------------------------
+  if(Number.isFinite(mndbt)){
     datasets.push({
       type:'line',
       label:'MNDBT',
-      data:waterPts.length
-        ?waterPts.map(p=>({x:p.x,y:bt}))
-        :[{x:minX,y:bt},{x:maxX,y:bt}],
+      data:[
+        {x:xMin,y:mndbt},
+        {x:xMax,y:mndbt}
+      ],
       yAxisID:'water',
-      borderColor:dark?'#ffb13b':'#d88900',
+      borderColor:dark?'#ffb52e':'#d58900',
       backgroundColor:'transparent',
       borderWidth:isMobile?1.5:2,
       borderDash:[7,5],
@@ -1328,16 +1388,19 @@ function renderHydroChart(data){
     });
   }
 
-  // MNDGC — ĐƯỜNG NGANG ĐỨT NÉT.
-  if(Number.isFinite(gc)){
+  // ------------------------------------------------------------
+  // MNDGC — đường ngang đứt nét.
+  // ------------------------------------------------------------
+  if(Number.isFinite(mndgc)){
     datasets.push({
       type:'line',
       label:'MNDGC',
-      data:waterPts.length
-        ?waterPts.map(p=>({x:p.x,y:gc}))
-        :[{x:minX,y:gc},{x:maxX,y:gc}],
+      data:[
+        {x:xMin,y:mndgc},
+        {x:xMax,y:mndgc}
+      ],
       yAxisID:'water',
-      borderColor:dark?'#ff684e':'#e14b32',
+      borderColor:dark?'#ff624d':'#df4930',
       backgroundColor:'transparent',
       borderWidth:isMobile?1.5:2,
       borderDash:[5,5],
@@ -1350,14 +1413,16 @@ function renderHydroChart(data){
   }
 
   hydroChart=new Chart(canvas,{
-    data:{datasets},
+    data:{datasets:datasets},
+
     options:{
       responsive:true,
       maintainAspectRatio:false,
       animation:false,
       parsing:false,
+      normalized:true,
 
-      // TOOLTIP ĐỒNG THỜI TẠI CÙNG MỐC THỜI GIAN.
+      // Tooltip: cùng mốc thời gian, không cần click đúng vào điểm.
       interaction:{
         mode:'index',
         intersect:false,
@@ -1366,10 +1431,10 @@ function renderHydroChart(data){
 
       layout:{
         padding:{
-          top:2,
-          right:isMobile?1:8,
+          top:isMobile?2:4,
+          right:isMobile?2:8,
           bottom:0,
-          left:isMobile?1:8
+          left:isMobile?2:8
         }
       },
 
@@ -1384,7 +1449,7 @@ function renderHydroChart(data){
             pointStyle:'line',
             boxWidth:isSmall?8:(isMobile?10:14),
             boxHeight:isSmall?6:(isMobile?7:9),
-            padding:isSmall?5:(isMobile?7:14),
+            padding:isSmall?5:(isMobile?7:13),
             font:{
               size:isSmall?8:(isMobile?9:11),
               weight:'700'
@@ -1397,18 +1462,18 @@ function renderHydroChart(data){
         },
 
         tooltip:{
+          enabled:true,
           mode:'index',
           intersect:false,
           displayColors:true,
-          padding:isMobile?7:10,
+          padding:isSmall?7:(isMobile?8:10),
           titleMarginBottom:5,
           boxPadding:3,
           callbacks:{
             title(items){
-              const x=items[0]?.parsed?.x;
-              const d=Number.isFinite(x)?new Date(x):null;
-              if(!d)return '';
-              return d.toLocaleString('vi-VN',{
+              const x=items?.[0]?.parsed?.x;
+              if(!Number.isFinite(x))return '';
+              return new Date(x).toLocaleString('vi-VN',{
                 day:'2-digit',
                 month:'2-digit',
                 year:'numeric',
@@ -1416,21 +1481,33 @@ function renderHydroChart(data){
                 minute:'2-digit'
               });
             },
+
             label(ctx){
               const y=Number(ctx.parsed?.y);
-              if(!Number.isFinite(y))return `${ctx.dataset.label}: —`;
-              const unit=ctx.dataset.yAxisID==='rain'?'mm':'m';
-              return `${ctx.dataset.label}: ${formatNumber(y)} ${unit}`;
+              if(!Number.isFinite(y)){
+                return `${ctx.dataset.label}: —`;
+              }
+
+              if(ctx.dataset.yAxisID==='rain'){
+                return `X (mm): ${formatNumber(y)} mm`;
+              }
+
+              return `${ctx.dataset.label}: ${formatNumber(y)} m`;
             }
           }
         }
       },
 
       scales:{
+        // --------------------------------------------------------
+        // X — THỜI GIAN QUAN TRẮC.
+        // --------------------------------------------------------
         x:{
           type:'time',
-          min:minX,
-          max:maxX,
+          min:xMin,
+          max:xMax,
+          offset:false,
+
           time:{
             tooltipFormat:'dd/MM/yyyy HH:mm',
             displayFormats:{
@@ -1439,16 +1516,22 @@ function renderHydroChart(data){
               day:'dd/MM'
             }
           },
+
           ticks:{
             color:textColor,
+            autoSkip:true,
             maxRotation:0,
             minRotation:0,
-            autoSkip:true,
             maxTicksLimit:isSmall?5:(isMobile?6:8),
-            font:{size:isMobile?8.5:10},
+            padding:isSmall?2:4,
+            font:{
+              size:isSmall?8:(isMobile?8.5:10)
+            },
+
             callback(value){
               const d=new Date(Number(value));
               if(!Number.isFinite(d.getTime()))return '';
+
               if(periodDays()<=1){
                 return d.toLocaleString('vi-VN',{
                   day:'2-digit',
@@ -1456,62 +1539,101 @@ function renderHydroChart(data){
                   hour:'2-digit'
                 });
               }
+
               return d.toLocaleDateString('vi-VN',{
                 day:'2-digit',
                 month:'2-digit'
               });
             }
           },
-          grid:{color:grid},
+
+          grid:{
+            color:gridColor,
+            drawTicks:false
+          },
+
           title:{
             display:!isSmall,
             text:'Thời gian quan trắc',
             color:textColor,
-            font:{size:10,weight:'700'}
+            font:{
+              size:10,
+              weight:'700'
+            }
           }
         },
 
-        // TRỤC TRÁI — MỰC NƯỚC.
+        // --------------------------------------------------------
+        // Y TRÁI — MỰC NƯỚC.
+        // --------------------------------------------------------
         water:{
           type:'linear',
           position:'left',
           beginAtZero:false,
+
           title:{
             display:true,
             text:'HTL (m)',
             color:textColor,
-            font:{size:isMobile?9.5:11,weight:'700'}
+            font:{
+              size:isMobile?9.5:11,
+              weight:'700'
+            }
           },
+
           ticks:{
             color:textColor,
             maxTicksLimit:isMobile?6:8,
-            font:{size:isMobile?8.5:10},
-            callback(value){return formatNumber(value);}
+            padding:isSmall?2:4,
+            font:{
+              size:isMobile?8.5:10
+            },
+            callback(value){
+              return formatNumber(value);
+            }
           },
+
           grid:{
-            color:grid,
-            drawOnChartArea:true
+            color:gridColor,
+            drawOnChartArea:true,
+            drawTicks:false
           }
         },
 
-        // TRỤC PHẢI — LƯỢNG MƯA.
+        // --------------------------------------------------------
+        // Y PHẢI — LƯỢNG MƯA.
+        // --------------------------------------------------------
         rain:{
           type:'linear',
           position:'right',
           beginAtZero:true,
+
           title:{
             display:true,
             text:'X (mm)',
             color:textColor,
-            font:{size:isMobile?9.5:11,weight:'700'}
+            font:{
+              size:isMobile?9.5:11,
+              weight:'700'
+            }
           },
+
           ticks:{
             color:textColor,
             maxTicksLimit:isMobile?5:7,
-            font:{size:isMobile?8.5:10},
-            callback(value){return formatNumber(value);}
+            padding:isSmall?2:4,
+            font:{
+              size:isMobile?8.5:10
+            },
+            callback(value){
+              return formatNumber(value);
+            }
           },
-          grid:{drawOnChartArea:false}
+
+          grid:{
+            drawOnChartArea:false,
+            drawTicks:false
+          }
         }
       }
     }
