@@ -22,13 +22,13 @@ except ImportError:  # pragma: no cover
     GoogleAuthRequest = None
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V2.8.0
+# THUY LOI AI - TECHNICAL MODULE V2.8.1
 # DIRECT GOOGLE SHEETS - KHONG DUNG APPS SCRIPT
 # Doc truc tiep AI_DATA bang Google Sheets API.
 # Khong ghi/sua/xoa du lieu Google Sheet.
 # ============================================================
 
-app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.8.0")
+app = FastAPI(title="THUY LOI AI - Thong so ky thuat", version="2.8.1")
 
 GOOGLE_SHEETS_ID = os.getenv(
     "GOOGLE_SHEETS_ID",
@@ -1979,11 +1979,24 @@ async function checkConnections(){
     if(result.google_sheets_ok){
       state.textContent='Kết nối OK';
       stateDetail.textContent=`AI_DATA · ${result.rows} dòng · ${result.google_sheets_ms} ms`;
-      // Sau khi kết nối OK, tải lại đúng công trình + khoảng thời gian hiện tại.
-      if(f.value)await loadChartData();
+
+      /*
+       * QUAN TRỌNG:
+       * Nếu lần khởi động trước xảy ra lỗi, dropdown vẫn đang giữ
+       * "Mất kết nối Google Sheet". Sau khi kết nối đã OK, phải tải lại
+       * danh sách công trình ngay tại đây.
+       */
+      if(!f.value){
+        await loadFacilities();
+      }else{
+        await loadParameters();
+        await loadChartData();
+      }
     }else{
       state.textContent='Mất kết nối';
-      stateDetail.textContent=String(result.google_sheets_error||result.message||'Không đọc được AI_DATA').slice(0,240);
+      stateDetail.textContent=String(
+        result.google_sheets_error||result.message||'Không đọc được AI_DATA'
+      ).slice(0,240);
     }
   }catch(err){
     state.textContent=oldState||'Lỗi kết nối';
@@ -2029,7 +2042,17 @@ async function refreshModule(){
 selectedQuickPeriod='7d';
 setQuickButtonsActive('7d');
 period.value=quickPeriodMeta('7d').value;
-loadFacilities();
+
+(async()=>{
+  await loadFacilities();
+  /*
+   * Không cần thao tác thủ công nếu Google Sheet vừa thức dậy/chậm phản hồi.
+   * Chỉ kiểm tra lại khi dropdown vẫn chưa có công trình.
+   */
+  if(!f.value){
+    try{await checkConnections()}catch(e){}
+  }
+})();
 </script>
 <div id="reportModal" class="report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
   <div class="report-modal-card">
