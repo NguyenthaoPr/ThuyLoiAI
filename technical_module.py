@@ -1,87 +1,416 @@
 # -*- coding: utf-8 -*-
+"""
+THUY LOI AI - TECHNICAL MODULE
+Backend doc THANG tu Google Sheet (khong qua Apps Script)
+Port lai chinh xac logic tu Apps Script goc (Code.gs) sang Python.
+
+Yeu cau moi truong:
+  pip install fastapi uvicorn gspread google-auth cachetools
+
+Bien moi truong:
+  GOOGLE_SHEET_ID            - ID cua Google Spreadsheet (mac dinh lay tu link ban gui)
+  GOOGLE_SHEET_TAB           - Ten tab du lieu (mac dinh "AI_DATA")
+  GOOGLE_SERVICE_ACCOUNT_FILE- Duong dan file JSON service account (mac dinh "service_account.json")
+  GOOGLE_SERVICE_ACCOUNT_JSON- (tuy chon) noi dung JSON credentials dang chuoi, dung khi deploy
+                               tren platform khong cho upload file (Render/Railway...)
+  APP_CACHE_SECONDS          - So giay cache du lieu doc tu Sheet (mac dinh 60s)
+  APP_TIMEZONE               - Timezone dung de quy doi Thang/Ngay/Gio -> epoch ms (mac dinh Asia/Ho_Chi_Minh)
+  DEFAULT_YEAR                - Nam mac dinh khi khong truyen (mac dinh 2026, giong Apps Script)
+"""
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.concurrency import run_in_threadpool
+
 import json
 import os
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+import re
+import unicodedata
+from datetime import datetime, timedelta
 from time import monotonic
+from zoneinfo import ZoneInfo
 
-# ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.11
-# BUOC 1: GIAO DIEN DOC LAP
-# Khong import, khong sua server.py
-# ============================================================
+import gspread
+from google.oauth2.service_account import Credentials
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.11.0",
+    version="2.0.0",
 )
 
 # ============================================================
-# BƯỚC 3.2 - KẾT NỐI APPS SCRIPT API
-# Chỉ đọc dữ liệu. Không ghi/sửa/xóa AI_DATA.
-# Backend proxy giúp trình duyệt không phải gọi trực tiếp
-# Apps Script, tránh vấn đề CORS.
+# CAU HINH - tuong ung CONFIG trong Apps Script goc
 # ============================================================
-APPS_SCRIPT_API_URL = os.getenv(
-    "APPS_SCRIPT_API_URL",
-    "https://script.google.com/macros/s/AKfycbzP3yXgeBs0WDuvQdrYa4ptJSeK9cHnCe0lrM78pR1WVohagQyOjn8LFtBB7QhmltWupQ/exec"
-)
-APPS_SCRIPT_TIMEOUT = float(os.getenv("APPS_SCRIPT_TIMEOUT", "12"))
+CONFIG = {
+    "SPREADSHEET_ID": os.getenv(
+        "GOOGLE_SHEET_ID",
+        "1SJU9aCRZGWeAeHw6UfY_08HK8-A34kIlnrEiPJNEnko",
+    ),
+    "SHEET_NAME": os.getenv("GOOGLE_SHEET_TAB", "AI_DATA"),
+    "DEFAULT_YEAR": int(os.getenv("DEFAULT_YEAR", "2026")),
+    "CACHE_SECONDS": float(os.getenv("APP_CACHE_SECONDS", "60")),
+}
+
+TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "Asia/Ho_Chi_Minh"))
+
+# Ten cot - tuong ung COL trong Apps Script goc
+COL_MONTH = "Tháng"
+COL_DAY = "Ngày"
+COL_HOUR = "Giờ"
+COL_UNIT = "Đơn vị"
+COL_FACILITY = "Công trình"
+COL_ITEM = "Hạng mục"
+COL_PARAMETER = "Thông số"
+COL_PARAMETER_UNIT = "Thông số (Đơn vị đo)"
+COL_VALUE = "Giá trị"
+COL_SOURCE_COL = "Cột nguồn"
+
+# ============================================================
+# HELPER - tuong ung clean_, normalize_, parseNumber_ trong .gs
+# ============================================================
+
+def clean_(v):
+    if v is None:
+        return ""
+    return re.sub(r"\s+", " ", str(v).strip())
+
+
+def normalize_(v):
+    s = clean_(v)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    return s.upper()
+
+
+_MULT_RE = re.compile(r"^[+-]?\d+(?:[,.]\d+)?\s*[xX*]\s*[+-]?\d+(?:[,.]\d+)?$")
+_MULT_SPLIT_RE = re.compile(r"\s*[xX*]\s*")
+
+
+def parse_number_(value):
+    """Port cua parseNumber_ trong Apps Script."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if value is None or value == "":
+        return None
+
+    s = str(value).strip()
+
+    if _MULT_RE.match(s):
+        parts = _MULT_SPLIT_RE.split(s.replace(",", "."))
+        try:
+            a, b = float(parts[0]), float(parts[1])
+            return a * b
+        except (ValueError, IndexError):
+            pass
+
+    s = re.sub(r"\s", "", s)
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", ".")
+
+    try:
+        n = float(s)
+        return n
+    except ValueError:
+        return None
+
+
+def parse_int_(value):
+    n = parse_number_(value)
+    if n is None:
+        return None
+    try:
+        return int(round(n))
+    except (ValueError, OverflowError):
+        return None
+
+
+def classify_parameter_(p):
+    s = normalize_(p)
+    if s in ("HTL (M)", "HHL (M)", "H (M)", "HTL", "HHL", "H") or "MUC NUOC" in s:
+        return "WATER_LEVEL"
+    if s == "X (MM)" or s.startswith("X ") or "LUONG MUA" in s or "RAINFALL" in s or s.startswith("MUA "):
+        return "RAINFALL"
+    return "OTHER"
+
+
+def _rank(p):
+    s = normalize_(p)
+    if s.startswith("HTL"):
+        return 1
+    if s.startswith("HHL"):
+        return 2
+    if s == "H (M)":
+        return 3
+    if s.startswith("X "):
+        return 10
+    return 20
+
+
+def compare_parameter_key(p):
+    # Sap xep giong logic rank + localeCompare('vi') trong Apps Script.
+    return (_rank(p), normalize_(p), p)
+
+
+_LABEL_NUMBER_CACHE = {}
+
+
+def extract_label_number_(text, label):
+    s = clean_(text)
+    re_key = label
+    if re_key not in _LABEL_NUMBER_CACHE:
+        _LABEL_NUMBER_CACHE[re_key] = re.compile(
+            re.escape(label) + r"\s*[:=]?\s*([+-]?\d+(?:[.,]\d+)?)", re.IGNORECASE
+        )
+    m = _LABEL_NUMBER_CACHE[re_key].search(s)
+    return parse_number_(m.group(1)) if m else None
+
+
+def row_date_(row, year):
+    m = parse_int_(row.get(COL_MONTH))
+    d = parse_int_(row.get(COL_DAY))
+    h = parse_int_(row.get(COL_HOUR))
+    if not m or not d or h is None:
+        return None
+    try:
+        return datetime(year, m, d, h, 0, 0, tzinfo=TZ)
+    except ValueError:
+        return None
+
+
+def parse_date_input_(value, end_of_day, default_year):
+    if not value:
+        return datetime.now(TZ)
+    s = str(value).strip()
+    parts = s.split("-")
+    if len(parts) != 3:
+        raise ValueError("Ngày không hợp lệ: " + s)
+    try:
+        y, mo, d = int(parts[0]), int(parts[1]), int(parts[2])
+    except ValueError:
+        raise ValueError("Ngày không hợp lệ: " + s)
+    if end_of_day:
+        return datetime(y, mo, d, 23, 59, 59, 999000, tzinfo=TZ)
+    return datetime(y, mo, d, 0, 0, 0, 0, tzinfo=TZ)
+
+
+def to_epoch_ms(dt: datetime) -> int:
+    return int(dt.timestamp() * 1000)
+
+
+# ============================================================
+# KET NOI GOOGLE SHEETS - thay the fetch_apps_script_api_
+# ============================================================
+_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+_gs_client = None
+_rows_cache = {"rows": None, "ts": 0.0}
+
+
+def _get_gspread_client():
+    global _gs_client
+    if _gs_client is not None:
+        return _gs_client
+
+    creds_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if creds_json:
+        info = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
+    else:
+        creds_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
+        creds = Credentials.from_service_account_file(creds_file, scopes=_SCOPES)
+
+    _gs_client = gspread.authorize(creds)
+    return _gs_client
+
+
+def _read_rows_from_sheet():
+    """Doc toan bo AI_DATA va tra ve list[dict] (khong cache)."""
+    client = _get_gspread_client()
+    sh = client.open_by_key(CONFIG["SPREADSHEET_ID"])
+    ws = sh.worksheet(CONFIG["SHEET_NAME"])
+    values = ws.get_all_values()
+    if not values or len(values) < 2:
+        return []
+
+    headers = [clean_(h) for h in values[0]]
+    rows = []
+    for raw_row in values[1:]:
+        row = {}
+        for i, h in enumerate(headers):
+            row[h] = raw_row[i] if i < len(raw_row) else ""
+        rows.append(row)
+    return rows
+
+
+def get_rows_(force=False):
+    """Cache theo CACHE_SECONDS, tuong duong CacheService ben Apps Script."""
+    now = monotonic()
+    if not force and _rows_cache["rows"] is not None and (now - _rows_cache["ts"]) < CONFIG["CACHE_SECONDS"]:
+        return _rows_cache["rows"]
+    rows = _read_rows_from_sheet()
+    _rows_cache["rows"] = rows
+    _rows_cache["ts"] = now
+    return rows
+
+
+# ============================================================
+# NGHIEP VU - port getFacilities / getFacilityParameters / getChartData
+# ============================================================
+
+def get_facilities(rows):
+    seen = {}
+    for r in rows:
+        name = clean_(r.get(COL_FACILITY))
+        if name:
+            seen[name] = True
+    return sorted(seen.keys(), key=lambda x: (unicodedata.normalize("NFD", x), x))
+
+
+def get_facility_parameters(facility, rows):
+    facility = clean_(facility)
+    water, rain = {}, {}
+    for r in rows:
+        if clean_(r.get(COL_FACILITY)) != facility:
+            continue
+        p = clean_(r.get(COL_PARAMETER_UNIT))
+        v = parse_number_(r.get(COL_VALUE))
+        if v is None or not p:
+            continue
+        t = classify_parameter_(p)
+        if t == "WATER_LEVEL":
+            water[p] = True
+        elif t == "RAINFALL":
+            rain[p] = True
+    return {
+        "waterLevel": sorted(water.keys(), key=compare_parameter_key),
+        "rainfall": sorted(rain.keys(), key=compare_parameter_key),
+    }
+
+
+def get_facility_limits_(facility, rows):
+    mndbt, mndgc = None, None
+    for r in rows:
+        if clean_(r.get(COL_FACILITY)) != facility:
+            continue
+        item_text = clean_(r.get(COL_ITEM))
+        if "MNDBT" in normalize_(item_text):
+            v = extract_label_number_(item_text, "MNDBT")
+            if v is not None:
+                mndbt = v
+        param_text = clean_(r.get(COL_PARAMETER))
+        if "MNDGC" in normalize_(param_text):
+            v = extract_label_number_(param_text, "MNDGC")
+            if v is not None:
+                mndgc = v
+    return {"mndbt": mndbt, "mndgc": mndgc}
+
+
+def get_chart_data(request):
+    facility = clean_(request.get("facility"))
+    if not facility:
+        raise ValueError("Chưa chọn công trình.")
+
+    year = int(request.get("year") or CONFIG["DEFAULT_YEAR"])
+    days = min(max(int(request.get("days") or 7), 1), 366)
+    water_parameter = clean_(request.get("waterParameter"))
+    rainfall_parameters = [clean_(x) for x in (request.get("rainfallParameters") or []) if clean_(x)]
+
+    to_date = request.get("toDate")
+    from_date = request.get("fromDate")
+
+    end = parse_date_input_(to_date, True, year) if to_date else datetime.now(TZ)
+    start = parse_date_input_(from_date, False, year) if from_date else (end - timedelta(days=days))
+
+    rows = get_rows_()
+    limits = get_facility_limits_(facility, rows)
+
+    water = []
+    rain_map = {}
+
+    for r in rows:
+        if clean_(r.get(COL_FACILITY)) != facility:
+            continue
+        dt = row_date_(r, year)
+        if not dt or dt < start or dt > end:
+            continue
+
+        parameter = clean_(r.get(COL_PARAMETER_UNIT))
+        value = parse_number_(r.get(COL_VALUE))
+        if not parameter or value is None:
+            continue
+
+        t = classify_parameter_(parameter)
+        ts = to_epoch_ms(dt)
+
+        if t == "WATER_LEVEL" and (not water_parameter or parameter == water_parameter):
+            water.append({"time": ts, "value": value, "parameter": parameter})
+
+        if t == "RAINFALL" and (not rainfall_parameters or parameter in rainfall_parameters):
+            rain_map.setdefault(parameter, []).append({"time": ts, "value": value, "parameter": parameter})
+
+    water.sort(key=lambda p: p["time"])
+    for k in rain_map:
+        rain_map[k].sort(key=lambda p: p["time"])
+
+    rainfall = [{"parameter": k, "data": v} for k, v in rain_map.items()]
+
+    rainfall_totals = {s["parameter"]: sum(p["value"] for p in s["data"]) for s in rainfall}
+    total_rainfall = sum(rainfall_totals.values())
+
+    rain_times = set()
+    for s in rainfall:
+        for p in s["data"]:
+            rain_times.add(p["time"])
+
+    return {
+        "facility": facility,
+        "from": to_epoch_ms(start),
+        "to": to_epoch_ms(end),
+        "water": water,
+        "rainfall": rainfall,
+        "updatedAt": to_epoch_ms(datetime.now(TZ)),
+        "count": len(water) + sum(len(s["data"]) for s in rainfall),
+        "totalRainfall": total_rainfall,
+        "rainfallTotalsByParameter": rainfall_totals,
+        "rainfallPoints": len(rain_times),
+        "limits": limits,
+    }
+
+
+# ============================================================
+# WRAPPER LOI - tuong duong _safe_error_message / _proxy_call
+# ============================================================
 
 def _safe_error_message(exc):
-    if isinstance(exc, HTTPError):
-        return f"Apps Script HTTP {exc.code}: {exc.reason or 'Upstream trả lỗi HTTP.'}"
-    if isinstance(exc, URLError):
-        reason = getattr(exc, "reason", None)
-        return f"Không kết nối được Apps Script: {reason or 'lỗi mạng/DNS.'}"
-    if isinstance(exc, TimeoutError):
-        return f"Apps Script timeout sau {APPS_SCRIPT_TIMEOUT:g} giây."
-    if isinstance(exc, json.JSONDecodeError):
-        return "Apps Script trả về dữ liệu không phải JSON hợp lệ."
-    return str(exc) or "Lỗi không xác định khi gọi Apps Script."
+    if isinstance(exc, FileNotFoundError):
+        return "Không tìm thấy file credentials service account."
+    if isinstance(exc, gspread.exceptions.SpreadsheetNotFound):
+        return "Không tìm thấy Google Sheet (kiểm tra ID hoặc quyền chia sẻ)."
+    if isinstance(exc, gspread.exceptions.WorksheetNotFound):
+        return f"Không tìm thấy sheet '{CONFIG['SHEET_NAME']}'."
+    if isinstance(exc, gspread.exceptions.APIError):
+        return f"Google Sheets API lỗi: {exc}"
+    return str(exc) or "Lỗi không xác định khi đọc Google Sheet."
 
-def fetch_apps_script_api_(api, params=None):
-    query = {"api": api}
-    if params:
-        query.update({k: v for k, v in params.items() if v not in (None, "")})
-    url = APPS_SCRIPT_API_URL + "?" + urlencode(query)
-    req = Request(
-        url,
-        headers={
-            "User-Agent": "THUY-LOI-AI-Technical/1.11",
-            "Accept": "application/json,text/plain,*/*",
-            "Cache-Control": "no-cache",
-        }
-    )
+
+async def _safe_call(fn, *args, **kwargs):
     try:
-        with urlopen(req, timeout=APPS_SCRIPT_TIMEOUT) as response:
-            raw = response.read().decode("utf-8")
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            raise RuntimeError("Apps Script trả về JSON nhưng không đúng cấu trúc object.")
-        if not data.get("ok"):
-            raise RuntimeError(data.get("error") or f"Apps Script API '{api}' trả ok=false.")
-        return data
-    except Exception as exc:
+        return await run_in_threadpool(fn, *args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
         raise RuntimeError(_safe_error_message(exc)) from exc
 
-def _proxy_call(api, params=None):
-    try:
-        return fetch_apps_script_api_(api, params)
-    except RuntimeError as exc:
-        return JSONResponse(
-            status_code=502,
-            content={
-                "ok": False,
-                "source": "apps_script",
-                "api": api,
-                "error": str(exc),
-            },
-        )
 
+def _error_response(api, exc):
+    return JSONResponse(
+        status_code=502,
+        content={"ok": False, "source": "google_sheets", "api": api, "error": str(exc)},
+    )
+
+
+# ============================================================
+# HTML - GIU NGUYEN 100% GIAO DIEN GOC (khong sua gi ca)
+# ============================================================
 HTML = r'''<!doctype html>
 <html lang="vi">
 <head>
@@ -92,6 +421,8 @@ HTML = r'''<!doctype html>
 
 <!-- Chart.js chỉ dùng cho lớp hiển thị biểu đồ; API/backend hiện tại không thay đổi. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 :root{
@@ -139,7 +470,7 @@ button{cursor:pointer}
 .sound-btn.on{border-color:var(--primary);color:var(--primary)}
 .alert-banner.danger{animation:alertDanger 1.1s infinite alternate}
 @keyframes alertDanger{to{box-shadow:0 0 28px rgba(225,75,50,.20),var(--shadow)}}
-.date-filter{display:grid;grid-template-columns:1fr 1fr auto minmax(240px,1fr);gap:10px;margin:-4px 0 16px}
+.date-filter{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin:-4px 0 16px}
 .date-box{padding:10px 13px;background:var(--surface);border:1px solid var(--line);border-radius:14px}
 .date-box label{display:block;color:var(--muted);font-size:10px;font-weight:900;margin-bottom:5px}
 .date-box input{width:100%;border:0;outline:0;background:transparent;color:var(--text);font-weight:750}
@@ -185,7 +516,7 @@ select,input{
 .kpi-value{font-size:27px;font-weight:900;margin-top:8px;letter-spacing:-.4px}
 .kpi-unit{font-size:12px;color:var(--muted);margin-top:3px}
 .kpi-note{font-size:11px;color:var(--muted);margin-top:7px}
-.grid{display:grid;grid-template-columns:1fr;gap:16px}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
 .panel{overflow:hidden}.head{padding:15px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
 .head-title{font-weight:900;font-size:18px}.head-sub{font-size:12px;color:var(--muted);margin-top:3px}
 .chart-wrap{padding:12px 14px 16px;height:410px}.chart-wrap canvas{width:100%!important;height:100%!important}
@@ -228,11 +559,6 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
 
 /* V1.10 - Quick Report preview */
 .report-btn{white-space:nowrap}
-.report-wrap{position:relative;display:flex;align-items:center;gap:7px}
-.report-actions{display:none;align-items:center;gap:7px;flex-wrap:wrap}
-.report-actions.show{display:flex}
-.report-actions .primary-btn,.report-actions .ghost-btn{min-height:44px;padding:0 13px}
-@media(max-width:760px){.report-wrap{width:100%;flex-wrap:wrap}.report-wrap>.primary-btn{width:100%}.report-actions{width:100%}.report-actions button{flex:1;min-width:0}}
 .report-modal{position:fixed;inset:0;z-index:9999;background:rgba(4,12,22,.72);display:none;align-items:center;justify-content:center;padding:18px}
 .report-modal.show{display:flex}
 .report-modal-card{width:min(980px,100%);height:min(90vh,900px);background:var(--panel,#fff);color:var(--text,#152238);border:1px solid var(--line,#dce4ee);border-radius:18px;box-shadow:0 25px 80px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden}
@@ -277,14 +603,6 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div class="date-box"><label>TỪ NGÀY</label><input id="fromDate" type="date" onchange="applyCustomDateRange()"></div>
     <div class="date-box"><label>ĐẾN NGÀY</label><input id="toDate" type="date" onchange="applyCustomDateRange()"></div>
     <button class="primary-btn date-apply" style="min-height:44px" onclick="applyCustomDateRange()">📅 Áp dụng khoảng ngày</button>
-    <div class="report-wrap">
-      <button id="quickReportBtn" class="ghost-btn report-btn" style="min-height:44px;width:100%" onclick="toggleQuickReportActions()">📄 Báo cáo nhanh</button>
-      <div id="quickReportActions" class="report-actions">
-        <button class="ghost-btn report-btn" onclick="previewQuickReport()">👁️ Xem trước</button>
-        <button class="ghost-btn report-btn" onclick="shareQuickReportZalo()">💬 Gởi Zalo</button>
-        <button class="primary-btn report-btn" onclick="downloadQuickReportWord()">⬇️ Tải về</button>
-      </div>
-    </div>
   </section>
 
   <section class="kpi-grid">
@@ -301,6 +619,14 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
       <div class="chart-wrap"><canvas id="hydroChart"></canvas></div>
     </div>
 
+    <div class="panel">
+      <div class="head"><div><div class="head-title">Thông tin công trình</div><div class="head-sub">Khu vực thông tin kỹ thuật</div></div></div>
+      <div class="panel-body">
+        <div class="info-card"><div class="info-label">CÔNG TRÌNH ĐANG CHỌN</div><b id="selected">Chưa chọn</b></div>
+        <div class="info-card"><div class="info-label">TRẠM MƯA</div><div class="chips" id="rainPills"><span class="chip">Chưa có chuỗi mưa</span></div></div>
+        <div class="info-card"><div class="info-label">CHẾ ĐỘ HIỂN THỊ</div><div class="chips"><span class="chip active">Thực tế</span><span class="chip">Kỹ thuật</span></div></div>
+      </div>
+    </div>
   </section>
 
   <section class="panel" style="margin-top:16px">
@@ -308,15 +634,33 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div id="technicalSummary" class="panel-body"><div class="empty">Chọn công trình để phân tích.</div></div>
   </section>
 
+  <section class="panel" style="margin-top:16px">
+    <div class="head"><div><div class="head-title">Dữ liệu gần nhất</div><div class="head-sub">Dữ liệu thực tế từ AI_DATA qua Google Sheets API</div></div></div>
+    <div class="data-toolbar">
+      <div class="search-box"><input id="dataSearch" type="search" placeholder="⌕ Tìm ngày, công trình, thông số, giá trị..." oninput="applyDataFilter()"></div>
+      <input id="gridFrom" class="data-date" type="date" title="Từ ngày" onchange="applyDataFilter()">
+      <input id="gridTo" class="data-date" type="date" title="Đến ngày" onchange="applyDataFilter()">
+      <div class="export-group">
+        <button class="primary-btn" style="min-height:40px;padding:0 11px" onclick="exportExcel()">Excel</button>
+        <button class="ghost-btn report-btn" style="min-height:40px;padding:0 11px" onclick="previewQuickReport()">👁️ Xem trước</button>
+        <button class="ghost-btn report-btn" style="min-height:40px;padding:0 11px" onclick="shareQuickReportZalo()">💬 Gửi Zalo</button>
+        <button class="primary-btn report-btn" style="min-height:40px;padding:0 11px" onclick="downloadQuickReportWord()">⬇️ Tải về</button>
+      </div>
+      <div class="page-info" id="pageInfo">0 bản ghi</div>
+    </div>
+    <div class="table"><table><thead><tr><th>Ngày</th><th>Giờ</th><th>Công trình</th><th>Thông số</th><th>Giá trị</th><th>Đơn vị</th></tr></thead><tbody id="dataBody"></tbody></table></div>
+    <div id="mobileData" class="mobile-data"></div>
+    <div id="pagination" class="pagination"></div>
+  </section>
 
-  <div class="footer">THUY LOI AI · Technical Module V1.11 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V2.0 · Smart Control Room · Google Sheets trực tiếp · Dashboard kỹ thuật</div>
 </main>
 
 <script>
 const f=document.getElementById('facility'), parameter=document.getElementById('parameter'), period=document.getElementById('period');
 const s=document.getElementById('selected'), water=document.getElementById('water'), state=document.getElementById('state');
 const stateDetail=document.getElementById('stateDetail'), mndbt=document.getElementById('mndbt'), mndgc=document.getElementById('mndgc'), rainTotal=document.getElementById('rainTotal');
-const rainPills=document.getElementById('rainPills');
+const rainPills=document.getElementById('rainPills'), dataBody=document.getElementById('dataBody'), mobileData=document.getElementById('mobileData');
 const technicalSummary=document.getElementById('technicalSummary'), alertBanner=document.getElementById('alertBanner');
 let currentParameters={waterLevel:[],rainfall:[]},currentData=null,hydroChart=null;
 let allRows=[],filteredRows=[],currentPage=1; const PAGE_SIZE=10;
@@ -349,7 +693,7 @@ function localDateStart(v){return v?new Date(v+'T00:00:00'):null}
 function localDateEnd(v){return v?new Date(v+'T23:59:59.999'):null}
 
 
-function setSelectedFacility(){if(s)s.textContent=f.value||'Chưa chọn'}
+function setSelectedFacility(){s.textContent=f.value||'Chưa chọn'}
 function periodDays(){return ({'24 gio':1,'3 ngay':3,'7 ngay':7,'30 ngay':30,'90 ngay':90})[period.value]||7}
 function formatNumber(v,digits=2){if(v===null||v===undefined||v==='')return '—';const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—'}
 function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -383,10 +727,10 @@ async function checkConnections(){
       alertBanner.className='alert-banner safe show';
       document.getElementById('alertIcon').textContent='🟢';
       document.getElementById('alertTitle').textContent='Kết nối dữ liệu OK';
-      document.getElementById('alertDetail').textContent=`FastAPI → Apps Script → AI_DATA hoạt động · ${result.apps_script_ms||0} ms`;
+      document.getElementById('alertDetail').textContent=`FastAPI → Google Sheets → AI_DATA hoạt động · ${result.apps_script_ms||0} ms`;
       return true;
     }
-    setDataError(result.apps_script_error||'Apps Script/AI_DATA không phản hồi.');
+    setDataError(result.apps_script_error||'Google Sheets/AI_DATA không phản hồi.');
     return false;
   }catch(err){
     setDataError(err.message||'Không kiểm tra được kết nối.');
@@ -408,28 +752,6 @@ function resetData(message='Chọn công trình để tải dữ liệu.'){
   lastAlertLevel='normal';
 }
 
-function setDataError(message){
-  const msg=message||'Không tải được dữ liệu.';
-  if(s)s.textContent='Lỗi kết nối dữ liệu';
-  water.textContent='—';state.textContent='Lỗi dữ liệu';stateDetail.textContent=msg;mndbt.textContent='—';mndgc.textContent='—';rainTotal.textContent='—';
-  technicalSummary.innerHTML='<div class=\"empty\">'+escapeHtml(msg)+'</div>';
-  const ab=document.getElementById('alertBanner');
-  ab.className='alert-banner danger show';
-  document.getElementById('alertIcon').textContent='🔴';
-  document.getElementById('alertTitle').textContent='MẤT KẾT NỐI DỮ LIỆU';
-  document.getElementById('alertDetail').textContent=msg;
-  lastAlertLevel='danger';
-}
-
-function toggleQuickReportActions(){
-  const box=document.getElementById('quickReportActions');
-  const btn=document.getElementById('quickReportBtn');
-  if(!box)return;
-  const show=!box.classList.contains('show');
-  box.classList.toggle('show',show);
-  if(btn)btn.textContent=show?'📄 Đóng Báo cáo nhanh':'📄 Báo cáo nhanh';
-}
-
 function toggleTheme(){
   const dark=document.documentElement.classList.toggle('dark');
   localStorage.setItem('tlai-theme',dark?'dark':'light');
@@ -444,7 +766,7 @@ async function loadParameters(){
     const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value));
     currentParameters=result.data||{waterLevel:[],rainfall:[]};
     const rainList=currentParameters.rainfall||[];
-    if(rainPills)rainPills.innerHTML=rainList.length?rainList.map(x=>'<span class="chip">'+escapeHtml(x.replace(/\s*\([^)]*\)/g,''))+'</span>').join(''):'<span class="chip">Không có chuỗi mưa</span>';
+    rainPills.innerHTML=rainList.length?rainList.map(x=>'<span class="chip">'+escapeHtml(x.replace(/\s*\([^)]*\)/g,''))+'</span>').join(''):'<span class="chip">Không có chuỗi mưa</span>';
     const options=[{label:'Mực nước',value:''},...(currentParameters.waterLevel||[]).map(x=>({label:x,value:x})),...rainList.map(x=>({label:x,value:x}))];
     parameter.innerHTML='';const seen=new Set();
     options.forEach(o=>{const key=o.value+'|'+o.label;if(seen.has(key))return;seen.add(key);const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.label;parameter.appendChild(opt)})
@@ -514,12 +836,7 @@ function renderData(data){
   mndbt.textContent=data.limits&&data.limits.mndbt!=null?formatNumber(data.limits.mndbt):'—';
   mndgc.textContent=data.limits&&data.limits.mndgc!=null?formatNumber(data.limits.mndgc):'—';
   rainTotal.textContent=data.totalRainfall!=null?formatNumber(data.totalRainfall):'—';
-  evaluateAlert(data,latest);updateKpiState(data,latest);renderTechnicalSummary(data,waterSeries);
-  try{renderHydroChart(data)}catch(chartErr){
-    console.warn('Biểu đồ chưa tải được:',chartErr);
-    const canvas=document.getElementById('hydroChart');
-    if(canvas){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.font='14px Arial';ctx.fillStyle=document.documentElement.classList.contains('dark')?'#9fb0c6':'#687386';ctx.textAlign='center';ctx.fillText('Biểu đồ chưa tải được · Số liệu KPI vẫn hoạt động',canvas.width/2,canvas.height/2);}
-  }
+  evaluateAlert(data,latest);updateKpiState(data,latest);buildRows(data);renderTechnicalSummary(data,waterSeries);renderHydroChart(data)
 }
 
 function updateKpiState(data,latest){
@@ -531,10 +848,56 @@ function updateKpiState(data,latest){
   else if(Number.isFinite(bt)&&h>=bt){k.classList.add('warn');led.classList.add('stale');ledState.classList.add('stale')}
 }
 
+function buildRows(data){
+  const rows=[],waterSeries=Array.isArray(data.water)?data.water:[];
+  waterSeries.slice().reverse().forEach(p=>{const d=new Date(p.time);rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'m'})});
+  (data.rainfall||[]).forEach(series=>(series.data||[]).slice().reverse().forEach(p=>{const d=new Date(p.time);rows.push({time:d,facility:data.facility,parameter:p.parameter,value:p.value,unit:'mm'})}));
+  rows.sort((a,b)=>b.time-a.time);allRows=rows;applyDataFilter()
+}
+function applyDataFilter(){
+  const q=(document.getElementById('dataSearch').value||'').trim().toLowerCase();
+  const from=localDateStart(document.getElementById('gridFrom').value);
+  const to=localDateEnd(document.getElementById('gridTo').value);
+  filteredRows=allRows.filter(r=>{
+    if(from&&r.time<from)return false;
+    if(to&&r.time>to)return false;
+    if(q&&!(`${r.time.toLocaleDateString('vi-VN')} ${r.facility} ${r.parameter} ${r.value} ${r.unit}`).toLowerCase().includes(q))return false;
+    return true;
+  });
+  currentPage=1;renderTable();
+}
+function applyCustomDateRange(){
+  const from=document.getElementById('fromDate'),to=document.getElementById('toDate');
+  if(from.value&&to.value&&from.value>to.value)to.value=from.value;
+  if(f.value)loadChartData();
+}
+function exportRows(){
+  return filteredRows.map(r=>({
+    'Ngày':r.time.toLocaleDateString('vi-VN'),
+    'Giờ':String(r.time.getHours()).padStart(2,'0')+':00',
+    'Công trình':r.facility,
+    'Thông số':r.parameter,
+    'Giá trị':Number(r.value),
+    'Đơn vị':r.unit
+  }));
+}
+function exportFileStamp(){
+  return new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+}
+function exportExcel(){
+  const rows=exportRows();
+  if(!rows.length){alert('Không có dữ liệu phù hợp để xuất.');return}
+  if(!window.XLSX){alert('Thư viện Excel chưa tải xong. Vui lòng thử lại.');return}
+  const ws=XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Du lieu');
+  XLSX.writeFile(wb,`THUY_LOI_AI_Du_lieu_${exportFileStamp()}.xlsx`);
+}
+
+
 function reportDateRange(series){
   const points=(series||[]).map(p=>({time:new Date(p.time),value:Number(p.value)})).filter(p=>Number.isFinite(p.value)&&Number.isFinite(p.time.getTime())).sort((a,b)=>a.time-b.time);
   const from=document.getElementById('fromDate').value, to=document.getElementById('toDate').value;
-  if(from||to){const fmt=v=>{if(!v)return '—';const d=new Date(v+'T00:00:00');return d.toLocaleDateString('vi-VN')};return {from:fmt(from),to:fmt(to),points};}
+  if(from||to)return {from:from||'—',to:to||'—',points};
   if(points.length)return {from:points[0].time.toLocaleDateString('vi-VN'),to:points[points.length-1].time.toLocaleDateString('vi-VN'),points};
   return {from:'—',to:'—',points:[]};
 }
@@ -659,7 +1022,7 @@ async function shareQuickReportZalo(){
   try{
     if(navigator.clipboard)await navigator.clipboard.writeText(text.slice(0,10000));
   }catch(err){console.warn('Clipboard không khả dụng:',err)}
-  alert('Đã chuẩn bị nội dung Báo cáo nhanh. Hãy chọn Zalo trong bảng Chia sẻ; nếu trình duyệt không hỗ trợ chia sẻ tệp, nội dung báo cáo đã được sao chép để bạn dán vào Zalo.');
+  alert('Đã chuẩn bị nội dung Báo cáo nhanh. Zalo sẽ được mở để bạn chọn người/nhóm và dán nội dung. Nếu thiết bị hỗ trợ chia sẻ tệp, hãy chọn Zalo trong bảng Chia sẻ.');
   window.open('https://chat.zalo.me/','_blank','noopener,noreferrer');
 }
 function downloadQuickReportWord(){
@@ -673,6 +1036,16 @@ function downloadQuickReportWord(){
 function exportQuickReportWord(){downloadQuickReportWord()}
 document.getElementById('reportModal').addEventListener('click',e=>{if(e.target.id==='reportModal')closeReportPreview()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReportPreview()});
+
+function renderTable(){
+  const total=filteredRows.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(currentPage>pages)currentPage=pages;
+  const start=(currentPage-1)*PAGE_SIZE,rows=filteredRows.slice(start,start+PAGE_SIZE);
+  document.getElementById('pageInfo').textContent=`${total} bản ghi · trang ${currentPage}/${pages}`;
+  dataBody.innerHTML=rows.length?rows.map(r=>'<tr><td>'+r.time.toLocaleDateString('vi-VN')+'</td><td>'+String(r.time.getHours()).padStart(2,'0')+':00</td><td>'+escapeHtml(r.facility)+'</td><td>'+escapeHtml(r.parameter)+'</td><td><b>'+formatNumber(r.value)+'</b></td><td>'+r.unit+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Không có dữ liệu phù hợp.</td></tr>';
+  mobileData.innerHTML=rows.length?rows.map(r=>'<div class="data-item"><div class="dt">'+r.time.toLocaleDateString('vi-VN')+' · '+String(r.time.getHours()).padStart(2,'0')+':00</div><div class="pn">'+escapeHtml(r.parameter)+'</div><div class="pv">'+formatNumber(r.value)+' '+r.unit+'</div></div>').join(''):'<div class="empty">Không có dữ liệu phù hợp.</div>';
+  const pag=document.getElementById('pagination');pag.innerHTML='';
+  for(let i=1;i<=pages&&i<=7;i++){const b=document.createElement('button');b.className='page-btn'+(i===currentPage?' active':'');b.textContent=i;b.onclick=()=>{currentPage=i;renderTable()};pag.appendChild(b)}
+}
 
 function renderTechnicalSummary(data,series){
   const latest=series.length?series[series.length-1]:null,previous=series.length>1?series[series.length-2]:null;
@@ -701,8 +1074,8 @@ function renderTrendHtml(series){
 }
 
 function renderHydroChart(data){
-  const ws=(data.water||[]).map(p=>({x:new Date(p.time).getTime(),y:Number(p.value)})).filter(p=>Number.isFinite(p.y)&&Number.isFinite(p.x));
-  const rain=(data.rainfall||[]).flatMap(s=>(s.data||[]).map(p=>({x:new Date(p.time).getTime(),y:Number(p.value),name:s.parameter}))).filter(p=>Number.isFinite(p.y)&&Number.isFinite(p.x));
+  const ws=(data.water||[]).map(p=>({x:new Date(p.time),y:Number(p.value)})).filter(p=>Number.isFinite(p.y));
+  const rain=(data.rainfall||[]).flatMap(s=>(s.data||[]).map(p=>({x:new Date(p.time),y:Number(p.value),name:s.parameter}))).filter(p=>Number.isFinite(p.y));
   const bt=Number(data.limits&&data.limits.mndbt),gc=Number(data.limits&&data.limits.mndgc);
   if(hydroChart)hydroChart.destroy();
   const dark=document.documentElement.classList.contains('dark'),grid=dark?'rgba(170,195,220,.10)':'rgba(50,85,120,.10)',text=dark?'#9fb0c6':'#687386';
@@ -718,7 +1091,7 @@ function renderHydroChart(data){
         title(items){return items[0]?.parsed?.x?new Date(items[0].parsed.x).toLocaleString('vi-VN'):''},
         label(ctx){return `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)} ${ctx.dataset.yAxisID==='rain'?'mm':'m'}`}
       }}},
-      scales:{x:{type:'linear',ticks:{color:text,maxRotation:0,callback(value){return new Date(value).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',hour:periodDays()<=1?'2-digit':undefined,minute:periodDays()<=1?'2-digit':undefined})}},grid:{color:grid}},
+      scales:{x:{type:'time',time:{unit:periodDays()<=1?'hour':periodDays()<=7?'day':'day'},ticks:{color:text,maxRotation:0},grid:{color:grid}},
         water:{position:'left',title:{display:true,text:'H (m)',color:text},ticks:{color:text},grid:{color:grid}},
         rain:{position:'right',title:{display:true,text:'Mưa (mm)',color:text},ticks:{color:text},grid:{drawOnChartArea:false}}
       }}
@@ -739,17 +1112,17 @@ async function loadFacilities(){
     f.innerHTML='<option value="">Chọn công trình...</option>';
     facilities.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name;f.appendChild(option)});
     if(!facilities.length){
-      f.innerHTML='<option value="">Không có công trình</option>';if(s)s.textContent='Không có dữ liệu';
-      resetData('Apps Script đã kết nối nhưng không trả về danh sách công trình.');
+      f.innerHTML='<option value="">Không có công trình</option>';s.textContent='Không có dữ liệu';
+      resetData('Google Sheets đã kết nối nhưng không trả về danh sách công trình.');
       return;
     }
-    /* V1.8: tự chọn công trình đầu tiên để chuỗi dữ liệu chạy hoàn chỉnh ngay sau khi kết nối. */
+    /* Tự chọn công trình đầu tiên để chuỗi dữ liệu chạy hoàn chỉnh ngay sau khi kết nối. */
     f.value=facilities[0];setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');
     await loadParameters();await loadChartData();
   }catch(err){
     console.error(err);
-    f.innerHTML='<option value="">🔴 Mất kết nối Apps Script</option>';
-    if(s)s.textContent='Không kết nối được';
+    f.innerHTML='<option value="">🔴 Mất kết nối Google Sheets</option>';
+    s.textContent='Không kết nối được';
     setDataError(err.message||'Không tải được danh sách công trình.');
   }finally{f.disabled=false}
 }
@@ -760,7 +1133,7 @@ loadFacilities();
 </script>
 <div id="reportModal" class="report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
   <div class="report-modal-card">
-    <div class="report-modal-head"><span id="reportModalTitle">📄 Xem trước Báo cáo nhanh</span><button class="report-close" onclick="closeReportPreview()">✕</button></div>
+    <div class="report-modal-head"><span id="reportModalTitle">📄 Xem trước Báo cáo nhanh</span><div class="report-modal-actions"><button class="ghost-btn" style="min-height:36px;padding:0 11px" onclick="shareQuickReportZalo()">💬 Gửi Zalo</button><button class="primary-btn" style="min-height:36px;padding:0 11px" onclick="downloadQuickReportWord()">⬇️ Tải về</button><button class="report-close" onclick="closeReportPreview()">✕</button></div></div>
     <div id="reportPreview" class="report-preview"></div>
   </div>
 </div>
@@ -768,60 +1141,90 @@ loadFacilities();
 </html>
 '''
 
+# ============================================================
+# ENDPOINT - GIU NGUYEN duong dan / schema tra ve
+# ============================================================
+
 @app.get("/api/facilities")
-def api_facilities():
-    """Proxy danh sách công trình từ Apps Script API."""
-    return _proxy_call("facilities")
+async def api_facilities():
+    """Doc danh sach cong trinh truc tiep tu Google Sheet."""
+    try:
+        rows = await _safe_call(get_rows_)
+        data = await run_in_threadpool(get_facilities, rows)
+        return {"ok": True, "api": "facilities", "data": data}
+    except RuntimeError as exc:
+        return _error_response("facilities", exc)
+
 
 @app.get("/api/parameters")
-def api_parameters(facility: str):
-    """Proxy bộ thông số thực tế của một công trình từ Apps Script."""
-    return _proxy_call("parameters", {"facility": facility})
+async def api_parameters(facility: str):
+    try:
+        rows = await _safe_call(get_rows_)
+        data = await run_in_threadpool(get_facility_parameters, facility, rows)
+        return {"ok": True, "api": "parameters", "data": data}
+    except RuntimeError as exc:
+        return _error_response("parameters", exc)
+
 
 @app.get("/api/chart")
-def api_chart(
+async def api_chart(
     facility: str,
-    year: int = 2026,
+    year: int = CONFIG["DEFAULT_YEAR"],
     days: int = 7,
     waterParameter: str = "",
     rainfallParameters: str = "",
     fromDate: str = "",
     toDate: str = "",
 ):
-    """Proxy dữ liệu mực nước/lượng mưa và giới hạn kỹ thuật từ Apps Script."""
     rain = [x.strip() for x in rainfallParameters.split(",") if x.strip()]
-    return _proxy_call("chart", {
+    request = {
         "facility": facility,
         "year": year,
         "days": days,
         "waterParameter": waterParameter,
-        "rainfallParameters": ",".join(rain),
+        "rainfallParameters": rain,
         "fromDate": fromDate,
         "toDate": toDate,
-    })
+    }
+    try:
+        # Buoc doc du lieu (co the throw loi ket noi Google Sheet) chay trong threadpool.
+        data = await run_in_threadpool(get_chart_data, request)
+        return {"ok": True, "api": "chart", "data": data}
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "api": "chart", "error": str(exc)})
+    except Exception as exc:  # noqa: BLE001
+        return _error_response("chart", RuntimeError(_safe_error_message(exc)))
+
 
 @app.get("/api/connection")
-def api_connection():
-    """Kiểm tra FastAPI -> Apps Script -> AI_DATA qua API facilities."""
-    started=monotonic()
+async def api_connection():
+    """Kiem tra FastAPI -> Google Sheets -> AI_DATA bang cach doc facilities."""
+    started = monotonic()
     try:
-        fetch_apps_script_api_("facilities")
-        elapsed=round((monotonic()-started)*1000)
-        return {"ok":True,"fastapi_ms":elapsed,"apps_script_ok":True,"apps_script_ms":elapsed,
-                "ai_data_ok":True,"message":"Apps Script phản hồi thành công; AI_DATA có thể truy cập qua Apps Script."}
+        await _safe_call(get_rows_, True)
+        elapsed = round((monotonic() - started) * 1000)
+        return {
+            "ok": True, "fastapi_ms": elapsed, "apps_script_ok": True, "apps_script_ms": elapsed,
+            "ai_data_ok": True, "message": "Google Sheets phản hồi thành công; AI_DATA đọc được trực tiếp.",
+        }
     except RuntimeError as exc:
-        elapsed=round((monotonic()-started)*1000)
-        return {"ok":True,"fastapi_ms":elapsed,"apps_script_ok":False,"apps_script_ms":elapsed,
-                "ai_data_ok":False,"apps_script_error":str(exc),
-                "message":"FastAPI hoạt động nhưng Apps Script/AI_DATA không phản hồi."}
+        elapsed = round((monotonic() - started) * 1000)
+        return {
+            "ok": True, "fastapi_ms": elapsed, "apps_script_ok": False, "apps_script_ms": elapsed,
+            "ai_data_ok": False, "apps_script_error": str(exc),
+            "message": "FastAPI hoạt động nhưng không đọc được Google Sheets/AI_DATA.",
+        }
+
 
 @app.get("/", response_class=HTMLResponse)
 def technical_dashboard():
     return HTML
 
+
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.11.0","status":"ok","stage":6,"mode":"apps_script_proxy"}
+    return {"module": "technical_module", "version": "2.0.0", "status": "ok", "mode": "google_sheets_direct"}
+
 
 if __name__ == "__main__":
     import uvicorn
