@@ -418,9 +418,13 @@ def _date_filter(dt, from_date, to_date):
 
 def _pick_water_name(names):
     normed=[(n,_classify_parameter(n)) for n in names]
-    for code in ("WATER_LEVEL","WATER_LEVEL_UPSTREAM"):
+
+    # Với hồ/đập, ưu tiên HTL (mực nước thượng lưu).
+    # Chỉ dùng H chung khi công trình không có HTL.
+    for code in ("WATER_LEVEL_UPSTREAM","WATER_LEVEL"):
         for name,c in normed:
-            if c==code:return name
+            if c==code:
+                return name
     return None
 
 def _series(rows, year, codes):
@@ -1072,6 +1076,47 @@ function normalizeRawWaterSeries(data){
   }).filter(Boolean);
 }
 
+async function loadParameters(){
+  if(!f.value){
+    currentParameters={waterLevel:[],rainfall:[]};
+    selectedWaterParameter='';
+    return;
+  }
+
+  const result=await fetchJson(
+    '/api/parameters?facility='+encodeURIComponent(f.value),
+    {cache:'no-store'},
+    1
+  );
+
+  const d=result?.data||{};
+  currentParameters={
+    waterLevel:Array.isArray(d.waterLevel)?d.waterLevel:[],
+    rainfall:Array.isArray(d.rainfall)?d.rainfall:[]
+  };
+
+  /*
+   * Ưu tiên HTL cho hồ/đập.
+   * Nếu không có HTL thì mới dùng H/mực nước.
+   */
+  const waterNames=currentParameters.waterLevel;
+  const upstream=waterNames.find(x=>{
+    const n=String(x||'').trim().toLowerCase();
+    return n==='htl (m)'||n==='htl'||n.includes('mực nước thượng lưu');
+  });
+
+  selectedWaterParameter=
+    upstream ||
+    waterNames.find(x=>{
+      const n=String(x||'').trim().toLowerCase();
+      return n==='h (m)'||n==='h'||n==='mực nước';
+    }) ||
+    waterNames[0] ||
+    '';
+
+  return currentParameters;
+}
+
 async function loadChartData(){
   if(!f.value){
     resetData();
@@ -1091,7 +1136,8 @@ async function loadChartData(){
       facility:f.value,
       year:String(new Date().getFullYear()),
       days:String(meta.days),
-      hours:String(meta.hours)
+      hours:String(meta.hours),
+      waterParameter:selectedWaterParameter||''
     });
 
     // Custom date là chế độ độc lập và có độ ưu tiên cao nhất.
@@ -2023,15 +2069,36 @@ async function loadFacilities(){
       return;
     }
     /* V1.8: tự chọn công trình đầu tiên để chuỗi dữ liệu chạy hoàn chỉnh ngay sau khi kết nối. */
-    f.value=facilities[0];setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');
-    await loadParameters();await loadChartData();
+    f.value=facilities[0];
+    setSelectedFacility();
+    resetData('Đang tải dữ liệu thực tế...');
+
+    try{
+      await loadParameters();
+      await loadChartData();
+    }catch(err){
+      console.error('Lỗi tải thông số/biểu đồ:',err);
+      // Google Sheet đã có dữ liệu và facilities đã tải được:
+      // giữ nguyên danh sách công trình, chỉ báo lỗi phần dữ liệu thứ cấp.
+      setDataError(err.message||'Không tải được dữ liệu biểu đồ.');
+    }
   }catch(err){
-    console.error(err);
-    f.innerHTML='<option value="">🔴 Mất kết nối Google Sheet</option>';
+    console.error('Lỗi tải danh sách công trình:',err);
+    f.innerHTML='<option value="">🔴 Không tải được danh sách công trình</option>';
     setDataError(err.message||'Không tải được danh sách công trình.');
   }finally{f.disabled=false}
 }
-f.addEventListener('change',async()=>{setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');await loadParameters();await loadChartData()});
+f.addEventListener('change',async()=>{
+  setSelectedFacility();
+  resetData('Đang tải dữ liệu thực tế...');
+  try{
+    await loadParameters();
+    await loadChartData();
+  }catch(err){
+    console.error(err);
+    setDataError(err.message||'Không tải được dữ liệu của công trình.');
+  }
+});
 async function refreshModule(){
   if(!f.value){setSelectedFacility();resetData();return}
   setSelectedFacility();
