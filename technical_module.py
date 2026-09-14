@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 import json
 import os
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from time import monotonic
 
 # ============================================================
-# THUY LOI AI - TECHNICAL MODULE V1.7
+# THUY LOI AI - TECHNICAL MODULE V1.8
 # BUOC 1: GIAO DIEN DOC LAP
 # Khong import, khong sua server.py
 # ============================================================
 
 app = FastAPI(
     title="THUY LOI AI - Thong so ky thuat",
-    version="1.7.0",
+    version="1.8.0",
 )
 
 # ============================================================
@@ -27,27 +29,58 @@ APPS_SCRIPT_API_URL = os.getenv(
     "APPS_SCRIPT_API_URL",
     "https://script.google.com/macros/s/AKfycbzP3yXgeBs0WDuvQdrYa4ptJSeK9cHnCe0lrM78pR1WVohagQyOjn8LFtBB7QhmltWupQ/exec"
 )
+APPS_SCRIPT_TIMEOUT = float(os.getenv("APPS_SCRIPT_TIMEOUT", "12"))
+
+def _safe_error_message(exc):
+    if isinstance(exc, HTTPError):
+        return f"Apps Script HTTP {exc.code}: {exc.reason or 'Upstream trả lỗi HTTP.'}"
+    if isinstance(exc, URLError):
+        reason = getattr(exc, "reason", None)
+        return f"Không kết nối được Apps Script: {reason or 'lỗi mạng/DNS.'}"
+    if isinstance(exc, TimeoutError):
+        return f"Apps Script timeout sau {APPS_SCRIPT_TIMEOUT:g} giây."
+    if isinstance(exc, json.JSONDecodeError):
+        return "Apps Script trả về dữ liệu không phải JSON hợp lệ."
+    return str(exc) or "Lỗi không xác định khi gọi Apps Script."
 
 def fetch_apps_script_api_(api, params=None):
     query = {"api": api}
     if params:
         query.update({k: v for k, v in params.items() if v not in (None, "")})
     url = APPS_SCRIPT_API_URL + "?" + urlencode(query)
-
     req = Request(
         url,
         headers={
-            "User-Agent": "THUY-LOI-AI-Technical/1.7"
+            "User-Agent": "THUY-LOI-AI-Technical/1.8",
+            "Accept": "application/json,text/plain,*/*",
+            "Cache-Control": "no-cache",
         }
     )
+    try:
+        with urlopen(req, timeout=APPS_SCRIPT_TIMEOUT) as response:
+            raw = response.read().decode("utf-8")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise RuntimeError("Apps Script trả về JSON nhưng không đúng cấu trúc object.")
+        if not data.get("ok"):
+            raise RuntimeError(data.get("error") or f"Apps Script API '{api}' trả ok=false.")
+        return data
+    except Exception as exc:
+        raise RuntimeError(_safe_error_message(exc)) from exc
 
-    with urlopen(req, timeout=20) as response:
-        raw = response.read().decode("utf-8")
-
-    data = json.loads(raw)
-    if not data.get("ok"):
-        raise RuntimeError(data.get("error") or "Apps Script API trả lỗi.")
-    return data
+def _proxy_call(api, params=None):
+    try:
+        return fetch_apps_script_api_(api, params)
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "ok": False,
+                "source": "apps_script",
+                "api": api,
+                "error": str(exc),
+            },
+        )
 
 HTML = '''<!doctype html>
 <html lang="vi">
@@ -115,6 +148,7 @@ button{cursor:pointer}
 .export-group{display:flex;gap:7px;align-items:center}
 .data-date{width:145px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface2);color:var(--text)}
 @media(max-width:760px){
+  .connection-grid{grid-template-columns:1fr 1fr}.connection-time{grid-column:1/-1;justify-content:flex-start}.connection-head{align-items:flex-start}.connection-btn{font-size:11px}
   .date-filter{grid-template-columns:1fr 1fr}.date-filter .date-apply{grid-column:1/-1}
   .data-date{width:135px}.export-group{width:100%}
 }
@@ -125,6 +159,19 @@ button{cursor:pointer}
 .alert-banner.show{display:flex}.alert-banner.warn{border-color:rgba(216,137,0,.45);background:linear-gradient(90deg,rgba(216,137,0,.13),var(--surface))}
 .alert-banner.danger{border-color:rgba(225,75,50,.55);background:linear-gradient(90deg,rgba(225,75,50,.15),var(--surface))}
 .alert-icon{font-size:20px}.alert-text{flex:1}.alert-title{font-weight:900}.alert-detail{font-size:12px;color:var(--muted);margin-top:2px}
+/* V1.8 - Connection Monitor */
+.connection-panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:14px}
+.connection-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.connection-title{font-weight:900;font-size:14px}.connection-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.connection-btn{min-height:38px!important;padding:0 11px!important;border-radius:11px!important}
+.connection-grid{display:grid;grid-template-columns:repeat(4,1fr) auto;gap:8px;align-items:stretch}
+.connection-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface2);min-width:0}
+.connection-item b{display:block;font-size:11px}.connection-item small{display:block;color:var(--muted);font-size:10px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px}
+.conn-dot{width:9px;height:9px;min-width:9px;border-radius:50%;background:var(--muted);box-shadow:none}
+.conn-dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.conn-dot.warn{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+.conn-dot.error{background:var(--danger);box-shadow:0 0 9px var(--danger);animation:alarmBlink .8s infinite}
+.connection-time{display:flex;align-items:center;justify-content:flex-end;color:var(--muted);font-size:10px;padding:0 3px;white-space:nowrap}
 .toolbar{display:grid;grid-template-columns:1.5fr .9fr .8fr auto;gap:10px;margin-bottom:16px}
 .control,.card,.panel{
   background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)
@@ -217,6 +264,23 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div class="alert-actions"><button id="soundBtn" class="sound-btn" onclick="toggleAlertSound()">🔕 Âm thanh tắt</button></div>
   </section>
 
+  <section id="connectionMonitor" class="connection-panel">
+    <div class="connection-head">
+      <div>
+        <div class="connection-title">🔌 Connection Monitor</div>
+        <div class="connection-sub">Theo dõi Frontend · FastAPI · Apps Script · AI_DATA</div>
+      </div>
+      <button id="connectionBtn" class="ghost-btn connection-btn" onclick="checkConnections()">🧪 Kiểm tra kết nối</button>
+    </div>
+    <div class="connection-grid">
+      <div class="connection-item"><span class="conn-dot ok" id="connFrontend"></span><div><b>Frontend</b><small id="connFrontendText">Sẵn sàng</small></div></div>
+      <div class="connection-item"><span class="conn-dot" id="connFastAPI"></span><div><b>FastAPI</b><small id="connFastAPIText">Đang kiểm tra</small></div></div>
+      <div class="connection-item"><span class="conn-dot" id="connApps"></span><div><b>Apps Script</b><small id="connAppsText">Chưa kiểm tra</small></div></div>
+      <div class="connection-item"><span class="conn-dot" id="connAI"></span><div><b>AI_DATA</b><small id="connAIText">Chờ Apps Script</small></div></div>
+      <div class="connection-time" id="connectionTime">Chưa kiểm tra</div>
+    </div>
+  </section>
+
   <section class="toolbar">
     <div class="control"><label>CÔNG TRÌNH</label><select id="facility"><option value="">Đang tải công trình...</option></select></div>
     <div class="control"><label>THÔNG SỐ</label><select id="parameter"><option value="">Mực nước</option></select></div>
@@ -277,7 +341,7 @@ tbody tr{transition:background .15s}tbody tr:hover{background:color-mix(in srgb,
     <div id="pagination" class="pagination"></div>
   </section>
 
-  <div class="footer">THUY LOI AI · Technical Module V1.7 · Smart Control Room · Apps Script Proxy · Dashboard kỹ thuật</div>
+  <div class="footer">THUY LOI AI · Technical Module V1.8 · Smart Control Room · Connection Monitor · Apps Script Proxy · Dashboard kỹ thuật</div>
 </main>
 
 <script>
@@ -322,6 +386,70 @@ function periodDays(){return ({'24 gio':1,'3 ngay':3,'7 ngay':7,'30 ngay':30,'90
 function formatNumber(v,digits=2){if(v===null||v===undefined||v==='')return '—';const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—'}
 function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
+const CLIENT_TIMEOUT=15000;
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+async function fetchJson(url, options={}, retries=2){
+  let lastError;
+  for(let attempt=0;attempt<=retries;attempt++){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),CLIENT_TIMEOUT);
+    try{
+      const response=await fetch(url,{...options,signal:controller.signal,cache:'no-store'});
+      let result;
+      try{result=await response.json()}catch(e){throw new Error('FastAPI trả về dữ liệu không hợp lệ.')}
+      if(!response.ok||!result.ok)throw new Error(result?.error||`HTTP ${response.status}`);
+      return result;
+    }catch(err){
+      lastError=err.name==='AbortError'?new Error(`Timeout sau ${CLIENT_TIMEOUT/1000} giây.`):err;
+      if(attempt<retries)await sleep(600*(attempt+1));
+    }finally{clearTimeout(timer)}
+  }
+  throw lastError||new Error('Không kết nối được API.');
+}
+function setConn(id,state,text){
+  const dot=document.getElementById(id),label=document.getElementById(id+'Text');
+  dot.className='conn-dot '+(state||'');
+  label.textContent=text;
+}
+function setDataError(message){
+  state.textContent='Lỗi kết nối';stateDetail.textContent=message||'Không tải được dữ liệu.';
+  technicalSummary.innerHTML='<div class="empty">⚠️ '+escapeHtml(message||'Không tải được dữ liệu.')+'</div>';
+  const ab=document.getElementById('alertBanner');ab.className='alert-banner danger';
+  document.getElementById('alertIcon').textContent='🔴';
+  document.getElementById('alertTitle').textContent='MẤT KẾT NỐI DỮ LIỆU';
+  document.getElementById('alertDetail').textContent=message||'Không thể lấy dữ liệu từ Apps Script / AI_DATA.';
+  lastAlertLevel='danger';
+}
+async function checkConnections(){
+  const btn=document.getElementById('connectionBtn');btn.disabled=true;btn.textContent='⏳ Đang kiểm tra...';
+  setConn('connFrontend','ok','Trình duyệt hoạt động');
+  setConn('connFastAPI','','Đang kiểm tra...');
+  setConn('connApps','','Đang kiểm tra...');
+  setConn('connAI','','Đang kiểm tra...');
+  try{
+    const result=await fetchJson('/api/connection',{},0);
+    setConn('connFastAPI','ok',`Online · ${result.fastapi_ms||0} ms`);
+    if(result.apps_script_ok){
+      setConn('connApps','ok',`Kết nối · ${result.apps_script_ms||0} ms`);
+      setConn('connAI','ok','Truy cập qua Apps Script');
+      document.getElementById('connectionTime').textContent='Kiểm tra lúc '+new Date().toLocaleTimeString('vi-VN');
+      return true;
+    }
+    setConn('connApps','error',result.apps_script_error||'Apps Script lỗi');
+    setConn('connAI','error','Không truy cập được AI_DATA');
+    document.getElementById('connectionTime').textContent='Lỗi lúc '+new Date().toLocaleTimeString('vi-VN');
+    return false;
+  }catch(err){
+    setConn('connFastAPI','error',err.message||'FastAPI lỗi');
+    setConn('connApps','error','Không kiểm tra được');
+    setConn('connAI','error','Không kiểm tra được');
+    document.getElementById('connectionTime').textContent='Lỗi lúc '+new Date().toLocaleTimeString('vi-VN');
+    return false;
+  }finally{
+    btn.disabled=false;btn.textContent='🧪 Kiểm tra kết nối';
+  }
+}
+
 function resetData(message='Chọn công trình để tải dữ liệu.'){
   water.textContent='—';state.textContent='—';stateDetail.textContent='Chưa có dữ liệu';mndbt.textContent='—';mndgc.textContent='—';rainTotal.textContent='—';
   technicalSummary.innerHTML='<div class="empty">'+escapeHtml(message)+'</div>';allRows=[];filteredRows=[];currentPage=1;renderTable();
@@ -329,8 +457,8 @@ function resetData(message='Chọn công trình để tải dữ liệu.'){
   const ab=document.getElementById('alertBanner');
   ab.className='alert-banner safe';
   document.getElementById('alertIcon').textContent='●';
-  document.getElementById('alertTitle').textContent='Vận hành bình thường';
-  document.getElementById('alertDetail').textContent='Đang chờ dữ liệu mực nước.';
+  document.getElementById('alertTitle').textContent='CHỜ DỮ LIỆU';
+  document.getElementById('alertDetail').textContent='Chưa có dữ liệu mực nước hoặc đang chờ kết nối.';
   lastAlertLevel='normal';
 }
 
@@ -345,15 +473,14 @@ function toggleTheme(){
 async function loadParameters(){
   if(!f.value)return;
   try{
-    const response=await fetch('/api/parameters?facility='+encodeURIComponent(f.value));const result=await response.json();
-    if(!response.ok||!result.ok)throw new Error(result.error||'Không tải được thông số.');
+    const result=await fetchJson('/api/parameters?facility='+encodeURIComponent(f.value));
     currentParameters=result.data||{waterLevel:[],rainfall:[]};
     const rainList=currentParameters.rainfall||[];
     rainPills.innerHTML=rainList.length?rainList.map(x=>'<span class="chip">'+escapeHtml(x.replace(/\s*\([^)]*\)/g,''))+'</span>').join(''):'<span class="chip">Không có chuỗi mưa</span>';
     const options=[{label:'Mực nước',value:''},...(currentParameters.waterLevel||[]).map(x=>({label:x,value:x})),...rainList.map(x=>({label:x,value:x}))];
     parameter.innerHTML='';const seen=new Set();
     options.forEach(o=>{const key=o.value+'|'+o.label;if(seen.has(key))return;seen.add(key);const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.label;parameter.appendChild(opt)})
-  }catch(err){console.error(err);parameter.innerHTML='<option value="">Không tải được thông số</option>'}
+  }catch(err){console.error(err);parameter.innerHTML='<option value="">Không tải được thông số</option>';setConn('connAI','error',err.message||'AI_DATA lỗi')}
 }
 
 async function loadChartData(){
@@ -366,10 +493,10 @@ async function loadChartData(){
     if(to)params.set('toDate',to);
     const selected=parameter.value;
     if(selected){const isRain=(currentParameters.rainfall||[]).includes(selected);if(!isRain)params.set('waterParameter',selected);else params.set('rainfallParameters',selected)}
-    const response=await fetch('/api/chart?'+params.toString());const result=await response.json();
-    if(!response.ok||!result.ok)throw new Error(result.error||'Không tải được dữ liệu.');
-    currentData=result.data;renderData(currentData)
-  }catch(err){console.error(err);state.textContent='Lỗi dữ liệu';stateDetail.textContent=err.message||'Không tải được dữ liệu.'}
+    const result=await fetchJson('/api/chart?'+params.toString());
+    currentData=result.data;renderData(currentData);
+    setConn('connAI','ok','Dữ liệu thực tế đã tải');
+  }catch(err){console.error(err);setDataError(err.message||'Không tải được dữ liệu.');setConn('connAI','error',err.message||'AI_DATA lỗi')}
 }
 
 function evaluateAlert(data,latest){
@@ -554,15 +681,40 @@ function renderHydroChart(data){
 function fitChart(){if(currentData)renderHydroChart(currentData)}
 
 async function loadFacilities(){
-  f.disabled=true;f.innerHTML='<option value="">Đang tải công trình...</option>';
+  f.disabled=true;f.innerHTML='<option value="">⏳ Đang tải công trình...</option>';
+  setConn('connFastAPI','','Đang kết nối...');
+  setConn('connApps','','Đang kiểm tra...');
+  setConn('connAI','','Chờ dữ liệu...');
   try{
-    const response=await fetch('/api/facilities');const result=await response.json();
-    if(!response.ok||!result.ok)throw new Error(result.error||'Không tải được danh sách công trình.');
-    const facilities=Array.isArray(result.data)?result.data:[];f.innerHTML='<option value="">Chọn công trình...</option>';
+    const result=await fetchJson('/api/facilities',{},2);
+    setConn('connFastAPI','ok','Online');
+    setConn('connApps','ok','Kết nối thành công');
+    setConn('connAI','ok','AI_DATA sẵn sàng');
+    let facilities=Array.isArray(result.data)?result.data:[];
+    facilities=facilities.map(x=>{
+      if(typeof x==='string')return x;
+      if(x&&typeof x==='object')return x.name||x.facility||x['CÔNG TRÌNH']||x['Công trình']||x.value||'';
+      return '';
+    }).filter(Boolean);
+    f.innerHTML='<option value="">Chọn công trình...</option>';
     facilities.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name;f.appendChild(option)});
-    if(!facilities.length){f.innerHTML='<option value="">Không có công trình</option>';s.textContent='Không có dữ liệu'}
-  }catch(err){console.error(err);f.innerHTML='<option value="">Lỗi tải dữ liệu</option>';s.textContent='Không kết nối được API'}
-  finally{f.disabled=false}
+    if(!facilities.length){
+      f.innerHTML='<option value="">Không có công trình</option>';s.textContent='Không có dữ liệu';
+      resetData('Apps Script đã kết nối nhưng không trả về danh sách công trình.');
+      return;
+    }
+    /* V1.8: tự chọn công trình đầu tiên để chuỗi dữ liệu chạy hoàn chỉnh ngay sau khi kết nối. */
+    f.value=facilities[0];setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');
+    await loadParameters();await loadChartData();
+  }catch(err){
+    console.error(err);
+    f.innerHTML='<option value="">🔴 Mất kết nối Apps Script</option>';
+    s.textContent='Không kết nối được';
+    setConn('connFastAPI','error','API không phản hồi');
+    setConn('connApps','error',err.message||'Apps Script lỗi');
+    setConn('connAI','error','Không truy cập được');
+    setDataError(err.message||'Không tải được danh sách công trình.');
+  }finally{f.disabled=false}
 }
 f.addEventListener('change',async()=>{setSelectedFacility();resetData('Đang tải dữ liệu thực tế...');await loadParameters();await loadChartData()});
 parameter.addEventListener('change',loadChartData);period.addEventListener('change',loadChartData);
@@ -576,12 +728,12 @@ loadFacilities();
 @app.get("/api/facilities")
 def api_facilities():
     """Proxy danh sách công trình từ Apps Script API."""
-    return fetch_apps_script_api_("facilities")
+    return _proxy_call("facilities")
 
 @app.get("/api/parameters")
 def api_parameters(facility: str):
     """Proxy bộ thông số thực tế của một công trình từ Apps Script."""
-    return fetch_apps_script_api_("parameters", {"facility": facility})
+    return _proxy_call("parameters", {"facility": facility})
 
 @app.get("/api/chart")
 def api_chart(
@@ -595,7 +747,7 @@ def api_chart(
 ):
     """Proxy dữ liệu mực nước/lượng mưa và giới hạn kỹ thuật từ Apps Script."""
     rain = [x.strip() for x in rainfallParameters.split(",") if x.strip()]
-    return fetch_apps_script_api_("chart", {
+    return _proxy_call("chart", {
         "facility": facility,
         "year": year,
         "days": days,
@@ -605,13 +757,28 @@ def api_chart(
         "toDate": toDate,
     })
 
+@app.get("/api/connection")
+def api_connection():
+    """Kiểm tra FastAPI -> Apps Script -> AI_DATA qua API facilities."""
+    started=monotonic()
+    try:
+        fetch_apps_script_api_("facilities")
+        elapsed=round((monotonic()-started)*1000)
+        return {"ok":True,"fastapi_ms":elapsed,"apps_script_ok":True,"apps_script_ms":elapsed,
+                "ai_data_ok":True,"message":"Apps Script phản hồi thành công; AI_DATA có thể truy cập qua Apps Script."}
+    except RuntimeError as exc:
+        elapsed=round((monotonic()-started)*1000)
+        return {"ok":True,"fastapi_ms":elapsed,"apps_script_ok":False,"apps_script_ms":elapsed,
+                "ai_data_ok":False,"apps_script_error":str(exc),
+                "message":"FastAPI hoạt động nhưng Apps Script/AI_DATA không phản hồi."}
+
 @app.get("/", response_class=HTMLResponse)
 def technical_dashboard():
     return HTML
 
 @app.get("/health")
 def health():
-    return {"module":"technical_module","version":"1.6.0","status":"ok","stage":4,"mode":"apps_script_proxy"}
+    return {"module":"technical_module","version":"1.8.0","status":"ok","stage":4,"mode":"apps_script_proxy","connection_monitor":True}
 
 if __name__ == "__main__":
     import uvicorn
