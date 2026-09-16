@@ -447,25 +447,28 @@
       border-top: 1px solid var(--border);
       background: var(--surface-soft);
     }
-    .ai-action-buttons {
-      display: flex;
-      width: 100%;
-      gap: 8px;
-    }
-    #fieldReportBtn,
-    #mapAiBtn {
-      flex: 1;
-      min-width: 0;
-      border: 1px dashed var(--primary);
-      background: transparent;
-      border-radius: 12px;
-      padding: 10px 6px;
-      font-weight: 600;
-      color: var(--primary);
-      font-size: 15px;
-      line-height: 1.25;
-      transition: background .15s;
-    }
+   .ai-action-buttons {
+  display: flex;
+  width: 100%;
+  gap: 6px;
+  margin: 6px 0;
+  align-items: stretch;
+  }
+  #fieldReportBtn,
+#mapAiBtn,
+#technicalSpecsBtn {
+  flex: 1;
+  min-width: 0;
+  border-radius: 12px;
+  padding: 7px 3px;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.15;
+  min-height: 48px;
+  height: 48px;
+  white-space: normal;
+  box-sizing: border-box;
+}
     #fieldReportBtn:hover {
       background: rgba(37, 99, 235, .06);
     }
@@ -589,14 +592,22 @@
       color: var(--text-secondary);
       margin-bottom: 14px;
     }
-    .ai-action-buttons {
-      gap: 7px;
-    }
-    #fieldReportBtn,
-    #mapAiBtn {
-      font-size: 13px;
-      padding: 10px 4px;
-    }
+  .ai-action-buttons {
+  gap: 6px;
+  margin: 6px 0;
+}
+
+  #fieldReportBtn,
+  #mapAiBtn,
+  #technicalSpecsBtn {
+    font-size: 12px;
+    line-height: 1.15;
+    padding: 7px 3px;
+    min-height: 48px;
+    height: 48px;
+    border-radius: 12px;
+    white-space: normal;
+  }
     .field-report-types {
       display: grid;
       grid-template-columns: 1fr 1fr;
