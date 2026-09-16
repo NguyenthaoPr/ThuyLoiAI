@@ -3841,13 +3841,28 @@ closeMapAi.addEventListener('click', function() {
          * Chỉ tải Render phụ khi người dùng thực sự mở
          * Thông số kỹ thuật.
          */
-        if (!frame.getAttribute("src")) {
-            const technicalUrl = frame.getAttribute("data-src");
+    function openTechnicalModule() {
+    const container = document.getElementById("technicalModuleContainer");
 
-            if (technicalUrl) {
-                frame.setAttribute("src", technicalUrl);
-            }
-        }
+    if (!container) {
+        console.error("Không tìm thấy Technical Module.");
+        return;
+    }
+
+    container.classList.remove("technical-module-hidden");
+    document.body.style.overflow = "hidden";
+}
+
+function closeTechnicalModule() {
+    const container = document.getElementById("technicalModuleContainer");
+
+    if (!container) {
+        return;
+    }
+
+    container.classList.add("technical-module-hidden");
+    document.body.style.overflow = "";
+}
 
         container.classList.remove("technical-module-hidden");
 
