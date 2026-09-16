@@ -1808,14 +1808,18 @@
         font-size: 15px !important;
     }
 
-    #mapAiPanel #mapSearchBtn,
-    #mapAiPanel #mapLocateBtn {
-        width: 40px !important;
-        min-width: 40px !important;
-        height: 40px !important;
-        border-radius: 11px !important;
-        flex-shrink: 0 !important;
-    }
+/* Chỉ giữ ô tìm kiếm + GPS */
+#mapAiPanel #mapSearchBtn {
+    display: none !important;
+}
+
+#mapAiPanel #mapLocateBtn {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    border-radius: 11px !important;
+    flex-shrink: 0 !important;
+}
 
     /* Bản đồ */
     #mapAiPanel .map-container {
