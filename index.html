@@ -3750,20 +3750,28 @@ closeMapAi.addEventListener('click', function() {
       });
     })();
   </script>
-  <div id="technicalModuleContainer" class="technical-module-hidden">
+ <!-- ===== THỦY LỢI AI - TECHNICAL MODULE | ADD ONLY ===== -->
+
+<div id="technicalModuleContainer" class="technical-module-hidden">
+
     <div class="technical-module-header">
-        <button type="button" onclick="closeTechnicalModule()">
+        <button
+            type="button"
+            class="technical-module-back"
+            onclick="closeTechnicalModule()">
             ← Quay lại THỦY LỢI AI
         </button>
     </div>
 
     <iframe
         id="technicalModuleFrame"
-        data-src="https://thuyloai-technical.onrender.com/"
-        title="Thông tin cập nhật">
+        src="https://thuyloai-technical.onrender.com/"
+        title="Thông tin cập nhật"
+        loading="eager">
     </iframe>
+
 </div>
-  <!-- ===== THỦY LỢI AI - TECHNICAL MODULE | ADD ONLY ===== -->
+
 <style>
     #technicalModuleContainer {
         position: fixed;
@@ -3815,6 +3823,7 @@ closeMapAi.addEventListener('click', function() {
     }
 
     @media (max-width: 600px) {
+
         .technical-module-header {
             padding: 6px 8px;
         }
@@ -3828,65 +3837,40 @@ closeMapAi.addEventListener('click', function() {
 
 <script>
     function openTechnicalModule() {
-        const container = document.getElementById("technicalModuleContainer");
-        const frame = document.getElementById("technicalModuleFrame");
 
-        if (!container || !frame) {
+        const container =
+            document.getElementById("technicalModuleContainer");
+
+        if (!container) {
             console.error("Không tìm thấy Technical Module.");
             return;
         }
 
-        /*
-         * Lazy-load:
-         * Chỉ tải Render phụ khi người dùng thực sự mở
-         * Thông số kỹ thuật.
-         */
-    function openTechnicalModule() {
-    const container = document.getElementById("technicalModuleContainer");
+        container.classList.remove(
+            "technical-module-hidden"
+        );
 
-    if (!container) {
-        console.error("Không tìm thấy Technical Module.");
-        return;
-    }
-
-    container.classList.remove("technical-module-hidden");
-    document.body.style.overflow = "hidden";
-}
-
-function closeTechnicalModule() {
-    const container = document.getElementById("technicalModuleContainer");
-
-    if (!container) {
-        return;
-    }
-
-    container.classList.add("technical-module-hidden");
-    document.body.style.overflow = "";
-}
-
-        container.classList.remove("technical-module-hidden");
-
-        /*
-         * Khóa cuộn trang chính khi Technical đang mở.
-         */
         document.body.style.overflow = "hidden";
     }
 
+
     function closeTechnicalModule() {
-        const container = document.getElementById("technicalModuleContainer");
+
+        const container =
+            document.getElementById("technicalModuleContainer");
 
         if (!container) {
             return;
         }
 
-        container.classList.add("technical-module-hidden");
+        container.classList.add(
+            "technical-module-hidden"
+        );
 
-        /*
-         * Trả lại trạng thái cuộn cho THỦY LỢI AI.
-         */
         document.body.style.overflow = "";
     }
 </script>
+
 <!-- ===== END TECHNICAL MODULE | ADD ONLY ===== -->
 </body>
 </html>
