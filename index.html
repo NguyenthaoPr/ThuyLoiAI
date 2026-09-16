@@ -481,7 +481,7 @@
   color: #7C3AED;
 }
 
-#technicalSpecsBtn:hover {
+#:hover {
   background: rgba(124, 58, 237, .06);
 }
     .map-ai-panel {
@@ -1876,7 +1876,7 @@
         <div class="ai-action-buttons">
           <button id="fieldReportBtn" type="button">📋 Báo cáo hiện trường</button>
           <button id="mapAiBtn" type="button">🗺️ BẢN ĐỒ AI</button>
-            <button id="technicalSpecsBtn" type="button"> ⚙️ Thông số kỹ thuật </button>
+           <button id="technicalSpecsBtn" type="button" onclick="openTechnicalModule()">⚙️ Cập nhật vận hành </button>
         </div>
       </div>
      
@@ -3750,5 +3750,128 @@ closeMapAi.addEventListener('click', function() {
       });
     })();
   </script>
+  <div id="technicalModuleContainer" class="technical-module-hidden">
+    <div class="technical-module-header">
+        <button type="button" onclick="closeTechnicalModule()">
+            ← Quay lại THỦY LỢI AI
+        </button>
+    </div>
+
+    <iframe
+        id="technicalModuleFrame"
+        data-src="https://thuyloai-technical.onrender.com"
+        title="Thông tin cập nhật">
+    </iframe>
+</div>
+  <!-- ===== THỦY LỢI AI - TECHNICAL MODULE | ADD ONLY ===== -->
+<style>
+    #technicalModuleContainer {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100dvh;
+        background: var(--surface, #ffffff);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+    }
+
+    #technicalModuleContainer.technical-module-hidden {
+        display: none;
+    }
+
+    .technical-module-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--surface, #ffffff);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .technical-module-back {
+        border: 0;
+        border-radius: 10px;
+        padding: 9px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        background: rgba(124, 58, 237, 0.08);
+        color: #7C3AED;
+    }
+
+    .technical-module-back:hover {
+        background: rgba(124, 58, 237, 0.15);
+    }
+
+    #technicalModuleFrame {
+        flex: 1 1 auto;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        border: 0;
+        display: block;
+        background: #ffffff;
+    }
+
+    @media (max-width: 600px) {
+        .technical-module-header {
+            padding: 6px 8px;
+        }
+
+        .technical-module-back {
+            width: 100%;
+            padding: 10px 12px;
+        }
+    }
+</style>
+
+<script>
+    function openTechnicalModule() {
+        const container = document.getElementById("technicalModuleContainer");
+        const frame = document.getElementById("technicalModuleFrame");
+
+        if (!container || !frame) {
+            console.error("Không tìm thấy Technical Module.");
+            return;
+        }
+
+        /*
+         * Lazy-load:
+         * Chỉ tải Render phụ khi người dùng thực sự mở
+         * Thông số kỹ thuật.
+         */
+        if (!frame.getAttribute("src")) {
+            const technicalUrl = frame.getAttribute("data-src");
+
+            if (technicalUrl) {
+                frame.setAttribute("src", technicalUrl);
+            }
+        }
+
+        container.classList.remove("technical-module-hidden");
+
+        /*
+         * Khóa cuộn trang chính khi Technical đang mở.
+         */
+        document.body.style.overflow = "hidden";
+    }
+
+    function closeTechnicalModule() {
+        const container = document.getElementById("technicalModuleContainer");
+
+        if (!container) {
+            return;
+        }
+
+        container.classList.add("technical-module-hidden");
+
+        /*
+         * Trả lại trạng thái cuộn cho THỦY LỢI AI.
+         */
+        document.body.style.overflow = "";
+    }
+</script>
+<!-- ===== END TECHNICAL MODULE | ADD ONLY ===== -->
 </body>
 </html>
