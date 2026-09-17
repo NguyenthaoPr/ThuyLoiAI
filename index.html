@@ -3863,6 +3863,148 @@ closeMapAi.addEventListener('click', function() {
             padding: 10px 12px;
         }
     }
+  /* =====================================================
+   HYDRO GLASS SEARCH — THANH TÌM KIẾM HIỆN ĐẠI
+   ===================================================== */
+
+#mapAiPanel .map-search-box {
+    position: absolute !important;
+    top: 68px !important;
+    left: 14px !important;
+    right: 14px !important;
+
+    width: auto !important;
+    height: 54px !important;
+
+    margin: 0 !important;
+    padding: 5px 7px 5px 13px !important;
+
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+
+    box-sizing: border-box !important;
+    z-index: 3000 !important;
+
+    background: rgba(255, 255, 255, 0.95) !important;
+
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+
+    border: 1px solid rgba(255, 255, 255, 0.85) !important;
+    border-radius: 18px !important;
+
+    box-shadow:
+        0 6px 24px rgba(0,0,0,.16),
+        0 2px 5px rgba(0,0,0,.08) !important;
+}
+
+
+/* Kính lúp bên trái */
+#mapAiPanel .map-search-box::before {
+    content: "⌕";
+
+    flex: 0 0 30px;
+
+    width: 30px;
+    height: 30px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: #64748b;
+    font-size: 27px;
+    line-height: 1;
+}
+
+
+/* Ô nhập */
+#mapAiPanel .map-search-box input {
+    flex: 1 1 auto !important;
+
+    min-width: 0 !important;
+    height: 100% !important;
+
+    padding: 0 !important;
+
+    border: 0 !important;
+    outline: none !important;
+
+    background: transparent !important;
+
+    color: #172033 !important;
+
+    font-size: 16px !important;
+    font-weight: 500 !important;
+}
+
+
+/* Placeholder */
+#mapAiPanel .map-search-box input::placeholder {
+    color: #8994a5 !important;
+    opacity: 1;
+}
+
+
+/* Nút GPS */
+#mapAiPanel #mapLocateBtn {
+    flex: 0 0 40px !important;
+
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+
+    padding: 0 !important;
+
+    border: 0 !important;
+    border-radius: 13px !important;
+
+    background: #f1f6fb !important;
+
+    color: #1677ff !important;
+
+    box-shadow: none !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    font-size: 19px !important;
+}
+
+
+/* Ẩn nút kính lúp màu xanh cũ */
+#mapAiPanel #mapSearchBtn {
+    display: none !important;
+}
+
+
+/* Hiệu ứng khi bấm vào ô tìm kiếm */
+#mapAiPanel .map-search-box:focus-within {
+    border-color: rgba(22,119,255,.25) !important;
+
+    box-shadow:
+        0 8px 28px rgba(0,0,0,.18),
+        0 0 0 3px rgba(22,119,255,.08) !important;
+}
+
+
+/* Mobile */
+@media (max-width: 600px) {
+
+    #mapAiPanel .map-search-box {
+        top: 68px !important;
+        left: 12px !important;
+        right: 12px !important;
+        height: 53px !important;
+        border-radius: 17px !important;
+    }
+
+    #mapAiPanel .map-search-box input {
+        font-size: 15px !important;
+    }
+}
 </style>
 
 <script>
