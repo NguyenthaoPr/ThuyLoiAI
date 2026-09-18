@@ -3220,12 +3220,12 @@ if (cameraBtn && imageInput) {
             style: function(feature) {
               const geometryType = feature.geometry?.type || "";
               if (geometryType === "LineString" || geometryType === "MultiLineString") {
-                return { color: "#ff3030", weight: 2, opacity: 0.85, fill: false };
+                return { color: "#1677FF", weight: 2, opacity: 0.85, fill: false };
               }
               if (geometryType === "Polygon" || geometryType === "MultiPolygon") {
-                return { color: "#ff3030", weight: 1.5, opacity: 0.65, fillColor: "#ff3030", fillOpacity: 0.06 };
+                return { color: "#16A34A", weight: 1.5, opacity: 0.65, fillColor: "#16A34A", fillOpacity: 0.06 };
               }
-              return { color: "#ff3030", weight: 1.5, opacity: 0.7, fillOpacity: 0.05 };
+              return { color: "#64748B", weight: 1.5, opacity: 0.7, fillOpacity: 0.05 };
             }
           });
 
