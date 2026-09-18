@@ -695,15 +695,21 @@ def get_gis_master():
 # Chỉ bổ sung, không thay đổi parser hiện tại
 # ============================================================
 
+
 def kml_items_to_geojson(items):
     """
-    Chuyển dữ liệu do parse_kml_kmz() tạo ra
-    sang GeoJSON FeatureCollection.
+    KML/KMZ -> GeoJSON
 
-    Không sửa dữ liệu gốc.
-    Chỉ tạo một lớp dữ liệu chuẩn để BẢN ĐỒ AI,
-    tính lý trình và PDF có thể dùng chung.
+    Giữ nguyên:
+    - tên
+    - mô tả
+    - loại hình học
+    - màu KML
+    - độ dày KML
+    - opacity KML
+    - style ID
     """
+
     features = []
 
     geometry_map = {
@@ -713,8 +719,14 @@ def kml_items_to_geojson(items):
     }
 
     for index, item in enumerate(items or []):
-        geometry_type = item.get("geometry_type")
-        coordinates = item.get("coordinates") or []
+
+        geometry_type = item.get(
+            "geometry_type"
+        )
+
+        coordinates = item.get(
+            "coordinates"
+        ) or []
 
         if geometry_type not in geometry_map:
             continue
@@ -722,25 +734,42 @@ def kml_items_to_geojson(items):
         if not coordinates:
             continue
 
+        # ====================================================
+        # POINT
+        # ====================================================
         if geometry_type == "Point":
+
             geometry_coordinates = [
                 coordinates[0]["lng"],
                 coordinates[0]["lat"],
             ]
 
+        # ====================================================
+        # LINE
+        # ====================================================
         elif geometry_type == "LineString":
+
             geometry_coordinates = [
-                [point["lng"], point["lat"]]
+                [
+                    point["lng"],
+                    point["lat"]
+                ]
                 for point in coordinates
             ]
 
+        # ====================================================
+        # POLYGON
+        # ====================================================
         elif geometry_type == "Polygon":
+
             ring = [
-                [point["lng"], point["lat"]]
+                [
+                    point["lng"],
+                    point["lat"]
+                ]
                 for point in coordinates
             ]
 
-            # GeoJSON Polygon cần vòng khép kín
             if ring and ring[0] != ring[-1]:
                 ring.append(ring[0])
 
@@ -749,26 +778,82 @@ def kml_items_to_geojson(items):
         else:
             continue
 
+        # ====================================================
+        # GEOJSON FEATURE
+        # ====================================================
         features.append({
+
             "type": "Feature",
+
             "id": index,
+
             "properties": {
-                "name": item.get("name", ""),
-                "description": item.get("description", ""),
+
+                "name": item.get(
+                    "name",
+                    ""
+                ),
+
+                "description": item.get(
+                    "description",
+                    ""
+                ),
+
                 "geometry_type": geometry_type,
-                "gis_class": item.get("gis_class", "CONG_TRINH"),
+
+                "gis_class": item.get(
+                    "gis_class",
+                    "CONG_TRINH"
+                ),
+
+                # ==========================================
+                # KML STYLE
+                # ==========================================
+                "kmlColor": item.get(
+                    "kml_color"
+                ),
+
+                "kmlWidth": item.get(
+                    "kml_width"
+                ),
+
+                "kmlLineOpacity": item.get(
+                    "kml_line_opacity"
+                ),
+
+                "kmlPolyColor": item.get(
+                    "kml_poly_color"
+                ),
+
+                "kmlPolyOpacity": item.get(
+                    "kml_poly_opacity"
+                ),
+
+                "kmlStyleId": item.get(
+                    "kml_style_id"
+                ),
+
             },
+
             "geometry": {
-                "type": geometry_map[geometry_type],
+
+                "type": geometry_map[
+                    geometry_type
+                ],
+
                 "coordinates": geometry_coordinates,
+
             },
+
         })
 
     return {
-        "type": "FeatureCollection",
-        "features": features,
-    }
 
+        "type": "FeatureCollection",
+
+        "features": features,
+
+    }
 # ============================================================
 # GIS CLASSIFICATION - BƯỚC 1
 # TÁCH KHU TƯỚI KHỎI CÔNG TRÌNH
