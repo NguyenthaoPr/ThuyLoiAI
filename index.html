@@ -3282,23 +3282,46 @@ function getKMLWidth(feature) {
 // TẠO LAYER CHO ĐƯỜNG / VÙNG
 // ƯU TIÊN MÀU GỐC CỦA KML
 // ============================================================
+// ============================================================
+// LAYER ĐƯỜNG / VÙNG THỦY LỢI
+// - Giữ màu KML
+// - Chạm vào đường → hiện tên
+// - Chạm vào vùng → hiện tên
+// - Tuyến được chọn sẽ nổi bật
+// ============================================================
+
+let selectedNonPointLayer = null;
+
 const nonPointLayer = L.geoJSON(null, {
 
+  // ==========================================================
+  // STYLE HIỂN THỊ
+  // ==========================================================
   style: function(feature) {
 
-    const geometryType = feature?.geometry?.type || "";
+    const geometryType =
+      feature?.geometry?.type || "";
+
+    const props =
+      feature?.properties || {};
+
 
     // --------------------------------------------------------
     // LẤY MÀU GỐC KML
     // --------------------------------------------------------
-    const kmlColor = getKMLColor(feature);
+    const kmlColor =
+      getKMLColor(feature);
 
-    const kmlWidth = getKMLWidth(feature);
+
+    // --------------------------------------------------------
+    // LẤY ĐỘ DÀY GỐC KML
+    // --------------------------------------------------------
+    const kmlWidth =
+      getKMLWidth(feature);
 
 
     // ========================================================
-    // LINESTRING / MULTILINESTRING
-    // Giữ nguyên màu KML nếu dữ liệu có màu
+    // ĐƯỜNG / KÊNH
     // ========================================================
     if (
       geometryType === "LineString" ||
@@ -3306,49 +3329,420 @@ const nonPointLayer = L.geoJSON(null, {
     ) {
 
       return {
-        color: kmlColor || "#1677FF",
-        weight: kmlWidth,
-        opacity: 0.90,
-        fill: false
-      };
 
+        color:
+          kmlColor || "#1677FF",
+
+        weight:
+          kmlWidth || 2,
+
+        opacity:
+          0.90,
+
+        fill:
+          false,
+
+        interactive:
+          true
+
+      };
     }
 
 
     // ========================================================
-    // POLYGON / MULTIPOLYGON
-    // Giữ nguyên màu KML nếu có
+    // POLYGON / KHU TƯỚI
     // ========================================================
     if (
       geometryType === "Polygon" ||
       geometryType === "MultiPolygon"
     ) {
 
+      const polyColor =
+        props.kmlPolyColor ||
+        kmlColor ||
+        "#16A34A";
+
+
       return {
-        color: kmlColor || "#16A34A",
-        weight: kmlWidth || 1.5,
-        opacity: 0.70,
 
-        fillColor: kmlColor || "#16A34A",
-        fillOpacity: 0.06
+        color:
+          polyColor,
+
+        weight:
+          kmlWidth || 1.5,
+
+        opacity:
+          0.70,
+
+        fillColor:
+          polyColor,
+
+        fillOpacity:
+          0.06,
+
+        interactive:
+          true
+
       };
-
     }
 
 
     // ========================================================
-    // KHÁC
+    // TRƯỜNG HỢP KHÁC
     // ========================================================
     return {
-      color: kmlColor || "#64748B",
-      weight: kmlWidth || 1.5,
-      opacity: 0.70,
-      fillOpacity: 0.05
+
+      color:
+        kmlColor || "#64748B",
+
+      weight:
+        kmlWidth || 1.5,
+
+      opacity:
+        0.70,
+
+      fillOpacity:
+        0.05,
+
+      interactive:
+        true
+
     };
+
+  },
+
+
+  // ==========================================================
+  // XỬ LÝ TỪNG ĐƯỜNG / VÙNG
+  // ==========================================================
+  onEachFeature: function(feature, layer) {
+
+    const props =
+      feature?.properties || {};
+
+    const geometryType =
+      feature?.geometry?.type || "";
+
+
+    // ========================================================
+    // LẤY TÊN
+    // ========================================================
+    const name =
+      props.name ||
+      props.Name ||
+      props.NAME ||
+      props.ten ||
+      props.Ten ||
+      props.TEN ||
+      props.ten_kenh ||
+      props.TEN_KENH ||
+      props.ten_duong ||
+      props.TEN_DUONG ||
+      props.ten_cong_trinh ||
+      props.TEN_CONG_TRINH ||
+      "Chưa có tên";
+
+
+    // ========================================================
+    // LẤY MÔ TẢ
+    // ========================================================
+    const description =
+      props.description ||
+      props.Description ||
+      props.DESCRIPTION ||
+      props.moTa ||
+      props.MoTa ||
+      props.mo_ta ||
+      "";
+
+
+    // ========================================================
+    // XÁC ĐỊNH LOẠI
+    // ========================================================
+    let objectType = "Đối tượng thủy lợi";
+
+    if (
+      geometryType === "LineString" ||
+      geometryType === "MultiLineString"
+    ) {
+      objectType = "Tuyến / Kênh";
+    }
+
+    if (
+      geometryType === "Polygon" ||
+      geometryType === "MultiPolygon"
+    ) {
+      objectType = "Khu vực / Vùng tưới";
+    }
+
+
+    // ========================================================
+    // TẠO POPUP
+    // ========================================================
+    const safeName =
+      escapeGISHTML(name);
+
+    const safeType =
+      escapeGISHTML(objectType);
+
+    const safeDescription =
+      escapeGISHTML(description);
+
+
+    let popupHTML = `
+      <div style="
+        min-width:220px;
+        max-width:320px;
+        font-family:Arial,sans-serif;
+      ">
+
+        <div style="
+          font-size:16px;
+          font-weight:800;
+          color:#082A4A;
+          line-height:1.35;
+          margin-bottom:6px;
+        ">
+          ${safeName}
+        </div>
+
+        <div style="
+          display:inline-block;
+          padding:4px 8px;
+          border-radius:8px;
+          background:#EEF6FF;
+          color:#1677FF;
+          font-size:11px;
+          font-weight:700;
+          margin-bottom:9px;
+        ">
+          ${safeType}
+        </div>
+    `;
+
+
+    // --------------------------------------------------------
+    // MÔ TẢ
+    // --------------------------------------------------------
+    if (description) {
+
+      popupHTML += `
+        <div style="
+          border-top:1px solid #E2E8F0;
+          padding-top:8px;
+          margin-top:2px;
+          font-size:13px;
+          line-height:1.5;
+          color:#475569;
+        ">
+          ${safeDescription}
+        </div>
+      `;
+
+    }
+
+
+    // --------------------------------------------------------
+    // MÃ STYLE KML
+    // --------------------------------------------------------
+    if (props.kmlStyleId) {
+
+      popupHTML += `
+        <div style="
+          margin-top:8px;
+          padding-top:7px;
+          border-top:1px solid #E2E8F0;
+          font-size:11px;
+          color:#64748B;
+        ">
+          Style KML:
+          <b>${escapeGISHTML(props.kmlStyleId)}</b>
+        </div>
+      `;
+
+    }
+
+
+    popupHTML += `
+      </div>
+    `;
+
+
+    // ========================================================
+    // GẮN POPUP
+    // ========================================================
+    layer.bindPopup(
+      popupHTML,
+      {
+        maxWidth:320,
+        minWidth:220,
+        closeButton:true,
+        autoClose:true,
+        closeOnClick:true
+      }
+    );
+
+
+    // ========================================================
+    // TOOLTIP
+    // PC: rê chuột → hiện tên
+    // MOBILE: chạm → popup
+    // ========================================================
+    layer.bindTooltip(
+      safeName,
+      {
+        direction:"top",
+        sticky:true,
+        opacity:0.95
+      }
+    );
+
+
+    // ========================================================
+    // SỰ KIỆN CLICK / TOUCH
+    // ========================================================
+    layer.on("click", function(e) {
+
+      // ------------------------------------------------------
+      // BỎ HIGHLIGHT ĐƯỜNG CŨ
+      // ------------------------------------------------------
+      if (
+        selectedNonPointLayer &&
+        selectedNonPointLayer !== layer
+      ) {
+
+        nonPointLayer.resetStyle(
+          selectedNonPointLayer
+        );
+
+      }
+
+
+      // ------------------------------------------------------
+      // GHI NHỚ ĐƯỜNG ĐANG CHỌN
+      // ------------------------------------------------------
+      selectedNonPointLayer =
+        layer;
+
+
+      // ------------------------------------------------------
+      // ĐƯA TUYẾN ĐANG CHỌN LÊN TRÊN
+      // ------------------------------------------------------
+      if (
+        typeof layer.bringToFront === "function"
+      ) {
+
+        layer.bringToFront();
+
+      }
+
+
+      // ------------------------------------------------------
+      // HIGHLIGHT
+      // ------------------------------------------------------
+      if (
+        geometryType === "LineString" ||
+        geometryType === "MultiLineString"
+      ) {
+
+        layer.setStyle({
+
+          weight: Math.max(
+            Number(getKMLWidth(feature)) + 2,
+            4
+          ),
+
+          opacity:1
+
+        });
+
+      }
+      else {
+
+        layer.setStyle({
+
+          weight:3,
+
+          opacity:1,
+
+          fillOpacity:0.14
+
+        });
+
+      }
+
+
+      // ------------------------------------------------------
+      // MỞ POPUP NGAY TẠI ĐIỂM CHẠM
+      // ------------------------------------------------------
+      if (e && e.latlng) {
+
+        layer.openPopup(
+          e.latlng
+        );
+
+      }
+
+    });
+
+
+    // ========================================================
+    // HOVER TRÊN MÁY TÍNH
+    // ========================================================
+    layer.on("mouseover", function() {
+
+      if (
+        selectedNonPointLayer !== layer
+      ) {
+
+        if (
+          geometryType === "LineString" ||
+          geometryType === "MultiLineString"
+        ) {
+
+          layer.setStyle({
+
+            weight: Math.max(
+              Number(getKMLWidth(feature)) + 1,
+              3
+            ),
+
+            opacity:1
+
+          });
+
+        }
+
+      }
+
+    });
+
+
+    // ========================================================
+    // RỜI KHỎI TUYẾN
+    // ========================================================
+    layer.on("mouseout", function() {
+
+      if (
+        selectedNonPointLayer !== layer
+      ) {
+
+        nonPointLayer.resetStyle(
+          layer
+        );
+
+      }
+
+    });
 
   }
 
 });
+
+
+// ============================================================
+// CSS CHO POPUP
+// ============================================================
           // ---- DUYỆT FEATURE ĐỂ THÊM VÀO BẢN ĐỒ ----
           geojson.features.forEach(function(feature, idx) {
             const geomType = feature.geometry?.type;
