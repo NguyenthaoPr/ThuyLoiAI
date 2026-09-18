@@ -3290,122 +3290,199 @@ function getKMLWidth(feature) {
 // - Tuyến được chọn sẽ nổi bật
 // ============================================================
 
+// ============================================================
+// LAYER ĐƯỜNG / VÙNG THỦY LỢI
+// AN TOÀN - KHÔNG PHỤ THUỘC HÀM BÊN NGOÀI
+// Chạm đường/vùng -> hiện tên
+// ============================================================
+
 let selectedNonPointLayer = null;
 
+
+// ------------------------------------------------------------
+// Lấy tên Feature
+// ------------------------------------------------------------
+function getGISFeatureName(feature) {
+
+  const p = feature?.properties || {};
+
+  return (
+    p.name ||
+    p.Name ||
+    p.NAME ||
+    p.ten ||
+    p.Ten ||
+    p.TEN ||
+    p.ten_kenh ||
+    p.TEN_KENH ||
+    p.ten_duong ||
+    p.TEN_DUONG ||
+    p.ten_cong_trinh ||
+    p.TEN_CONG_TRINH ||
+    "Đối tượng thủy lợi"
+  );
+}
+
+
+// ------------------------------------------------------------
+// Lấy mô tả
+// ------------------------------------------------------------
+function getGISFeatureDescription(feature) {
+
+  const p = feature?.properties || {};
+
+  return (
+    p.description ||
+    p.Description ||
+    p.DESCRIPTION ||
+    p.mo_ta ||
+    p.moTa ||
+    p.MoTa ||
+    ""
+  );
+}
+
+
+// ------------------------------------------------------------
+// Lấy màu nếu GeoJSON đã có màu KML
+// Nếu chưa có -> xanh mặc định
+// ------------------------------------------------------------
+function getGISFeatureColor(feature) {
+
+  const p = feature?.properties || {};
+
+  return (
+    p.kmlColor ||
+    p.KMLColor ||
+    p.styleColor ||
+    p.StyleColor ||
+    p.color ||
+    p.Color ||
+    "#1677FF"
+  );
+}
+
+
+// ------------------------------------------------------------
+// Lấy độ dày nếu có
+// ------------------------------------------------------------
+function getGISFeatureWidth(feature) {
+
+  const p = feature?.properties || {};
+
+  const value = Number(
+    p.kmlWidth ||
+    p.KMLWidth ||
+    p.lineWidth ||
+    p.LineWidth ||
+    p.width ||
+    p.Width
+  );
+
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  return 2;
+}
+
+
+// ------------------------------------------------------------
+// Escape HTML
+// ------------------------------------------------------------
+function escapeGISHTML(value) {
+
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+}
+
+
+// ============================================================
+// TẠO LAYER
+// ============================================================
 const nonPointLayer = L.geoJSON(null, {
 
   // ==========================================================
-  // STYLE HIỂN THỊ
+  // STYLE
   // ==========================================================
   style: function(feature) {
 
     const geometryType =
       feature?.geometry?.type || "";
 
-    const props =
-      feature?.properties || {};
+    const color =
+      getGISFeatureColor(feature);
+
+    const width =
+      getGISFeatureWidth(feature);
 
 
     // --------------------------------------------------------
-    // LẤY MÀU GỐC KML
-    // --------------------------------------------------------
-    const kmlColor =
-      getKMLColor(feature);
-
-
-    // --------------------------------------------------------
-    // LẤY ĐỘ DÀY GỐC KML
-    // --------------------------------------------------------
-    const kmlWidth =
-      getKMLWidth(feature);
-
-
-    // ========================================================
     // ĐƯỜNG / KÊNH
-    // ========================================================
+    // --------------------------------------------------------
     if (
       geometryType === "LineString" ||
       geometryType === "MultiLineString"
     ) {
 
       return {
-
-        color:
-          kmlColor || "#1677FF",
-
-        weight:
-          kmlWidth || 2,
-
-        opacity:
-          0.90,
-
-        fill:
-          false,
-
-        interactive:
-          true
-
+        color: color,
+        weight: width,
+        opacity: 0.90,
+        fill: false
       };
+
     }
 
 
-    // ========================================================
-    // POLYGON / KHU TƯỚI
-    // ========================================================
+    // --------------------------------------------------------
+    // VÙNG
+    // --------------------------------------------------------
     if (
       geometryType === "Polygon" ||
       geometryType === "MultiPolygon"
     ) {
 
-      const polyColor =
-        props.kmlPolyColor ||
-        kmlColor ||
-        "#16A34A";
+      const p =
+        feature?.properties || {};
 
+      const fillColor =
+        p.kmlPolyColor ||
+        p.KMLPolyColor ||
+        color;
 
       return {
 
-        color:
-          polyColor,
+        color: fillColor,
 
-        weight:
-          kmlWidth || 1.5,
+        weight: 1.5,
 
-        opacity:
-          0.70,
+        opacity: 0.75,
 
-        fillColor:
-          polyColor,
+        fillColor: fillColor,
 
-        fillOpacity:
-          0.06,
-
-        interactive:
-          true
+        fillOpacity: 0.06
 
       };
+
     }
 
 
-    // ========================================================
-    // TRƯỜNG HỢP KHÁC
-    // ========================================================
+    // --------------------------------------------------------
+    // KHÁC
+    // --------------------------------------------------------
     return {
 
-      color:
-        kmlColor || "#64748B",
+      color: color,
 
-      weight:
-        kmlWidth || 1.5,
+      weight: 1.5,
 
-      opacity:
-        0.70,
-
-      fillOpacity:
-        0.05,
-
-      interactive:
-        true
+      opacity: 0.70
 
     };
 
@@ -3413,82 +3490,50 @@ const nonPointLayer = L.geoJSON(null, {
 
 
   // ==========================================================
-  // XỬ LÝ TỪNG ĐƯỜNG / VÙNG
+  // XỬ LÝ TỪNG FEATURE
   // ==========================================================
   onEachFeature: function(feature, layer) {
-
-    const props =
-      feature?.properties || {};
 
     const geometryType =
       feature?.geometry?.type || "";
 
-
-    // ========================================================
-    // LẤY TÊN
-    // ========================================================
     const name =
-      props.name ||
-      props.Name ||
-      props.NAME ||
-      props.ten ||
-      props.Ten ||
-      props.TEN ||
-      props.ten_kenh ||
-      props.TEN_KENH ||
-      props.ten_duong ||
-      props.TEN_DUONG ||
-      props.ten_cong_trinh ||
-      props.TEN_CONG_TRINH ||
-      "Chưa có tên";
+      getGISFeatureName(feature);
 
-
-    // ========================================================
-    // LẤY MÔ TẢ
-    // ========================================================
     const description =
-      props.description ||
-      props.Description ||
-      props.DESCRIPTION ||
-      props.moTa ||
-      props.MoTa ||
-      props.mo_ta ||
-      "";
+      getGISFeatureDescription(feature);
 
 
-    // ========================================================
-    // XÁC ĐỊNH LOẠI
-    // ========================================================
-    let objectType = "Đối tượng thủy lợi";
+    // --------------------------------------------------------
+    // Xác định loại
+    // --------------------------------------------------------
+    let typeName =
+      "Đối tượng thủy lợi";
 
     if (
       geometryType === "LineString" ||
       geometryType === "MultiLineString"
     ) {
-      objectType = "Tuyến / Kênh";
+
+      typeName =
+        "Tuyến / Kênh";
+
     }
 
     if (
       geometryType === "Polygon" ||
       geometryType === "MultiPolygon"
     ) {
-      objectType = "Khu vực / Vùng tưới";
+
+      typeName =
+        "Khu vực / Vùng tưới";
+
     }
 
 
-    // ========================================================
-    // TẠO POPUP
-    // ========================================================
-    const safeName =
-      escapeGISHTML(name);
-
-    const safeType =
-      escapeGISHTML(objectType);
-
-    const safeDescription =
-      escapeGISHTML(description);
-
-
+    // --------------------------------------------------------
+    // Popup
+    // --------------------------------------------------------
     let popupHTML = `
       <div style="
         min-width:220px;
@@ -3503,7 +3548,7 @@ const nonPointLayer = L.geoJSON(null, {
           line-height:1.35;
           margin-bottom:6px;
         ">
-          ${safeName}
+          ${escapeGISHTML(name)}
         </div>
 
         <div style="
@@ -3516,47 +3561,22 @@ const nonPointLayer = L.geoJSON(null, {
           font-weight:700;
           margin-bottom:9px;
         ">
-          ${safeType}
+          ${escapeGISHTML(typeName)}
         </div>
     `;
 
 
-    // --------------------------------------------------------
-    // MÔ TẢ
-    // --------------------------------------------------------
     if (description) {
 
       popupHTML += `
         <div style="
           border-top:1px solid #E2E8F0;
           padding-top:8px;
-          margin-top:2px;
           font-size:13px;
           line-height:1.5;
           color:#475569;
         ">
-          ${safeDescription}
-        </div>
-      `;
-
-    }
-
-
-    // --------------------------------------------------------
-    // MÃ STYLE KML
-    // --------------------------------------------------------
-    if (props.kmlStyleId) {
-
-      popupHTML += `
-        <div style="
-          margin-top:8px;
-          padding-top:7px;
-          border-top:1px solid #E2E8F0;
-          font-size:11px;
-          color:#64748B;
-        ">
-          Style KML:
-          <b>${escapeGISHTML(props.kmlStyleId)}</b>
+          ${escapeGISHTML(description)}
         </div>
       `;
 
@@ -3568,14 +3588,13 @@ const nonPointLayer = L.geoJSON(null, {
     `;
 
 
-    // ========================================================
-    // GẮN POPUP
-    // ========================================================
+    // --------------------------------------------------------
+    // Gắn Popup
+    // --------------------------------------------------------
     layer.bindPopup(
       popupHTML,
       {
         maxWidth:320,
-        minWidth:220,
         closeButton:true,
         autoClose:true,
         closeOnClick:true
@@ -3584,28 +3603,11 @@ const nonPointLayer = L.geoJSON(null, {
 
 
     // ========================================================
-    // TOOLTIP
-    // PC: rê chuột → hiện tên
-    // MOBILE: chạm → popup
-    // ========================================================
-    layer.bindTooltip(
-      safeName,
-      {
-        direction:"top",
-        sticky:true,
-        opacity:0.95
-      }
-    );
-
-
-    // ========================================================
-    // SỰ KIỆN CLICK / TOUCH
+    // CHẠM / CLICK
     // ========================================================
     layer.on("click", function(e) {
 
-      // ------------------------------------------------------
-      // BỎ HIGHLIGHT ĐƯỜNG CŨ
-      // ------------------------------------------------------
+      // Bỏ highlight tuyến trước
       if (
         selectedNonPointLayer &&
         selectedNonPointLayer !== layer
@@ -3618,16 +3620,12 @@ const nonPointLayer = L.geoJSON(null, {
       }
 
 
-      // ------------------------------------------------------
-      // GHI NHỚ ĐƯỜNG ĐANG CHỌN
-      // ------------------------------------------------------
+      // Ghi nhận tuyến hiện tại
       selectedNonPointLayer =
         layer;
 
 
-      // ------------------------------------------------------
-      // ĐƯA TUYẾN ĐANG CHỌN LÊN TRÊN
-      // ------------------------------------------------------
+      // Đưa lên trên
       if (
         typeof layer.bringToFront === "function"
       ) {
@@ -3637,9 +3635,7 @@ const nonPointLayer = L.geoJSON(null, {
       }
 
 
-      // ------------------------------------------------------
-      // HIGHLIGHT
-      // ------------------------------------------------------
+      // Highlight
       if (
         geometryType === "LineString" ||
         geometryType === "MultiLineString"
@@ -3647,10 +3643,11 @@ const nonPointLayer = L.geoJSON(null, {
 
         layer.setStyle({
 
-          weight: Math.max(
-            Number(getKMLWidth(feature)) + 2,
-            4
-          ),
+          weight:
+            Math.max(
+              getGISFeatureWidth(feature) + 2,
+              4
+            ),
 
           opacity:1
 
@@ -3672,10 +3669,8 @@ const nonPointLayer = L.geoJSON(null, {
       }
 
 
-      // ------------------------------------------------------
-      // MỞ POPUP NGAY TẠI ĐIỂM CHẠM
-      // ------------------------------------------------------
-      if (e && e.latlng) {
+      // Mở popup ngay tại điểm chạm
+      if (e?.latlng) {
 
         layer.openPopup(
           e.latlng
@@ -3687,7 +3682,7 @@ const nonPointLayer = L.geoJSON(null, {
 
 
     // ========================================================
-    // HOVER TRÊN MÁY TÍNH
+    // PC: RÊ CHUỘT
     // ========================================================
     layer.on("mouseover", function() {
 
@@ -3702,10 +3697,11 @@ const nonPointLayer = L.geoJSON(null, {
 
           layer.setStyle({
 
-            weight: Math.max(
-              Number(getKMLWidth(feature)) + 1,
-              3
-            ),
+            weight:
+              Math.max(
+                getGISFeatureWidth(feature) + 1,
+                3
+              ),
 
             opacity:1
 
@@ -3718,9 +3714,6 @@ const nonPointLayer = L.geoJSON(null, {
     });
 
 
-    // ========================================================
-    // RỜI KHỎI TUYẾN
-    // ========================================================
     layer.on("mouseout", function() {
 
       if (
@@ -3738,7 +3731,6 @@ const nonPointLayer = L.geoJSON(null, {
   }
 
 });
-
 
 // ============================================================
 // CSS CHO POPUP
