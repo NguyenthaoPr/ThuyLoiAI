@@ -3215,20 +3215,140 @@ if (cameraBtn && imageInput) {
             }
           });
 
-          // ---- TẠO LAYER CHO ĐƯỜNG/VÙNG ----
-          const nonPointLayer = L.geoJSON(null, {
-            style: function(feature) {
-              const geometryType = feature.geometry?.type || "";
-              if (geometryType === "LineString" || geometryType === "MultiLineString") {
-                return { color: "#FF3B30", weight: 2, opacity: 0.85, fill: false };
-              }
-              if (geometryType === "Polygon" || geometryType === "MultiPolygon") {
-                return { color: "#16A34A", weight: 1.5, opacity: 0.65, fillColor: "#16A34A", fillOpacity: 0.06 };
-              }
-              return { color: "#64748B", weight: 1.5, opacity: 0.7, fillOpacity: 0.05 };
-            }
-          });
+         // ============================================================
+// LẤY MÀU GỐC TỪ KML / GEOJSON
+// KML dùng dạng AABBGGRR → chuyển sang CSS #RRGGBB
+// ============================================================
+function getKMLColor(feature) {
+  const props = feature?.properties || {};
 
+  // Tìm màu trong các tên trường có thể có
+  const rawColor =
+    props.kmlColor ||
+    props.KMLColor ||
+    props.styleColor ||
+    props.StyleColor ||
+    props.color ||
+    props.Color ||
+    props.lineColor ||
+    props.LineColor ||
+    "";
+
+  if (!rawColor) {
+    return null;
+  }
+
+  let c = String(rawColor).trim().replace("#", "");
+
+  // KML: AABBGGRR
+  if (/^[0-9a-fA-F]{8}$/.test(c)) {
+    const rr = c.substring(6, 8);
+    const gg = c.substring(4, 6);
+    const bb = c.substring(2, 4);
+
+    return `#${rr}${gg}${bb}`;
+  }
+
+  // Nếu đã là RRGGBB
+  if (/^[0-9a-fA-F]{6}$/.test(c)) {
+    return `#${c}`;
+  }
+
+  return null;
+}
+
+
+// ============================================================
+// LẤY ĐỘ DÀY GỐC TỪ KML / GEOJSON
+// ============================================================
+function getKMLWidth(feature) {
+  const props = feature?.properties || {};
+
+  const width =
+    props.kmlWidth ||
+    props.KMLWidth ||
+    props.lineWidth ||
+    props.LineWidth ||
+    props.width ||
+    props.Width;
+
+  const value = Number(width);
+
+  return Number.isFinite(value) && value > 0 ? value : 2;
+}
+
+
+// ============================================================
+// TẠO LAYER CHO ĐƯỜNG / VÙNG
+// ƯU TIÊN MÀU GỐC CỦA KML
+// ============================================================
+const nonPointLayer = L.geoJSON(null, {
+
+  style: function(feature) {
+
+    const geometryType = feature?.geometry?.type || "";
+
+    // --------------------------------------------------------
+    // LẤY MÀU GỐC KML
+    // --------------------------------------------------------
+    const kmlColor = getKMLColor(feature);
+
+    const kmlWidth = getKMLWidth(feature);
+
+
+    // ========================================================
+    // LINESTRING / MULTILINESTRING
+    // Giữ nguyên màu KML nếu dữ liệu có màu
+    // ========================================================
+    if (
+      geometryType === "LineString" ||
+      geometryType === "MultiLineString"
+    ) {
+
+      return {
+        color: kmlColor || "#1677FF",
+        weight: kmlWidth,
+        opacity: 0.90,
+        fill: false
+      };
+
+    }
+
+
+    // ========================================================
+    // POLYGON / MULTIPOLYGON
+    // Giữ nguyên màu KML nếu có
+    // ========================================================
+    if (
+      geometryType === "Polygon" ||
+      geometryType === "MultiPolygon"
+    ) {
+
+      return {
+        color: kmlColor || "#16A34A",
+        weight: kmlWidth || 1.5,
+        opacity: 0.70,
+
+        fillColor: kmlColor || "#16A34A",
+        fillOpacity: 0.06
+      };
+
+    }
+
+
+    // ========================================================
+    // KHÁC
+    // ========================================================
+    return {
+      color: kmlColor || "#64748B",
+      weight: kmlWidth || 1.5,
+      opacity: 0.70,
+      fillOpacity: 0.05
+    };
+
+  }
+
+});
           // ---- DUYỆT FEATURE ĐỂ THÊM VÀO BẢN ĐỒ ----
           geojson.features.forEach(function(feature, idx) {
             const geomType = feature.geometry?.type;
