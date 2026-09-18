@@ -3502,6 +3502,19 @@ const nonPointLayer = L.geoJSON(null, {
 
     const description =
       getGISFeatureDescription(feature);
+    
+    // Làm sạch HTML trong description của KML
+let cleanDescription = "";
+
+if (description) {
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = description;
+
+  cleanDescription =
+    (tempDiv.textContent || tempDiv.innerText || "")
+      .replace(/\s+/g, " ")
+      .trim();
+}
 
 
     // --------------------------------------------------------
@@ -3576,7 +3589,7 @@ const nonPointLayer = L.geoJSON(null, {
           line-height:1.5;
           color:#475569;
         ">
-          ${escapeGISHTML(description)}
+        ${escapeGISHTML(cleanDescription)}
         </div>
       `;
 
