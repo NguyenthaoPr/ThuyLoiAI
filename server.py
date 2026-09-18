@@ -90,78 +90,457 @@ def parse_kml_coordinates(text):
 
     return coordinates
 
+def kml_color_to_css(kml_color):
+    """
+    KML dùng định dạng AABBGGRR.
+    Chuyển sang CSS #RRGGBB.
+    Đồng thời trả về opacity từ AA.
+    """
+
+    if not kml_color:
+        return None, None
+
+    value = str(kml_color).strip().replace("#", "")
+
+    if len(value) != 8:
+        return None, None
+
+    try:
+        aa = int(value[0:2], 16)
+        bb = value[2:4]
+        gg = value[4:6]
+        rr = value[6:8]
+
+        css_color = f"#{rr}{gg}{bb}"
+        opacity = round(aa / 255, 3)
+
+        return css_color, opacity
+
+    except Exception:
+        return None, None
+
+
+def parse_kml_styles(root, namespace):
+    """
+    Đọc toàn bộ Style và StyleMap trong KML.
+
+    Kết quả:
+        styles[style_id] = {
+            "line_color": "#RRGGBB",
+            "line_opacity": 1.0,
+            "line_width": 2,
+            "poly_color": "#RRGGBB",
+            "poly_opacity": 1.0
+        }
+    """
+
+    styles = {}
+
+    # ========================================================
+    # 1. ĐỌC <Style>
+    # ========================================================
+    for style in root.findall(".//kml:Style", namespace):
+
+        style_id = style.get("id")
+
+        if not style_id:
+            continue
+
+        data = {}
+
+        # ----------------------------------------------------
+        # LineStyle
+        # ----------------------------------------------------
+        line_style = style.find("kml:LineStyle", namespace)
+
+        if line_style is not None:
+
+            color_element = line_style.find(
+                "kml:color",
+                namespace
+            )
+
+            width_element = line_style.find(
+                "kml:width",
+                namespace
+            )
+
+            if color_element is not None:
+                color, opacity = kml_color_to_css(
+                    color_element.text
+                )
+
+                if color:
+                    data["line_color"] = color
+                    data["line_opacity"] = opacity
+
+            if width_element is not None:
+
+                try:
+                    data["line_width"] = float(
+                        width_element.text
+                    )
+
+                except (ValueError, TypeError):
+                    pass
+
+        # ----------------------------------------------------
+        # PolyStyle
+        # ----------------------------------------------------
+        poly_style = style.find("kml:PolyStyle", namespace)
+
+        if poly_style is not None:
+
+            color_element = poly_style.find(
+                "kml:color",
+                namespace
+            )
+
+            fill_element = poly_style.find(
+                "kml:fill",
+                namespace
+            )
+
+            if color_element is not None:
+
+                color, opacity = kml_color_to_css(
+                    color_element.text
+                )
+
+                if color:
+                    data["poly_color"] = color
+                    data["poly_opacity"] = opacity
+
+            if fill_element is not None:
+                data["poly_fill"] = (
+                    str(fill_element.text).strip()
+                    != "0"
+                )
+
+        styles[style_id] = data
+
+    # ========================================================
+    # 2. ĐỌC STYLEMAP
+    # ========================================================
+    style_maps = {}
+
+    for style_map in root.findall(
+        ".//kml:StyleMap",
+        namespace
+    ):
+
+        style_id = style_map.get("id")
+
+        if not style_id:
+            continue
+
+        normal_style = None
+
+        for pair in style_map.findall(
+            "kml:Pair",
+            namespace
+        ):
+
+            key_element = pair.find(
+                "kml:key",
+                namespace
+            )
+
+            url_element = pair.find(
+                "kml:styleUrl",
+                namespace
+            )
+
+            if (
+                key_element is not None
+                and url_element is not None
+                and str(key_element.text).strip()
+                == "normal"
+            ):
+
+                normal_style = (
+                    str(url_element.text)
+                    .strip()
+                    .lstrip("#")
+                )
+
+                break
+
+        if normal_style:
+            style_maps[style_id] = normal_style
+
+    return styles, style_maps
+
+
+def get_placemark_style(
+    placemark,
+    styles,
+    style_maps,
+    namespace
+):
+    """
+    Lấy Style thực tế của một Placemark.
+
+    Ưu tiên:
+    1. Inline <Style>
+    2. styleUrl
+    3. StyleMap normal
+    """
+
+    result = {}
+
+    # ========================================================
+    # 1. INLINE STYLE
+    # ========================================================
+    inline_style = placemark.find(
+        "kml:Style",
+        namespace
+    )
+
+    if inline_style is not None:
+
+        line_style = inline_style.find(
+            "kml:LineStyle",
+            namespace
+        )
+
+        if line_style is not None:
+
+            color_element = line_style.find(
+                "kml:color",
+                namespace
+            )
+
+            width_element = line_style.find(
+                "kml:width",
+                namespace
+            )
+
+            if color_element is not None:
+
+                color, opacity = kml_color_to_css(
+                    color_element.text
+                )
+
+                if color:
+                    result["line_color"] = color
+                    result["line_opacity"] = opacity
+
+            if width_element is not None:
+
+                try:
+                    result["line_width"] = float(
+                        width_element.text
+                    )
+
+                except (ValueError, TypeError):
+                    pass
+
+        poly_style = inline_style.find(
+            "kml:PolyStyle",
+            namespace
+        )
+
+        if poly_style is not None:
+
+            color_element = poly_style.find(
+                "kml:color",
+                namespace
+            )
+
+            if color_element is not None:
+
+                color, opacity = kml_color_to_css(
+                    color_element.text
+                )
+
+                if color:
+                    result["poly_color"] = color
+                    result["poly_opacity"] = opacity
+
+    # ========================================================
+    # 2. STYLE URL
+    # ========================================================
+    style_url_element = placemark.find(
+        "kml:styleUrl",
+        namespace
+    )
+
+    if style_url_element is not None:
+
+        style_id = (
+            str(style_url_element.text)
+            .strip()
+            .lstrip("#")
+        )
+
+        # StyleMap
+        if style_id in style_maps:
+
+            style_id = style_maps[style_id]
+
+        shared_style = styles.get(style_id)
+
+        if shared_style:
+
+            for key, value in shared_style.items():
+
+                if key not in result:
+                    result[key] = value
+
+            result["style_id"] = style_id
+
+    return result
+
 
 def parse_kml_kmz(file_path):
     """
-    Đọc KML hoặc KMZ và trích xuất:
-    - tên tuyến/đối tượng
+    Đọc KML/KMZ và giữ nguyên:
+
+    - tên
     - mô tả
     - tọa độ
     - loại hình học
+    - màu LineStyle
+    - độ dày LineStyle
+    - màu PolyStyle
+    - opacity
+    - style_id
     """
 
     file_path = Path(file_path)
 
     try:
-        # ----- KML -----
+
+        # ====================================================
+        # KML
+        # ====================================================
         if file_path.suffix.lower() == ".kml":
+
             tree = ET.parse(file_path)
             root = tree.getroot()
 
-        # ----- KMZ -----
+        # ====================================================
+        # KMZ
+        # ====================================================
         elif file_path.suffix.lower() == ".kmz":
-            with zipfile.ZipFile(file_path, "r") as archive:
+
+            with zipfile.ZipFile(
+                file_path,
+                "r"
+            ) as archive:
+
                 kml_names = [
-                    name for name in archive.namelist()
+                    name
+                    for name in archive.namelist()
                     if name.lower().endswith(".kml")
                 ]
 
                 if not kml_names:
                     return []
 
-                kml_data = archive.read(kml_names[0])
+                # Ưu tiên doc.kml
+                preferred = next(
+                    (
+                        name
+                        for name in kml_names
+                        if name.lower() == "doc.kml"
+                    ),
+                    kml_names[0]
+                )
+
+                kml_data = archive.read(preferred)
+
                 root = ET.fromstring(kml_data)
 
         else:
             return []
 
-        # KML thường sử dụng namespace
         namespace = {
             "kml": "http://www.opengis.net/kml/2.2"
         }
 
+        # ====================================================
+        # ĐỌC STYLE TOÀN BỘ KML
+        # ====================================================
+        styles, style_maps = parse_kml_styles(
+            root,
+            namespace
+        )
+
         results = []
 
-        for placemark in root.findall(".//kml:Placemark", namespace):
+        # ====================================================
+        # DUYỆT PLACEMARK
+        # ====================================================
+        for placemark in root.findall(
+            ".//kml:Placemark",
+            namespace
+        ):
 
-            name_element = placemark.find("kml:name", namespace)
-            description_element = placemark.find(
-                "kml:description",
+            # ------------------------------------------------
+            # NAME
+            # ------------------------------------------------
+            name_element = placemark.find(
+                "kml:name",
                 namespace
             )
 
             name = (
                 name_element.text.strip()
-                if name_element is not None and name_element.text
+                if (
+                    name_element is not None
+                    and name_element.text
+                )
                 else ""
+            )
+
+            # ------------------------------------------------
+            # DESCRIPTION
+            # ------------------------------------------------
+            description_element = placemark.find(
+                "kml:description",
+                namespace
             )
 
             description = (
                 description_element.text.strip()
-                if description_element is not None and description_element.text
+                if (
+                    description_element is not None
+                    and description_element.text
+                )
                 else ""
             )
 
-            # ----- Point -----
-            point = placemark.find(".//kml:Point/kml:coordinates", namespace)
+            # ------------------------------------------------
+            # STYLE
+            # ------------------------------------------------
+            style_data = get_placemark_style(
+                placemark,
+                styles,
+                style_maps,
+                namespace
+            )
 
-            # ----- LineString -----
+            # ------------------------------------------------
+            # POINT
+            # ------------------------------------------------
+            point = placemark.find(
+                ".//kml:Point/kml:coordinates",
+                namespace
+            )
+
+            # ------------------------------------------------
+            # LINE
+            # ------------------------------------------------
             line = placemark.find(
                 ".//kml:LineString/kml:coordinates",
                 namespace
             )
 
-            # ----- Polygon -----
+            # ------------------------------------------------
+            # POLYGON
+            # ------------------------------------------------
             polygon = placemark.find(
                 ".//kml:Polygon//kml:coordinates",
                 namespace
@@ -171,31 +550,85 @@ def parse_kml_kmz(file_path):
             coordinates = []
 
             if point is not None:
+
                 geometry_type = "Point"
-                coordinates = parse_kml_coordinates(point.text)
+
+                coordinates = parse_kml_coordinates(
+                    point.text
+                )
 
             elif line is not None:
+
                 geometry_type = "LineString"
-                coordinates = parse_kml_coordinates(line.text)
+
+                coordinates = parse_kml_coordinates(
+                    line.text
+                )
 
             elif polygon is not None:
+
                 geometry_type = "Polygon"
-                coordinates = parse_kml_coordinates(polygon.text)
+
+                coordinates = parse_kml_coordinates(
+                    polygon.text
+                )
 
             if coordinates:
+
                 results.append({
+
                     "name": name,
+
                     "description": description,
+
                     "geometry_type": geometry_type,
-                    "coordinates": coordinates
+
+                    "coordinates": coordinates,
+
+                    # ==================================================
+                    # GIỮ STYLE GỐC KML
+                    # ==================================================
+                    "kml_color": style_data.get(
+                        "line_color"
+                    ),
+
+                    "kml_line_opacity": style_data.get(
+                        "line_opacity"
+                    ),
+
+                    "kml_width": style_data.get(
+                        "line_width"
+                    ),
+
+                    "kml_poly_color": style_data.get(
+                        "poly_color"
+                    ),
+
+                    "kml_poly_opacity": style_data.get(
+                        "poly_opacity"
+                    ),
+
+                    "kml_style_id": style_data.get(
+                        "style_id"
+                    ),
+
                 })
+
+        print(
+            f"[KML STYLE] Đã đọc {len(styles)} Style, "
+            f"{len(style_maps)} StyleMap, "
+            f"{len(results)} Placemark."
+        )
 
         return results
 
     except Exception as e:
-        print(f"[KML] Lỗi đọc {file_path}: {e}")
-        return []
 
+        print(
+            f"[KML] Lỗi đọc {file_path}: {e}"
+        )
+
+        return []  
 # ============================================================
 # GIS MASTER DATA - ĐỌC KMZ DÙNG CHUNG
 # BỔ SUNG MỚI - KHÔNG THAY ĐỔI HỆ THỐNG CŨ
