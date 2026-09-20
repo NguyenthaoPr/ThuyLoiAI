@@ -484,7 +484,7 @@
   color: #7C3AED;
 }
 
-#:hover {
+#technicalSpecsBtn:hover {
   background: rgba(124, 58, 237, .06);
 }
     .map-ai-panel {
@@ -1885,6 +1885,221 @@
 #mapAiPanel .map-ai-status {
     display: none !important;
 }
+
+    /* =========================================================
+       📱 MAP AI MOBILE V3 — GIAO DIỆN TOÀN MÀN HÌNH
+       - Ẩn tiêu đề "BẢN ĐỒ HỆ THỐNG THỦY LỢI"
+       - Giữ nút ← quay lại dưới dạng nút nổi
+       - Ô tìm kiếm nổi phía trên bản đồ
+       - Đưa Zoom xuống góc trái phía dưới
+       - Không thay đổi giao diện desktop
+       ========================================================= */
+
+    @media (max-width: 600px) {
+
+      /* Panel */
+      #mapAiPanel.map-ai-panel {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100dvh !important;
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+      }
+
+      /* Header trở thành lớp trong suốt.
+         Chỉ giữ nút quay lại; tên bản đồ được ẩn. */
+      #mapAiPanel .map-ai-header {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        z-index: 1200 !important;
+        pointer-events: none !important;
+      }
+
+      #mapAiPanel .map-ai-header strong {
+        display: none !important;
+      }
+
+      /* Nút quay lại: nổi trên bản đồ, góc trái */
+      #mapAiPanel #closeMapAi {
+        position: absolute !important;
+        top: max(10px, env(safe-area-inset-top)) !important;
+        left: 10px !important;
+        width: 44px !important;
+        min-width: 44px !important;
+        height: 44px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+        border-radius: 13px !important;
+        background: rgba(8, 42, 74, .92) !important;
+        color: #ffffff !important;
+        box-shadow: 0 4px 14px rgba(0,0,0,.22) !important;
+        font-size: 0 !important;
+        line-height: 1 !important;
+        pointer-events: auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        z-index: 1201 !important;
+      }
+
+      #mapAiPanel #closeMapAi::after {
+        content: "←" !important;
+        font-size: 25px !important;
+        font-weight: 400 !important;
+        line-height: 1 !important;
+      }
+
+      /* Ô tìm kiếm: nằm cùng hàng với nút quay lại */
+      #mapAiPanel .map-search-box {
+        position: absolute !important;
+        top: max(10px, env(safe-area-inset-top)) !important;
+        left: 62px !important;
+        right: 10px !important;
+        width: auto !important;
+        height: 44px !important;
+        min-height: 44px !important;
+        margin: 0 !important;
+        padding: 0 5px 0 10px !important;
+        gap: 5px !important;
+        border-radius: 14px !important;
+        z-index: 1100 !important;
+        box-shadow: 0 4px 14px rgba(8,42,74,.16) !important;
+      }
+
+      #mapAiPanel .map-search-icon {
+        font-size: 20px !important;
+      }
+
+      #mapAiPanel .map-search-box input {
+        font-size: 14px !important;
+        padding: 7px 0 !important;
+      }
+
+      #mapAiPanel #mapSearchBtn {
+        display: none !important;
+      }
+
+      #mapAiPanel #mapLocateBtn {
+        width: 36px !important;
+        min-width: 36px !important;
+        height: 36px !important;
+        border-radius: 10px !important;
+        font-size: 19px !important;
+      }
+
+      /* Kết quả tìm kiếm nổi dưới ô tìm kiếm */
+      #mapAiPanel #searchResults {
+        position: absolute !important;
+        top: calc(max(10px, env(safe-area-inset-top)) + 50px) !important;
+        left: 62px !important;
+        right: 10px !important;
+        width: auto !important;
+        margin: 0 !important;
+        max-height: 42vh !important;
+        overflow-y: auto !important;
+        z-index: 1150 !important;
+        border-radius: 12px !important;
+      }
+
+      /* Bản đồ chiếm toàn bộ màn hình */
+      #mapAiPanel .map-container {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+      }
+
+      #mapAiPanel #aiMap {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+      }
+
+      /* Nút lớp bản đồ / GPS: phía phải, tránh ô tìm kiếm */
+      #mapAiPanel .map-floating-btn {
+        right: 10px !important;
+        width: 44px !important;
+        height: 44px !important;
+        border-radius: 13px !important;
+        z-index: 700 !important;
+      }
+
+      #mapAiPanel #mapLayerBtn {
+        top: 64px !important;
+      }
+
+      #mapAiPanel #mapGpsBtn {
+        top: 116px !important;
+      }
+
+      /* Zoom Leaflet: đưa xuống góc trái dưới */
+      #mapAiPanel .leaflet-top.leaflet-left {
+        top: auto !important;
+        left: 0 !important;
+        bottom: max(18px, calc(env(safe-area-inset-bottom) + 18px)) !important;
+      }
+
+      #mapAiPanel .map-container .leaflet-control-zoom {
+        margin: 0 0 0 12px !important;
+        border: 0 !important;
+        box-shadow: 0 3px 12px rgba(0,0,0,.20) !important;
+        border-radius: 11px !important;
+        overflow: hidden !important;
+      }
+
+      #mapAiPanel .map-container .leaflet-control-zoom a {
+        width: 36px !important;
+        height: 36px !important;
+        line-height: 36px !important;
+        font-size: 20px !important;
+      }
+
+      /* Giảm cluster còn khoảng 70% trên mobile */
+      #mapAiPanel .marker-cluster div {
+        width: 28px !important;
+        height: 28px !important;
+        line-height: 28px !important;
+        font-size: 10px !important;
+      }
+
+      #mapAiPanel .marker-cluster {
+        width: 28px !important;
+        height: 28px !important;
+      }
+
+      /* Không để thẻ thông tin che quá nhiều bản đồ */
+      #mapAiPanel .map-feature-card {
+        margin: 0 !important;
+        position: absolute !important;
+        left: 10px !important;
+        right: 10px !important;
+        bottom: max(12px, calc(env(safe-area-inset-bottom) + 12px)) !important;
+        z-index: 900 !important;
+      }
+
+      /* Khi thẻ thông tin mở, không đè lên zoom */
+      #mapAiPanel .map-feature-card:not(.hidden) ~ .map-ai-status {
+        display: none !important;
+      }
+    }
   </style>
   <meta name="viewport"
       content="width=device-width,
@@ -3179,16 +3394,68 @@ if (cameraBtn && imageInput) {
 
           function updateGISZoomStyle() {
             if (!aiMapLayer) return;
+
             const zoom = aiMap.getZoom();
+
             let lineWeight, lineOpacity;
-            if (zoom <= 8) { lineWeight = 1;
-              lineOpacity = 0.45; } else if (zoom <= 10) { lineWeight = 1.5;
-              lineOpacity = 0.60; } else if (zoom <= 12) { lineWeight = 2;
-              lineOpacity = 0.75; } else { lineWeight = 3;
-              lineOpacity = 0.90; }
+
+            if (zoom <= 8) {
+              lineWeight = 1;
+              lineOpacity = 0.45;
+            } else if (zoom <= 10) {
+              lineWeight = 1.5;
+              lineOpacity = 0.60;
+            } else if (zoom <= 12) {
+              lineWeight = 2;
+              lineOpacity = 0.75;
+            } else {
+              lineWeight = 3;
+              lineOpacity = 0.90;
+            }
+
             aiMapLayer.eachLayer(function(layer) {
               if (layer.setStyle) {
-                layer.setStyle({ weight: lineWeight, opacity: lineOpacity });
+                layer.setStyle({
+                  weight: lineWeight,
+                  opacity: lineOpacity
+                });
+              }
+            });
+
+            // ======================================================
+            // HIỂN THỊ TÊN KÊNH / BỜ VÙNG THEO ZOOM
+            // Chỉ mở nhãn của các đối tượng đang nằm trong màn hình
+            // để tránh tạo hàng nghìn DOM label trên iPhone.
+            // ======================================================
+            if (typeof nonPointLayer === 'undefined' || !nonPointLayer) return;
+
+            const showLabels = zoom >= 12;
+            const mapBounds = aiMap.getBounds();
+
+            nonPointLayer.eachLayer(function(layer) {
+              if (!layer || !layer.getTooltip) return;
+
+              const tooltip = layer.getTooltip();
+              if (!tooltip) return;
+
+              if (!showLabels) {
+                if (layer.isTooltipOpen && layer.isTooltipOpen()) {
+                  layer.closeTooltip();
+                }
+                return;
+              }
+
+              try {
+                const bounds = layer.getBounds ? layer.getBounds() : null;
+                if (bounds && bounds.isValid() && bounds.intersects(mapBounds)) {
+                  if (!(layer.isTooltipOpen && layer.isTooltipOpen())) {
+                    layer.openTooltip();
+                  }
+                } else if (layer.isTooltipOpen && layer.isTooltipOpen()) {
+                  layer.closeTooltip();
+                }
+              } catch (e) {
+                // Không để lỗi label ảnh hưởng bản đồ.
               }
             });
           }
@@ -3236,10 +3503,10 @@ if (cameraBtn && imageInput) {
               if (count > 100) size = 'large';
               else if (count > 20) size = 'medium';
               return new L.DivIcon({
-                html: `<div style="background-color:rgba(8,42,74,0.85);color:#fff;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.3);">${count}</div>`,
+                html: `<div style="background-color:rgba(8,42,74,0.85);color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.3);">${count}</div>`,
                 className: 'marker-cluster-' + size,
-                iconSize: [40, 40],
-                iconAnchor: [20, 20]
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
               });
             }
           });
