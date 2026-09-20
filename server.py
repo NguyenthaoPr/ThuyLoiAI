@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from functools import partial
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from google import genai
 from reportlab.lib.pagesizes import A4
@@ -673,6 +673,7 @@ def load_gis_master():
 
 # Bộ nhớ GIS Master trong phiên chạy hiện tại
 GIS_MASTER_CACHE = None
+GIS_GEOJSON_CACHE = None
 
 
 def get_gis_master():
@@ -2121,53 +2122,69 @@ app.add_middleware(
 @app.get("/gis/data")
 async def gis_data():
     """
-    Trả dữ liệu hệ thống kênh dưới dạng GeoJSON.
+    Trả dữ liệu GIS dưới dạng GeoJSON.
 
-    Đây là API mới, không ảnh hưởng các API cũ.
+    Tối ưu tốc độ:
+    - Parse KMZ/KML chỉ một lần trong RAM.
+    - Chuyển sang GeoJSON chỉ một lần trong RAM.
+    - Các request sau trả thẳng GeoJSON đã cache.
+    - Cho phép CDN/proxy cache response trong thời gian ngắn.
     """
+    global GIS_GEOJSON_CACHE
+
     try:
         active_file = GIS_MASTER_KMZ
 
-        if active_file is None:
-            return {
-                "success": False,
-                "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
-                "geojson": {
-                    "type": "FeatureCollection",
-                    "features": [],
+        if active_file is None or not active_file.exists():
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
+                    "geojson": {"type": "FeatureCollection", "features": []},
                 },
+                headers={"Cache-Control": "no-store"}
+            )
+
+        # Cache GeoJSON đã xử lý trong RAM.
+        # Khi upload Master mới, cache này được xóa ở endpoint upload.
+        cache_hit = GIS_GEOJSON_CACHE is not None
+        if GIS_GEOJSON_CACHE is None:
+            items = get_gis_master().get("data", [])
+            cong_trinh_items, khu_tuoi_items = split_gis_items(items)
+            converted = kml_items_to_geojson(cong_trinh_items + khu_tuoi_items)
+            GIS_GEOJSON_CACHE = {
+                "success": True,
+                "filename": active_file.name,
+                "objects": len(items),
+                "cong_trinh": len(cong_trinh_items),
+                "khu_tuoi": len(khu_tuoi_items),
+                "features": len(converted["features"]),
+                "geojson": converted,
             }
 
-        items = parse_kml_kmz(active_file)
-
-        cong_trinh_items, khu_tuoi_items = split_gis_items(items)
-        
-        geojson = kml_items_to_geojson(
-            cong_trinh_items + khu_tuoi_items
+        return JSONResponse(
+            content=GIS_GEOJSON_CACHE,
+            headers={
+                # Trình duyệt/CDN có thể dùng bản cache trong 5 phút;
+                # sau đó vẫn có thể phục vụ bản cũ trong lúc revalidate.
+                "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+                "X-GIS-Cache": "HIT" if cache_hit else "MISS",
+            }
         )
-
-        return {
-            "success": True,
-            "filename": active_file.name,
-            "objects": len(items),
-            "cong_trinh": len(cong_trinh_items),
-            "khu_tuoi": len(khu_tuoi_items),
-            "features": len(geojson["features"]),
-            "geojson": geojson,
-        }
 
     except Exception as e:
         print("[GIS DATA ERROR]", repr(e))
 
-        return {
-            "success": False,
-            "message": "Không thể đọc dữ liệu GIS.",
-            "error": str(e),
-            "geojson": {
-                "type": "FeatureCollection",
-                "features": [],
+        return JSONResponse(
+            content={
+                "success": False,
+                "message": "Không thể đọc dữ liệu GIS.",
+                "error": str(e),
+                "geojson": {"type": "FeatureCollection", "features": []},
             },
-        }
+            headers={"Cache-Control": "no-store"}
+        )
+
 # ============================================================
 # MODELS
 # ============================================================
@@ -4164,7 +4181,7 @@ async def gis_master_upload(
     Người dùng AI Thủy lợi thông thường không cần nạp KMZ.
     """
 
-    global GIS_MASTER_CACHE
+    global GIS_MASTER_CACHE, GIS_GEOJSON_CACHE
 
     try:
         # ----------------------------------------------------
@@ -4223,6 +4240,7 @@ async def gis_master_upload(
         # 6. Xóa cache cũ để hệ thống đọc Master mới
         # ----------------------------------------------------
         GIS_MASTER_CACHE = None
+        GIS_GEOJSON_CACHE = None
 
         # Đọc lại Master ngay sau khi nạp
         master_data = get_gis_master()
