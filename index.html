@@ -3176,8 +3176,9 @@ if (cameraBtn && imageInput) {
           aiMap.on('zoomend', updateGISZoomStyle);
           updateGISZoomStyle();
 
-          mapAiStatus.textContent = '⏳ Đang tải dữ liệu hệ thống thủy lợi...';
-          const response = await fetch('/gis/data');
+          mapAiStatus.textContent = '🗺️ Bản đồ đã sẵn sàng — đang tải dữ liệu thủy lợi ở nền...';
+          // FAST V2: cho trình duyệt ưu tiên cache nếu server/CDN đã có dữ liệu.
+          const response = await fetch('/gis/data', { cache: 'default' });
           if (!response.ok) {
             throw new Error('Không thể truy cập /gis/data (' + response.status + ')');
           }
@@ -3190,9 +3191,18 @@ if (cameraBtn && imageInput) {
             throw new Error('Dữ liệu GeoJSON không hợp lệ.');
           }
 
-          // ---- XÂY DỰNG SEARCH INDEX TỪ TOÀN BỘ FEATURE ----
-          searchIndex = buildSearchIndex(geojson);
-          console.log('📚 Đã xây dựng Search Index với', searchIndex.length, 'bản ghi.');
+          // FAST V2: không chặn việc vẽ bản đồ bởi Search Index.
+          // Index được xây dựng sau khi layer đã được đưa lên bản đồ.
+          searchIndex = [];
+          const buildSearchIndexDeferred = () => {
+            try {
+              searchIndex = buildSearchIndex(geojson);
+              console.log('📚 FAST V2: Search Index', searchIndex.length, 'bản ghi.');
+            } catch (e) {
+              console.warn('FAST V2: Không xây dựng được Search Index:', e);
+            }
+          };
+
 
           // ---- TẠO MARKER CLUSTER ----
           markerCluster = L.markerClusterGroup({
@@ -3787,22 +3797,18 @@ if (description) {
           aiMapLayer.addLayer(nonPointLayer);
           aiMapLayer.addLayer(markerCluster);
 
-          // Zoom to bounds
-          const allBounds = L.latLngBounds([]);
-          if (nonPointLayer.getBounds().isValid()) {
-            allBounds.extend(nonPointLayer.getBounds());
-          }
-          const clusterBounds = markerCluster.getBounds();
-          if (clusterBounds.isValid()) {
-            allBounds.extend(clusterBounds);
-          }
-          if (allBounds.isValid()) {
-            aiMap.fitBounds(allBounds, { padding: [20, 20], maxZoom: 14 });
-          }
-
+          // FAST V2: KHÔNG fitBounds toàn bộ dữ liệu lúc khởi động.
+          // Bản đồ giữ góc nhìn Vu Gia – Thu Bồn [15.75,108.30], zoom 9 để hiện ngay.
+          // Người dùng vẫn có thể zoom/tìm kiếm đến từng công trình như trước.
           aiMapLoaded = true;
-          mapAiStatus.textContent = '✅ Đã tải ' + geojson.features.length.toLocaleString('vi-VN') +
-            ' đối tượng thủy lợi. (Search Index: ' + searchIndex.length + ' bản ghi)';
+          mapAiStatus.textContent = '✅ Bản đồ đã hiển thị ' + geojson.features.length.toLocaleString('vi-VN') +
+            ' đối tượng. Đang hoàn thiện tìm kiếm...';
+          setTimeout(function() {
+            try {
+              buildSearchIndexDeferred();
+              mapAiStatus.textContent = '✅ Bản đồ sẵn sàng — Search Index: ' + searchIndex.length.toLocaleString('vi-VN') + ' bản ghi.';
+            } catch (e) {}
+          }, 50);
           setTimeout(function() { aiMap.invalidateSize(); }, 300);
 
         } catch (error) {
