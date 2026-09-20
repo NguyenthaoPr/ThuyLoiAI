@@ -2297,6 +2297,14 @@
       let aiMapLoaded = false;
       let searchIndex = []; // Mảng chứa tất cả đối tượng tìm kiếm
       let markerCluster = null; // Tham chiếu đến cluster để zoom tới marker
+      let markerFeatureMap = new WeakMap(); // feature -> marker, giúp search zoom/popup nhanh
+      let gisSearchReady = false; // chỉ cho tìm kiếm khi GIS data + index đã sẵn sàng
+
+      // Backend GIS chạy trên Render. Có thể ghi đè bằng window.THULYLOI_GIS_API nếu sau này đổi server.
+      const GIS_API_BASE = String(
+        window.THULYLOI_GIS_API || 'https://thuyloiai.onrender.com'
+      ).replace(/\/$/, '');
+      const GIS_DATA_URL = GIS_API_BASE + '/gis/data';
 
       window.preparedImageBlob = null;
       window.preparedImageName = 'image.jpg';
@@ -3389,8 +3397,12 @@ if (cameraBtn && imageInput) {
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19,
               attribution: 'Tiles © Esri' }
           ).addTo(aiMap);
-          aiMap.setView([15.75, 108.30], 9);
+          // Đặt tâm khu vực Vu Gia – Thu Bồn ngay lập tức, không chờ GIS.
+          aiMap.setView([15.75, 108.30], 9, { animate: false });
           aiMapLayer = L.layerGroup().addTo(aiMap);
+          setTimeout(function() {
+            try { aiMap.invalidateSize({ pan: false }); } catch (e) {}
+          }, 0);
 
           function updateGISZoomStyle() {
             if (!aiMapLayer) return;
@@ -3462,9 +3474,19 @@ if (cameraBtn && imageInput) {
           aiMap.on('zoomend', updateGISZoomStyle);
           updateGISZoomStyle();
 
-          mapAiStatus.textContent = '🗺️ Bản đồ đã sẵn sàng — đang tải dữ liệu thủy lợi ở nền...';
-          // FAST V2: cho trình duyệt ưu tiên cache nếu server/CDN đã có dữ liệu.
-          const response = await fetch('/gis/data', { cache: 'default' });
+          mapAiStatus.textContent = '🗺️ Bản đồ nền đã sẵn sàng — đang kết nối dữ liệu thủy lợi...';
+          gisSearchReady = false;
+          searchIndex = [];
+
+          // GIS API nằm trên Render, còn giao diện có thể chạy trên GitHub Pages/Vercel/preview.
+          // Vì vậy phải gọi URL tuyệt đối thay vì fetch('/gis/data').
+          console.log('[GIS] Data URL:', GIS_DATA_URL);
+          const response = await fetch(GIS_DATA_URL, {
+            method: 'GET',
+            cache: 'default',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' }
+          });
           if (!response.ok) {
             throw new Error('Không thể truy cập /gis/data (' + response.status + ')');
           }
@@ -3483,15 +3505,37 @@ if (cameraBtn && imageInput) {
           const buildSearchIndexDeferred = () => {
             try {
               searchIndex = buildSearchIndex(geojson);
-              console.log('📚 FAST V2: Search Index', searchIndex.length, 'bản ghi.');
+
+              // Gắn marker đã tạo vào record tìm kiếm để zoomToFeature có thể
+              // dùng cluster.zoomToShowLayer() và mở popup đúng công trình.
+              for (let i = 0; i < searchIndex.length; i++) {
+                const record = searchIndex[i];
+                if (record && record.feature) {
+                  record.layer = markerFeatureMap.get(record.feature) || null;
+                }
+              }
+
+              gisSearchReady = true;
+              console.log('📚 GIS: Search Index', searchIndex.length, 'bản ghi.');
+
+              // Nếu người dùng đã gõ từ khóa trong lúc GIS đang tải, tìm ngay.
+              if (mapSearch && mapSearch.value.trim()) {
+                performSearch(mapSearch.value);
+              }
             } catch (e) {
-              console.warn('FAST V2: Không xây dựng được Search Index:', e);
+              gisSearchReady = false;
+              console.warn('GIS: Không xây dựng được Search Index:', e);
             }
           };
 
 
           // ---- TẠO MARKER CLUSTER ----
+          markerFeatureMap = new WeakMap();
           markerCluster = L.markerClusterGroup({
+            // Chunking ở chính cluster giúp tránh khóa UI khi có hàng nghìn marker.
+            chunkedLoading: true,
+            chunkInterval: 50,
+            chunkDelay: 20,
             maxClusterRadius: 60,
             spiderfyOnMaxZoom: true,
             disableClusteringAtZoom: 14,
@@ -4136,6 +4180,7 @@ if (description) {
 
               marker.feature = feature;
               marker._tlPopupReady = false;
+              markerFeatureMap.set(feature, marker);
 
               marker.on('click', function() {
                 if (!marker._tlPopupReady) {
@@ -4153,7 +4198,8 @@ if (description) {
 
             if (batch.length) {
               // Một lần addLayers cho cả batch nhanh hơn hàng trăm addLayer.
-              markerCluster.addLayers(batch, { chunkedLoading: true });
+              // chunkedLoading đã cấu hình ở markerClusterGroup.
+              markerCluster.addLayers(batch);
             }
 
             if (pointCursor < pointFeatures.length) {
@@ -4185,7 +4231,12 @@ if (description) {
 
         } catch (error) {
           console.error('AI MAP ERROR:', error);
-          mapAiStatus.textContent = '❌ Lỗi bản đồ: ' + error.message;
+          gisSearchReady = false;
+          searchIndex = [];
+          if (searchResults) searchResults.style.display = 'none';
+          mapAiStatus.textContent =
+            '⚠️ Bản đồ nền đã mở nhưng chưa tải được dữ liệu thủy lợi. Kiểm tra kết nối GIS.';
+          console.error('[GIS] Không tải được dữ liệu:', { url: GIS_DATA_URL, error: error });
         }
       }
 
@@ -4198,6 +4249,12 @@ if (description) {
           mapAiStatus.textContent = '✅ Đã tải dữ liệu hệ thống thủy lợi.';
           return;
         }
+        if (!gisSearchReady) {
+          searchResults.style.display = 'none';
+          mapAiStatus.textContent = '⏳ Dữ liệu thủy lợi đang tải — tìm kiếm sẽ sẵn sàng ngay sau khi tải xong.';
+          return;
+        }
+
         const results = smartSearch(query.trim(), searchIndex);
         if (results.length === 1) {
           // Tự động zoom tới kết quả duy nhất
