@@ -2228,13 +2228,19 @@
           </button>
         </div>
 
-        <!-- Thanh tìm kiếm hiện đại -->
-        <div class="map-search-box">
-          <span class="map-search-icon">⌕</span>
-          <input id="mapSearch" type="search" placeholder="Tìm trạm bơm, hồ, kênh, cống, đập..." autocomplete="off">
-          <span class="map-search-kbd">⌘ K</span>
-          <button id="mapSearchBtn" type="button" title="Tìm kiếm">🔎</button>
-          <button id="mapLocateBtn" type="button" title="Vị trí hiện tại">⌖</button>
+        <!-- Thanh tìm kiếm hiện đại: tách vùng nhập liệu và nhóm nút chức năng -->
+        <div class="map-search-wrap">
+          <div class="map-search-box">
+            <div class="map-search-main">
+              <span class="map-search-icon">⌕</span>
+              <input id="mapSearch" type="search" placeholder="Tìm trạm bơm, hồ, kênh, cống, đập..." autocomplete="off">
+              <span class="map-search-kbd">⌘ K</span>
+            </div>
+            <div class="map-search-actions" aria-label="Chức năng tìm kiếm">
+              <button id="mapSearchBtn" type="button" title="Tìm kiếm" aria-label="Tìm kiếm">🔎</button>
+              <button id="mapLocateBtn" type="button" title="Vị trí hiện tại" aria-label="Vị trí hiện tại">⌖</button>
+            </div>
+          </div>
         </div>
         <div class="map-quick-chips" aria-label="Tìm nhanh">
           <button type="button" data-map-query="trạm bơm">Trạm bơm</button>
@@ -3470,24 +3476,42 @@ if (cameraBtn && imageInput) {
 
             if (zoom <= 8) {
               lineWeight = 1;
-              lineOpacity = 0.45;
+              lineOpacity = 0.00;
             } else if (zoom <= 10) {
-              lineWeight = 1.5;
-              lineOpacity = 0.60;
+              lineWeight = 1.1;
+              lineOpacity = 0.28;
             } else if (zoom <= 12) {
-              lineWeight = 2;
-              lineOpacity = 0.75;
+              lineWeight = 1.8;
+              lineOpacity = 0.62;
             } else {
               lineWeight = 3;
               lineOpacity = 0.90;
             }
 
+            // Zoom-based rendering: toàn cảnh ưu tiên cụm điểm;
+            // tuyến/vùng chỉ hiện rõ khi zoom gần.
+            if (nonPointLayer) {
+              nonPointLayer.eachLayer(function(layer) {
+                if (!layer || !layer.setStyle) return;
+                const gt = layer.feature?.geometry?.type || '';
+                const isArea = gt === 'Polygon' || gt === 'MultiPolygon';
+                if (zoom <= 8) {
+                  layer.setStyle({ weight: 0.8, opacity: 0, fillOpacity: 0 });
+                  if (layer.closeTooltip) layer.closeTooltip();
+                } else {
+                  layer.setStyle({
+                    weight: lineWeight,
+                    opacity: lineOpacity,
+                    fillOpacity: isArea ? (zoom >= 11 ? 0.12 : 0.045) : 0
+                  });
+                }
+              });
+            }
+
             aiMapLayer.eachLayer(function(layer) {
+              if (layer === nonPointLayer || layer === markerCluster) return;
               if (layer.setStyle) {
-                layer.setStyle({
-                  weight: lineWeight,
-                  opacity: lineOpacity
-                });
+                layer.setStyle({ weight: lineWeight, opacity: lineOpacity });
               }
             });
 
@@ -4211,6 +4235,8 @@ if (description) {
           if (nonPointFeatures.length) {
             nonPointLayer.addData(nonPointFeatures);
           }
+          // Áp dụng ngay chế độ clutter theo zoom hiện tại sau khi layer đã có dữ liệu.
+          updateGISZoomStyle();
 
           // Đưa layer tuyến/vùng lên bản đồ NGAY.
           aiMapLayer.addLayer(nonPointLayer);
@@ -5355,6 +5381,65 @@ closeMapAi.addEventListener('click', function() {
  #mapAiPanel #mapFeatureCard{left:10px!important;bottom:82px!important;width:calc(100vw - 20px)!important}
  #mapAiPanel .map-ai-status{bottom:72px!important;font-size:8px!important;max-width:65%;text-align:center}
 }
+
+/* =========================================================
+   THỦY LỢI AI — MAP UX UPGRADE V6
+   1) Search / filter layout tách biệt
+   2) SafeArea + z-index hierarchy
+   3) Zoom-based clutter control + clustering
+   ========================================================= */
+#mapAiPanel .map-search-wrap{position:fixed!important;top:86px!important;left:50%!important;transform:translateX(-50%)!important;width:min(820px,calc(100vw - 40px))!important;z-index:5001!important;box-sizing:border-box!important}
+#mapAiPanel.map-ai-panel>.map-search-wrap .map-search-box{position:relative!important;top:auto!important;left:auto!important;right:auto!important;transform:none!important;width:100%!important;height:54px!important;min-height:54px!important;margin:0!important;padding:5px 7px 5px 12px!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:7px!important;box-sizing:border-box!important;background:rgba(255,255,255,.94)!important;border:1px solid rgba(255,255,255,.92)!important;border-radius:17px!important;box-shadow:0 12px 32px rgba(0,0,0,.18)!important;backdrop-filter:blur(20px) saturate(150%)!important;-webkit-backdrop-filter:blur(20px) saturate(150%)!important}
+#mapAiPanel .map-search-main{min-width:0;display:flex;align-items:center;gap:7px}
+#mapAiPanel .map-search-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding-left:6px;border-left:1px solid #e2e8f0}
+#mapAiPanel .map-search-actions button{width:40px!important;height:40px!important;min-width:40px!important;flex:0 0 40px!important;border-radius:11px!important;border:0!important;display:grid!important;place-items:center!important;cursor:pointer;touch-action:manipulation}
+#mapAiPanel #mapSearchBtn{background:#1677ff!important;color:#fff!important}
+#mapAiPanel #mapLocateBtn{background:#eef7ff!important;color:#1677ff!important}
+#mapAiPanel .map-quick-chips{position:fixed!important;top:149px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;width:min(820px,calc(100vw - 40px))!important;display:flex!important;align-items:center!important;gap:7px!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain!important;scroll-snap-type:x proximity!important;scrollbar-width:none!important;-webkit-overflow-scrolling:touch!important;padding:2px 2px 5px!important;box-sizing:border-box!important;z-index:4998!important;pointer-events:auto!important}
+#mapAiPanel .map-quick-chips::-webkit-scrollbar{display:none!important}
+#mapAiPanel .map-quick-chips button{flex:0 0 auto!important;white-space:nowrap!important;scroll-snap-align:start!important}
+/* SafeArea / z-index hierarchy */
+#mapAiPanel .map-atmosphere{z-index:350!important}
+#mapAiPanel .map-floating-btn{z-index:4200!important}
+#mapAiPanel .map-hud{z-index:4200!important}
+#mapAiPanel .map-legend{z-index:4200!important}
+#mapAiPanel .map-layer-panel{z-index:4300!important}
+#mapAiPanel .map-feature-card{z-index:4400!important}
+#mapAiPanel #searchResults{z-index:4900!important}
+#mapAiPanel .map-quick-chips{z-index:4998!important}
+#mapAiPanel .map-ai-header{z-index:5000!important}
+#mapAiPanel .map-search-wrap{z-index:5001!important}
+#mapAiPanel .map-ai-status{position:fixed!important;left:50%!important;bottom:max(18px,calc(env(safe-area-inset-bottom) + 18px))!important;transform:translateX(-50%)!important;width:min(560px,calc(100vw - 32px))!important;margin:0!important;padding:9px 14px!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:999px!important;background:rgba(7,28,48,.82)!important;color:#dff8ff!important;box-shadow:0 10px 30px rgba(0,0,0,.24)!important;backdrop-filter:blur(16px)!important;-webkit-backdrop-filter:blur(16px)!important;z-index:4500!important;text-align:center!important;font-size:12px!important;font-weight:700!important;pointer-events:none!important;box-sizing:border-box!important}
+#mapAiPanel .map-hud{bottom:max(18px,calc(env(safe-area-inset-bottom) + 18px))!important;padding-left:max(0px,env(safe-area-inset-left))!important}
+#mapAiPanel .map-legend{bottom:max(18px,calc(env(safe-area-inset-bottom) + 18px))!important;right:max(16px,calc(env(safe-area-inset-right) + 16px))!important}
+#mapAiPanel .leaflet-control-zoom{z-index:1000!important}
+/* Mobile: fixed-width actions stay visible; chips scroll horizontally */
+@media (max-width:600px){
+  #mapAiPanel .map-search-wrap{top:max(64px,calc(env(safe-area-inset-top) + 62px))!important;width:calc(100vw - 16px)!important}
+  #mapAiPanel.map-ai-panel>.map-search-wrap .map-search-box{height:50px!important;min-height:50px!important;padding:4px 5px 4px 9px!important;gap:5px!important;border-radius:15px!important}
+  #mapAiPanel .map-search-main{gap:5px!important}
+  #mapAiPanel .map-search-box input{font-size:14px!important}
+  #mapAiPanel .map-search-kbd{display:none!important}
+  #mapAiPanel .map-search-actions{gap:4px!important;padding-left:4px!important}
+  #mapAiPanel .map-search-actions button{width:38px!important;height:38px!important;min-width:38px!important;flex-basis:38px!important}
+  #mapAiPanel .map-quick-chips{top:calc(max(64px,calc(env(safe-area-inset-top) + 62px)) + 57px)!important;left:8px!important;right:8px!important;width:auto!important;transform:none!important;padding-left:2px!important;padding-right:2px!important}
+  #mapAiPanel .map-hud{left:8px!important;right:8px!important;bottom:max(12px,calc(env(safe-area-inset-bottom) + 12px))!important;overflow-x:auto!important;scrollbar-width:none!important;padding-right:8px!important}
+  #mapAiPanel .map-hud::-webkit-scrollbar{display:none!important}
+  #mapAiPanel .map-hud-card{min-width:104px!important}
+  #mapAiPanel .map-legend{display:none!important}
+  #mapAiPanel .map-ai-status{bottom:max(74px,calc(env(safe-area-inset-bottom) + 74px))!important;width:calc(100vw - 24px)!important;font-size:11px!important}
+  #mapAiPanel #mapLayerBtn{top:calc(max(64px,calc(env(safe-area-inset-top) + 62px)) + 118px)!important}
+  #mapAiPanel #mapGpsBtn{top:calc(max(64px,calc(env(safe-area-inset-top) + 62px)) + 172px)!important}
+  #mapAiPanel #mapHomeBtn{top:calc(max(64px,calc(env(safe-area-inset-top) + 62px)) + 226px)!important}
+  #mapAiPanel .map-layer-panel{top:calc(max(64px,calc(env(safe-area-inset-top) + 62px)) + 118px)!important;right:58px!important;width:min(290px,calc(100vw - 74px))!important}
+}
+@media (max-width:380px){
+  #mapAiPanel .map-brand-copy span{display:none!important}
+  #mapAiPanel .map-live-pill{margin-left:4px!important;padding:6px 7px!important;font-size:8px!important}
+  #mapAiPanel #closeMapAi span{display:none!important}
+  #mapAiPanel #closeMapAi{width:40px!important;padding:0!important;justify-content:center!important}
+}
+
 </style>
 
 <script>
