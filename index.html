@@ -2297,6 +2297,319 @@
 }
 </style>
 
+
+<style id="map-mobile-final-v8">
+/* =========================================================
+   THỦY LỢI AI — MOBILE MAP FINAL V8
+   Chỉ chuẩn hóa bố cục mobile; không thay đổi HTML/GIS/JS.
+   ========================================================= */
+@media (max-width: 700px){
+  /* Map full-screen */
+  #mapAiPanel.map-ai-panel{
+    position:fixed!important;
+    inset:0!important;
+    width:100vw!important;
+    height:100dvh!important;
+    overflow:hidden!important;
+    z-index:999999!important;
+  }
+
+  /* Ẩn hoàn toàn header bản đồ cũ trên mobile.
+     Chỉ giữ nút quay lại và đặt nó vào hàng tìm kiếm. */
+  #mapAiPanel.map-ai-panel > .map-ai-header{
+    position:fixed!important;
+    inset:auto!important;
+    top:0!important;
+    left:0!important;
+    width:0!important;
+    height:0!important;
+    padding:0!important;
+    margin:0!important;
+    background:transparent!important;
+    border:0!important;
+    box-shadow:none!important;
+    pointer-events:none!important;
+    z-index:6000!important;
+  }
+  #mapAiPanel.map-ai-panel > .map-ai-header .map-brand{
+    display:none!important;
+  }
+  #mapAiPanel.map-ai-panel #closeMapAi{
+    position:fixed!important;
+    top:max(8px, env(safe-area-inset-top))!important;
+    left:max(8px, env(safe-area-inset-left))!important;
+    width:48px!important;
+    min-width:48px!important;
+    height:48px!important;
+    padding:0!important;
+    margin:0!important;
+    border:1px solid rgba(255,255,255,.18)!important;
+    border-radius:14px!important;
+    background:rgba(7,42,72,.94)!important;
+    color:#fff!important;
+    box-shadow:0 7px 20px rgba(0,0,0,.24)!important;
+    backdrop-filter:blur(14px)!important;
+    -webkit-backdrop-filter:blur(14px)!important;
+    font-size:0!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    pointer-events:auto!important;
+    z-index:6001!important;
+  }
+  #mapAiPanel.map-ai-panel #closeMapAi::after{
+    content:"←"!important;
+    font-size:29px!important;
+    line-height:1!important;
+    font-weight:400!important;
+  }
+  #mapAiPanel.map-ai-panel #closeMapAi span{display:none!important;}
+
+  /* Hàng 1: Quay lại + Search + Vị trí */
+  #mapAiPanel.map-ai-panel > .map-search-wrap{
+    position:fixed!important;
+    top:max(8px, env(safe-area-inset-top))!important;
+    left:64px!important;
+    right:max(8px, env(safe-area-inset-right))!important;
+    width:auto!important;
+    height:48px!important;
+    margin:0!important;
+    padding:0!important;
+    transform:none!important;
+    z-index:6000!important;
+    box-sizing:border-box!important;
+  }
+  #mapAiPanel.map-ai-panel > .map-search-wrap .map-search-box{
+    position:relative!important;
+    top:auto!important;
+    left:auto!important;
+    right:auto!important;
+    width:100%!important;
+    height:48px!important;
+    min-height:48px!important;
+    margin:0!important;
+    padding:4px 5px 4px 10px!important;
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:5px!important;
+    border-radius:15px!important;
+    box-sizing:border-box!important;
+    z-index:6001!important;
+  }
+  #mapAiPanel .map-search-main{
+    min-width:0!important;
+    display:flex!important;
+    align-items:center!important;
+    gap:5px!important;
+  }
+  #mapAiPanel .map-search-icon{display:none!important;}
+  #mapAiPanel .map-search-box::before{display:none!important;}
+  #mapAiPanel .map-search-box input{
+    min-width:0!important;
+    width:100%!important;
+    font-size:14px!important;
+  }
+  #mapAiPanel .map-search-kbd{display:none!important;}
+  #mapAiPanel .map-search-actions{
+    display:flex!important;
+    align-items:center!important;
+    gap:3px!important;
+    padding-left:4px!important;
+  }
+  #mapAiPanel .map-search-actions button{
+    width:38px!important;
+    min-width:38px!important;
+    height:38px!important;
+    flex:0 0 38px!important;
+    border-radius:11px!important;
+  }
+  #mapAiPanel #mapSearchBtn{display:none!important;}
+  #mapAiPanel #mapLocateBtn{display:grid!important;place-items:center!important;}
+
+  /* Hàng 2: filter chips — cuộn ngang, không đẩy các control khác */
+  #mapAiPanel .map-quick-chips{
+    position:fixed!important;
+    top:calc(max(8px, env(safe-area-inset-top)) + 56px)!important;
+    left:8px!important;
+    right:8px!important;
+    width:auto!important;
+    height:43px!important;
+    min-height:43px!important;
+    margin:0!important;
+    padding:2px 2px 6px!important;
+    display:flex!important;
+    align-items:center!important;
+    gap:7px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    flex-wrap:nowrap!important;
+    transform:none!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior-x:contain!important;
+    scrollbar-width:none!important;
+    z-index:5900!important;
+  }
+  #mapAiPanel .map-quick-chips::-webkit-scrollbar{display:none!important;}
+  #mapAiPanel .map-quick-chips button{
+    flex:0 0 auto!important;
+    white-space:nowrap!important;
+    padding:8px 12px!important;
+    min-height:36px!important;
+    font-size:11px!important;
+  }
+
+  /* Search result: nằm dưới chip */
+  #mapAiPanel.map-ai-panel #searchResults{
+    position:fixed!important;
+    top:calc(max(8px, env(safe-area-inset-top)) + 102px)!important;
+    left:8px!important;
+    right:8px!important;
+    width:auto!important;
+    max-height:38vh!important;
+    margin:0!important;
+    z-index:5800!important;
+  }
+
+  /* Nút Layer/GPS/Home: tránh đè search/chips */
+  #mapAiPanel.map-ai-panel #mapLayerBtn{
+    position:fixed!important;
+    top:calc(max(8px, env(safe-area-inset-top)) + 108px)!important;
+    right:8px!important;
+    width:44px!important;
+    height:44px!important;
+    z-index:4500!important;
+  }
+  #mapAiPanel.map-ai-panel #mapGpsBtn{
+    position:fixed!important;
+    top:calc(max(8px, env(safe-area-inset-top)) + 160px)!important;
+    right:8px!important;
+    width:44px!important;
+    height:44px!important;
+    z-index:4500!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHomeBtn{
+    position:fixed!important;
+    top:calc(max(8px, env(safe-area-inset-top)) + 212px)!important;
+    right:8px!important;
+    width:44px!important;
+    height:44px!important;
+    z-index:4500!important;
+  }
+
+  /* Hai thẻ thống kê: luôn hiện cùng hàng, căn chính giữa */
+  #mapAiPanel.map-ai-panel #mapHud{
+    position:fixed!important;
+    left:50%!important;
+    right:auto!important;
+    bottom:max(12px, calc(env(safe-area-inset-bottom) + 12px))!important;
+    width:auto!important;
+    max-width:calc(100vw - 16px)!important;
+    height:auto!important;
+    padding:0!important;
+    margin:0!important;
+    transform:translateX(-50%)!important;
+    display:flex!important;
+    flex-direction:row!important;
+    flex-wrap:nowrap!important;
+    align-items:center!important;
+    justify-content:center!important;
+    gap:7px!important;
+    overflow:visible!important;
+    z-index:4700!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHud .map-hud-card{
+    display:flex!important;
+    flex:0 0 auto!important;
+    width:calc((100vw - 23px)/2)!important;
+    min-width:0!important;
+    max-width:190px!important;
+    height:54px!important;
+    padding:8px 10px!important;
+    box-sizing:border-box!important;
+    align-items:center!important;
+    gap:8px!important;
+    border-radius:14px!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHud .map-hud-card:nth-child(3){
+    display:none!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHud .map-hud-card b{
+    display:block!important;
+    font-size:14px!important;
+    line-height:1.05!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHud .map-hud-card small{
+    display:block!important;
+    margin-top:3px!important;
+    font-size:9px!important;
+    white-space:nowrap!important;
+  }
+
+  /* Toast/status: acima das estatísticas, nunca sobre os cards */
+  #mapAiPanel.map-ai-panel .map-ai-status{
+    position:fixed!important;
+    left:50%!important;
+    bottom:max(78px, calc(env(safe-area-inset-bottom) + 78px))!important;
+    width:min(520px, calc(100vw - 28px))!important;
+    max-width:none!important;
+    transform:translateX(-50%)!important;
+    margin:0!important;
+    padding:8px 12px!important;
+    text-align:center!important;
+    z-index:4800!important;
+    pointer-events:none!important;
+    box-sizing:border-box!important;
+  }
+
+  /* Feature card também sobe, para không đè HUD */
+  #mapAiPanel.map-ai-panel #mapFeatureCard{
+    left:8px!important;
+    right:8px!important;
+    bottom:max(78px, calc(env(safe-area-inset-bottom) + 78px))!important;
+    width:auto!important;
+    z-index:4900!important;
+  }
+
+  /* Zoom control không che HUD */
+  #mapAiPanel.map-ai-panel .leaflet-top.leaflet-left{
+    top:auto!important;
+    left:0!important;
+    bottom:max(80px, calc(env(safe-area-inset-bottom) + 80px))!important;
+  }
+  #mapAiPanel.map-ai-panel .map-container .leaflet-control-zoom{
+    margin:0 0 0 10px!important;
+  }
+
+  /* Attribution gọn trên mobile */
+  #mapAiPanel .leaflet-control-attribution{font-size:9px!important;}
+}
+
+@media (max-width:380px){
+  #mapAiPanel.map-ai-panel #closeMapAi{
+    width:44px!important;min-width:44px!important;height:44px!important;
+  }
+  #mapAiPanel.map-ai-panel > .map-search-wrap{
+    left:58px!important;
+    right:6px!important;
+  }
+  #mapAiPanel.map-ai-panel > .map-search-wrap .map-search-box{
+    height:44px!important;min-height:44px!important;
+  }
+  #mapAiPanel .map-search-actions button{
+    width:34px!important;min-width:34px!important;height:34px!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHud{
+    gap:5px!important;
+    max-width:calc(100vw - 10px)!important;
+  }
+  #mapAiPanel.map-ai-panel #mapHud .map-hud-card{
+    width:calc((100vw - 15px)/2)!important;
+    height:50px!important;
+    padding:7px 8px!important;
+  }
+}
+</style>
+
 </head>
 <body>
   <header class="header">
