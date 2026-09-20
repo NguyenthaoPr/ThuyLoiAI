@@ -1410,6 +1410,99 @@
       color: #8a9aa8;
       letter-spacing: 0.2px;
     }
+
+    /* =========================================================
+       THỜI TIẾT THEO TỌA ĐỘ – BỔ SUNG, KHÔNG THAY ĐỔI GIS
+       ========================================================= */
+    .tl-weather-card {
+      margin: 10px 0 12px;
+      padding: 10px 11px;
+      border: 1px solid #dce8f2;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f8fbff 0%, #f2f7fb 100%);
+    }
+    .tl-weather-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .tl-weather-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0b3153;
+      letter-spacing: .35px;
+      text-transform: uppercase;
+    }
+    .tl-weather-update {
+      font-size: 9px;
+      color: #78909c;
+      white-space: nowrap;
+    }
+    .tl-weather-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .tl-weather-item {
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: #ffffff;
+      border: 1px solid #e7eef4;
+    }
+    .tl-weather-label {
+      font-size: 9px;
+      color: #78909c;
+      font-weight: 700;
+    }
+    .tl-weather-value {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #0b2a44;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+    .tl-weather-forecast {
+      margin-top: 7px;
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: #eef6ff;
+      color: #155e9a;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+    .tl-weather-loading,
+    .tl-weather-error {
+      padding: 8px 9px;
+      border-radius: 10px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .tl-weather-loading {
+      color: #52697c;
+      background: #f4f7fa;
+    }
+    .tl-weather-error {
+      color: #9a3412;
+      background: #fff7ed;
+    }
+    .tl-weather-retry {
+      margin-top: 7px;
+      width: 100%;
+      border: 1px solid #b9d3ea;
+      border-radius: 9px;
+      background: #ffffff;
+      color: #1565c0;
+      padding: 6px 8px;
+      font-size: 10px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .tl-weather-retry:hover {
+      background: #eef6ff;
+    }
+
     @media (max-width: 600px) {
       .tl-popup-container {
         max-width: 280px;
@@ -3338,6 +3431,192 @@ if (cameraBtn && imageInput) {
         });
       }
 
+
+      // =========================================================
+      // WEATHER ENGINE – CHỈ BỔ SUNG THỜI TIẾT THEO LAT/LNG
+      // Không thay đổi GIS Master, Search Index, KML/KMZ hay marker.
+      // =========================================================
+      const TL_WEATHER_API_BASE = 'https://api.open-meteo.com/v1/forecast';
+      const TL_WEATHER_CACHE_TTL = 30 * 60 * 1000; // 30 phút
+      const TL_WEATHER_CACHE = new Map();
+
+      function tlWeatherCacheKey(lat, lng) {
+        return Number(lat).toFixed(4) + ',' + Number(lng).toFixed(4);
+      }
+
+      function tlFormatNumber(value, digits = 1) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toFixed(digits) : '—';
+      }
+
+      function tlWeatherCurrentLabel() {
+        try {
+          return new Intl.DateTimeFormat('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit'
+          }).format(new Date());
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function tlWeatherNext6hRain(data) {
+        const hourly = data?.hourly;
+        const times = Array.isArray(hourly?.time) ? hourly.time : [];
+        const rain = Array.isArray(hourly?.precipitation) ? hourly.precipitation : [];
+        if (!times.length || !rain.length) return null;
+
+        const now = Date.now();
+        let start = -1;
+        for (let i = 0; i < times.length; i++) {
+          const t = Date.parse(times[i]);
+          if (Number.isFinite(t) && t >= now - 60 * 60 * 1000) {
+            start = i;
+            break;
+          }
+        }
+        if (start < 0) start = 0;
+
+        let total = 0;
+        for (let i = start; i < Math.min(start + 6, rain.length); i++) {
+          const v = Number(rain[i]);
+          if (Number.isFinite(v)) total += v;
+        }
+        return total;
+      }
+
+      async function tlFetchWeather(lat, lng, force = false) {
+        const key = tlWeatherCacheKey(lat, lng);
+        const cached = TL_WEATHER_CACHE.get(key);
+        if (!force && cached && (Date.now() - cached.timestamp) < TL_WEATHER_CACHE_TTL) {
+          return cached.data;
+        }
+
+        const params = new URLSearchParams({
+          latitude: String(lat),
+          longitude: String(lng),
+          current: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
+          hourly: 'precipitation,temperature_2m',
+          forecast_days: '2',
+          timezone: 'Asia/Ho_Chi_Minh'
+        });
+
+        const response = await fetch(TL_WEATHER_API_BASE + '?' + params.toString(), {
+          method: 'GET',
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          throw new Error('Weather API HTTP ' + response.status);
+        }
+
+        const data = await response.json();
+        TL_WEATHER_CACHE.set(key, { timestamp: Date.now(), data });
+        return data;
+      }
+
+      function tlRenderWeather(card, data) {
+        if (!card) return;
+
+        const current = data?.current || {};
+        const temperature = Number(current.temperature_2m);
+        const precipitation = Number(current.precipitation);
+        const humidity = Number(current.relative_humidity_2m);
+        const wind = Number(current.wind_speed_10m);
+        const next6 = tlWeatherNext6hRain(data);
+
+        const body = card.querySelector('[data-tl-weather-body]');
+        const updated = card.querySelector('[data-tl-weather-updated]');
+        if (!body) return;
+
+        body.innerHTML = `
+          <div class="tl-weather-grid">
+            <div class="tl-weather-item">
+              <div class="tl-weather-label">🌡️ Nhiệt độ</div>
+              <div class="tl-weather-value">${tlFormatNumber(temperature, 1)} °C</div>
+            </div>
+            <div class="tl-weather-item">
+              <div class="tl-weather-label">🌧️ Mưa hiện tại</div>
+              <div class="tl-weather-value">${tlFormatNumber(precipitation, 1)} mm</div>
+            </div>
+            <div class="tl-weather-item">
+              <div class="tl-weather-label">💧 Độ ẩm</div>
+              <div class="tl-weather-value">${tlFormatNumber(humidity, 0)} %</div>
+            </div>
+            <div class="tl-weather-item">
+              <div class="tl-weather-label">💨 Gió</div>
+              <div class="tl-weather-value">${tlFormatNumber(wind, 1)} km/h</div>
+            </div>
+          </div>
+          <div class="tl-weather-forecast">
+            ☁️ <strong>Dự báo mưa 6 giờ tới:</strong>
+            ${next6 == null ? '—' : tlFormatNumber(next6, 1) + ' mm'}
+          </div>
+        `;
+
+        if (updated) updated.textContent = 'Cập nhật ' + tlWeatherCurrentLabel();
+        card.dataset.tlWeather = 'ready';
+      }
+
+      function tlRenderWeatherError(card, error) {
+        if (!card) return;
+        const body = card.querySelector('[data-tl-weather-body]');
+        const updated = card.querySelector('[data-tl-weather-updated]');
+        if (!body) return;
+
+        body.innerHTML = `
+          <div class="tl-weather-error">
+            ⚠️ Chưa lấy được dữ liệu thời tiết.
+            <button type="button" class="tl-weather-retry">🔄 Thử lại</button>
+          </div>
+        `;
+        if (updated) updated.textContent = 'Tạm thời lỗi';
+        card.dataset.tlWeather = 'error';
+
+        const retry = body.querySelector('.tl-weather-retry');
+        if (retry) {
+          retry.addEventListener('click', function() {
+            tlLoadWeatherForPopup(card, card.dataset.lat, card.dataset.lng, true);
+          });
+        }
+
+        console.warn('🌦️ Weather API error:', error);
+      }
+
+      async function tlLoadWeatherForPopup(card, lat, lng, force = false) {
+        if (!card || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return;
+
+        card.dataset.lat = String(lat);
+        card.dataset.lng = String(lng);
+
+        const body = card.querySelector('[data-tl-weather-body]');
+        if (body) {
+          body.innerHTML = '<div class="tl-weather-loading">⏳ Đang cập nhật thời tiết…</div>';
+        }
+
+        try {
+          const data = await tlFetchWeather(Number(lat), Number(lng), force);
+          tlRenderWeather(card, data);
+        } catch (error) {
+          tlRenderWeatherError(card, error);
+        }
+      }
+
+      function tlInitWeatherForPopup(layer, mapLat, mapLng) {
+        if (!layer || !Number.isFinite(Number(mapLat)) || !Number.isFinite(Number(mapLng))) return;
+
+        const root = layer.getPopup()?.getElement?.();
+        if (!root) return;
+
+        const card = root.querySelector('.tl-weather-card');
+        if (!card) return;
+
+        if (card.dataset.tlWeatherBound !== '1') {
+          card.dataset.tlWeatherBound = '1';
+          tlLoadWeatherForPopup(card, mapLat, mapLng, false);
+        }
+      }
+
       // =========================================================
       // 5. POPUP HIỆN ĐẠI (giữ nguyên)
       // =========================================================
@@ -3422,6 +3701,17 @@ if (cameraBtn && imageInput) {
                       <div class="tl-popup-status-text">${e(statusVal)}</div>
                     </div>
                   </div>
+                  ${ hasPosition ? `
+                    <div class="tl-weather-card" data-tl-weather="pending">
+                      <div class="tl-weather-head">
+                        <div class="tl-weather-title">🌦️ Thời tiết tại công trình</div>
+                        <div class="tl-weather-update" data-tl-weather-updated>Đang tải…</div>
+                      </div>
+                      <div data-tl-weather-body>
+                        <div class="tl-weather-loading">⏳ Đang lấy dữ liệu thời tiết theo tọa độ…</div>
+                      </div>
+                    </div>
+                  ` : '' }
                   <div class="tl-popup-grid">
                     ${ code ? `
                       <div class="tl-popup-item">
@@ -3453,12 +3743,24 @@ if (cameraBtn && imageInput) {
                     </div>
                   </div>
                 </div>
-                <div class="tl-popup-footer">🗺️ Dữ liệu từ GIS Master • THỦY LỢI AI</div>
+                <div class="tl-popup-footer">🗺️ GIS Master • 🌦️ Thời tiết theo tọa độ • THỦY LỢI AI</div>
               </div>
             `;
 
         layer.bindPopup(html, { maxWidth: 360, minWidth: 220, closeButton: true, autoPan: true,
           autoPanPadding: [20, 20] });
+
+        // Weather chỉ tải khi popup mở, không làm chậm quá trình nạp hàng nghìn marker.
+        if (hasPosition && !layer._tlWeatherBound) {
+          layer._tlWeatherBound = true;
+          layer.on('popupopen', function() {
+            try {
+              tlInitWeatherForPopup(layer, mapLat, mapLng);
+            } catch (weatherPopupError) {
+              console.warn('🌦️ Weather popup error:', weatherPopupError);
+            }
+          });
+        }
       }
 
       // =========================================================
