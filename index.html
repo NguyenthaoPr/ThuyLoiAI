@@ -1865,7 +1865,17 @@
         border-radius: 13px !important;
     }
 
-    #mapAiPanel #mapLayerBtn {
+    /* =========================================================
+   WEATHER RADAR — LỚP PHỦ NHẸ, KHÔNG PHÁ MÀU BẢN ĐỒ
+   ========================================================= */
+#mapAiPanel .weather-radar-layer {
+  filter: saturate(.78) brightness(1.04);
+}
+#mapAiPanel .weather-radar-layer img {
+  image-rendering: auto !important;
+}
+
+#mapAiPanel #mapLayerBtn {
         top: 12px !important;
     }
 
@@ -4377,10 +4387,14 @@ if (description) {
         const frame = weatherRadarFrames[Math.max(0, Math.min(index, weatherRadarFrames.length - 1))];
         if (!frame) return;
         if (weatherRadarLayer) aiMap.removeLayer(weatherRadarLayer);
-        weatherRadarLayer = L.tileLayer(weatherTileUrl(frame), {
-          opacity: 0.48,
+        weatherRadarLayer = L.tileLayer(weatherTileUrl(frame).replace('/256/', '/512/'), {
+          // Radar chỉ là lớp phủ — không được lấn át nền vệ tinh.
+          // RainViewer hiện giới hạn dữ liệu radar ở zoom 7.
+          opacity: 0.24,
           maxNativeZoom: 7,
           maxZoom: 19,
+          tileSize: 512,
+          className: 'weather-radar-layer',
           attribution: 'Weather data by RainViewer'
         }).addTo(aiMap);
         weatherTime.value = String(Math.max(0, Math.min(index, weatherRadarFrames.length - 1)));
@@ -4467,11 +4481,17 @@ if (description) {
       function openWeatherPanel() {
         weatherPanel.classList.add('open');
         weatherPanel.setAttribute('aria-hidden','false');
+
+        // Mở bảng thời tiết KHÔNG tự bật radar.
+        // Radar chỉ tải khi người dùng chủ động chọn "Mưa / Radar".
         if (aiMap) {
           const c = aiMap.getCenter();
           loadPointWeather(c.lat, c.lng);
         }
-        if (!weatherRadarFrames.length) loadWeatherRadar();
+
+        if (weatherRadarToggle?.checked && !weatherRadarFrames.length) {
+          loadWeatherRadar();
+        }
       }
 
       function closeWeatherPanel() {
