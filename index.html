@@ -1865,17 +1865,7 @@
         border-radius: 13px !important;
     }
 
-    /* =========================================================
-   WEATHER RADAR — LỚP PHỦ NHẸ, KHÔNG PHÁ MÀU BẢN ĐỒ
-   ========================================================= */
-#mapAiPanel .weather-radar-layer {
-  filter: saturate(.78) brightness(1.04);
-}
-#mapAiPanel .weather-radar-layer img {
-  image-rendering: auto !important;
-}
-
-#mapAiPanel #mapLayerBtn {
+    #mapAiPanel #mapLayerBtn {
         top: 12px !important;
     }
 
@@ -2242,41 +2232,8 @@
 
         <div class="map-container">
           <div id="aiMap"></div>
-          <button id="mapLayerBtn" class="map-floating-btn" type="button" title="Thời tiết">☁️</button>
+          <button id="mapLayerBtn" class="map-floating-btn" type="button" title="Lớp bản đồ">▱</button>
           <button id="mapGpsBtn" class="map-floating-btn map-gps-btn" type="button" title="Vị trí của tôi">➤</button>
-          <div id="weatherPanel" class="weather-panel" aria-hidden="true">
-            <div class="weather-head">
-              <strong>☁️ LỚP THỜI TIẾT</strong>
-              <button id="weatherClose" type="button" aria-label="Đóng">×</button>
-            </div>
-            <div class="weather-options">
-              <label class="weather-option"><input id="weatherRadarToggle" type="checkbox"> 🌧️ Mưa / Radar hiện tại</label>
-              <label class="weather-option"><input id="weatherPointToggle" type="checkbox" checked> 📍 Thời tiết tại điểm chọn</label>
-              <label class="weather-option"><input id="weatherWindToggle" type="checkbox"> 💨 Gió tại điểm chọn</label>
-              <label class="weather-option"><input id="weatherCloudToggle" type="checkbox"> ☁️ Mây dự báo</label>
-            </div>
-            <div id="weatherTimeRow" hidden>
-              <input id="weatherTime" type="range" min="0" max="0" value="0" step="1" aria-label="Thời gian radar">
-            </div>
-            <div class="weather-now">
-              <div class="weather-now-title">THỜI TIẾT GẦN NHẤT</div>
-              <div id="weatherLocation" class="weather-location">Đang lấy vị trí bản đồ…</div>
-              <div id="weatherNowBody" class="weather-grid">
-                <div class="weather-loading">Đang tải dữ liệu…</div>
-              </div>
-            </div>
-            <div class="weather-forecast">
-              <div class="weather-forecast-title">🌦️ DỰ BÁO 3 GIỜ TỚI</div>
-              <div id="weatherHours" class="weather-hours"></div>
-            </div>
-            <div class="rain-legend">
-              <div class="rain-legend-title">Cường độ mưa radar (mm/h)</div>
-              <div class="rain-legend-bar"></div>
-              <div class="rain-legend-labels"><span>0.1</span><span>1</span><span>5</span><span>10</span><span>20</span><span>50+</span></div>
-            </div>
-            <div class="weather-source">Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> • Thời tiết điểm: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></div>
-          </div>
-
         </div>
         <div id="mapFeatureCard" class="map-feature-card hidden">
           <div class="map-feature-top">
@@ -2341,6 +2298,7 @@
       let searchIndex = []; // Mảng chứa tất cả đối tượng tìm kiếm
       let markerCluster = null; // Tham chiếu đến cluster để zoom tới marker
       let markerFeatureMap = new WeakMap(); // feature -> marker, giúp search zoom/popup nhanh
+      let nonPointLayer = null; // Layer đường/vùng; khai báo sớm để tránh lỗi TDZ khi map vừa setView
       let gisSearchReady = false; // chỉ cho tìm kiếm khi GIS data + index đã sẵn sàng
 
       // Backend GIS chạy trên Render. Có thể ghi đè bằng window.THULYLOI_GIS_API nếu sau này đổi server.
@@ -3442,11 +3400,6 @@ if (cameraBtn && imageInput) {
           ).addTo(aiMap);
           // Đặt tâm khu vực Vu Gia – Thu Bồn ngay lập tức, không chờ GIS.
           aiMap.setView([15.75, 108.30], 9, { animate: false });
-          aiMap.on('click', function(e) {
-            if (weatherPanel && weatherPanel.classList.contains('open') && weatherPointToggle && weatherPointToggle.checked) {
-              loadPointWeather(e.latlng.lat, e.latlng.lng);
-            }
-          });
           aiMapLayer = L.layerGroup().addTo(aiMap);
           setTimeout(function() {
             try { aiMap.invalidateSize({ pan: false }); } catch (e) {}
@@ -3487,7 +3440,7 @@ if (cameraBtn && imageInput) {
             // Chỉ mở nhãn của các đối tượng đang nằm trong màn hình
             // để tránh tạo hàng nghìn DOM label trên iPhone.
             // ======================================================
-            if (typeof nonPointLayer === 'undefined' || !nonPointLayer) return;
+            if (!nonPointLayer) return;
 
             const showLabels = zoom >= 12;
             const mapBounds = aiMap.getBounds();
@@ -3793,7 +3746,7 @@ function escapeGISHTML(value) {
 // ============================================================
 // TẠO LAYER
 // ============================================================
-const nonPointLayer = L.geoJSON(null, {
+nonPointLayer = L.geoJSON(null, {
 
   // ==========================================================
   // STYLE
@@ -4345,201 +4298,6 @@ if (description) {
           performSearch(mapSearch.value);
         });
       }
-
-
-
-      // =========================================================
-      // 12A. THỜI TIẾT TÍCH HỢP — RAINVIEWER + OPEN-METEO
-      // =========================================================
-      const mapLayerBtn = document.getElementById('mapLayerBtn');
-      const mapGpsBtn = document.getElementById('mapGpsBtn');
-      const mapLocateBtn = document.getElementById('mapLocateBtn');
-      const weatherPanel = document.getElementById('weatherPanel');
-      const weatherClose = document.getElementById('weatherClose');
-      const weatherRadarToggle = document.getElementById('weatherRadarToggle');
-      const weatherPointToggle = document.getElementById('weatherPointToggle');
-      const weatherWindToggle = document.getElementById('weatherWindToggle');
-      const weatherCloudToggle = document.getElementById('weatherCloudToggle');
-      const weatherTime = document.getElementById('weatherTime');
-      const weatherTimeRow = document.getElementById('weatherTimeRow');
-      const weatherLocation = document.getElementById('weatherLocation');
-      const weatherNowBody = document.getElementById('weatherNowBody');
-      const weatherHours = document.getElementById('weatherHours');
-
-      let weatherRadarLayer = null;
-      let weatherRadarFrames = [];
-      let weatherRadarHost = '';
-      let weatherPoint = { lat: 15.75, lng: 108.30 };
-      let weatherMarker = null;
-      let weatherWindMarker = null;
-      let weatherRefreshTimer = null;
-
-      function weatherEsc(v) {
-        return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-      }
-
-      function weatherTileUrl(frame) {
-        return weatherRadarHost + frame.path + '/256/{z}/{x}/{y}/2/1_1.png';
-      }
-
-      function setWeatherRadarFrame(index) {
-        if (!aiMap || !weatherRadarFrames.length) return;
-        const frame = weatherRadarFrames[Math.max(0, Math.min(index, weatherRadarFrames.length - 1))];
-        if (!frame) return;
-        if (weatherRadarLayer) aiMap.removeLayer(weatherRadarLayer);
-        weatherRadarLayer = L.tileLayer(weatherTileUrl(frame).replace('/256/', '/512/'), {
-          // Radar chỉ là lớp phủ — không được lấn át nền vệ tinh.
-          // RainViewer hiện giới hạn dữ liệu radar ở zoom 7.
-          opacity: 0.24,
-          maxNativeZoom: 7,
-          maxZoom: 19,
-          tileSize: 512,
-          className: 'weather-radar-layer',
-          attribution: 'Weather data by RainViewer'
-        }).addTo(aiMap);
-        weatherTime.value = String(Math.max(0, Math.min(index, weatherRadarFrames.length - 1)));
-      }
-
-      async function loadWeatherRadar() {
-        if (!aiMap) return;
-        try {
-          const r = await fetch('https://api.rainviewer.com/public/weather-maps.json', { cache: 'no-store' });
-          if (!r.ok) throw new Error('RainViewer HTTP ' + r.status);
-          const data = await r.json();
-          weatherRadarHost = data.host || '';
-          weatherRadarFrames = Array.isArray(data.radar?.past) ? data.radar.past : [];
-          if (!weatherRadarHost || !weatherRadarFrames.length) throw new Error('Không có khung radar');
-          weatherTime.min = '0';
-          weatherTime.max = String(weatherRadarFrames.length - 1);
-          weatherTime.value = String(weatherRadarFrames.length - 1);
-          weatherTimeRow.hidden = false;
-          setWeatherRadarFrame(weatherRadarFrames.length - 1);
-        } catch (e) {
-          console.warn('[WEATHER] Radar unavailable:', e);
-          weatherTimeRow.hidden = true;
-          if (mapAiStatus) mapAiStatus.textContent = '⚠️ Không tải được radar thời tiết lúc này.';
-        }
-      }
-
-      function formatHour(iso) {
-        try { return new Date(iso).toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' }); }
-        catch(e) { return '--:--'; }
-      }
-
-      function weatherKpi(label, value) {
-        return '<div class="weather-kpi"><span>' + weatherEsc(label) + '</span><b>' + weatherEsc(value) + '</b></div>';
-      }
-
-      async function loadPointWeather(lat, lng) {
-        weatherPoint = { lat: Number(lat), lng: Number(lng) };
-        if (!Number.isFinite(weatherPoint.lat) || !Number.isFinite(weatherPoint.lng)) return;
-        weatherLocation.textContent = weatherPoint.lat.toFixed(4) + '°N, ' + weatherPoint.lng.toFixed(4) + '°E';
-        weatherNowBody.innerHTML = '<div class="weather-loading">⏳ Đang cập nhật thời tiết…</div>';
-        weatherHours.innerHTML = '';
-        try {
-          const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + encodeURIComponent(weatherPoint.lat) +
-            '&longitude=' + encodeURIComponent(weatherPoint.lng) +
-            '&current=temperature_2m,precipitation,rain,cloud_cover,wind_speed_10m,wind_direction_10m,weather_code' +
-            '&hourly=precipitation,rain,temperature_2m,wind_speed_10m,wind_direction_10m,cloud_cover' +
-            '&forecast_hours=6&timezone=Asia%2FBangkok';
-          const r = await fetch(url, { cache: 'no-store' });
-          if (!r.ok) throw new Error('Open-Meteo HTTP ' + r.status);
-          const d = await r.json();
-          const c = d.current || {};
-          const windDir = Number.isFinite(Number(c.wind_direction_10m)) ? Math.round(c.wind_direction_10m) + '°' : '--';
-          weatherNowBody.innerHTML =
-            weatherKpi('Nhiệt độ', (c.temperature_2m ?? '--') + ' °C') +
-            weatherKpi('Mưa hiện tại', (c.precipitation ?? '--') + ' mm') +
-            weatherKpi('Mưa', (c.rain ?? '--') + ' mm') +
-            weatherKpi('Mây', (c.cloud_cover ?? '--') + ' %') +
-            weatherKpi('Gió', (c.wind_speed_10m ?? '--') + ' km/h') +
-            weatherKpi('Hướng gió', windDir);
-
-          const t = d.hourly?.time || [];
-          const p = d.hourly?.precipitation || [];
-          const temp = d.hourly?.temperature_2m || [];
-          const wind = d.hourly?.wind_speed_10m || [];
-          let html = '';
-          for (let i = 0; i < Math.min(3, t.length); i++) {
-            html += '<div class="weather-hour"><small>' + formatHour(t[i]) + '</small><b>' + (temp[i] ?? '--') + '°C</b><em>🌧️ ' + (p[i] ?? 0) + ' mm</em><small>💨 ' + (wind[i] ?? '--') + ' km/h</small></div>';
-          }
-          weatherHours.innerHTML = html || '<div class="weather-loading">Chưa có dữ liệu dự báo.</div>';
-
-          if (weatherPointToggle?.checked && aiMap) {
-            if (weatherMarker) aiMap.removeLayer(weatherMarker);
-            weatherMarker = L.circleMarker([weatherPoint.lat, weatherPoint.lng], {
-              radius: 8, color: '#ffffff', weight: 3, fillColor: '#1677ff', fillOpacity: .95, interactive: false
-            }).addTo(aiMap);
-          }
-        } catch (e) {
-          console.warn('[WEATHER] Point weather unavailable:', e);
-          weatherNowBody.innerHTML = '<div class="weather-error">Không lấy được dữ liệu thời tiết. Thử lại sau.</div>';
-          weatherHours.innerHTML = '';
-        }
-      }
-
-      function openWeatherPanel() {
-        weatherPanel.classList.add('open');
-        weatherPanel.setAttribute('aria-hidden','false');
-
-        // Mở bảng thời tiết KHÔNG tự bật radar.
-        // Radar chỉ tải khi người dùng chủ động chọn "Mưa / Radar".
-        if (aiMap) {
-          const c = aiMap.getCenter();
-          loadPointWeather(c.lat, c.lng);
-        }
-
-        if (weatherRadarToggle?.checked && !weatherRadarFrames.length) {
-          loadWeatherRadar();
-        }
-      }
-
-      function closeWeatherPanel() {
-        weatherPanel.classList.remove('open');
-        weatherPanel.setAttribute('aria-hidden','true');
-      }
-
-      mapLayerBtn?.addEventListener('click', function() {
-        if (weatherPanel.classList.contains('open')) closeWeatherPanel();
-        else openWeatherPanel();
-      });
-      weatherClose?.addEventListener('click', closeWeatherPanel);
-      weatherRadarToggle?.addEventListener('change', function() {
-        if (this.checked) loadWeatherRadar();
-        else if (weatherRadarLayer && aiMap) { aiMap.removeLayer(weatherRadarLayer); weatherRadarLayer = null; }
-      });
-      weatherTime?.addEventListener('input', function() {
-        if (weatherRadarFrames.length) setWeatherRadarFrame(Number(this.value));
-      });
-      weatherPointToggle?.addEventListener('change', function() {
-        if (!this.checked && weatherMarker && aiMap) { aiMap.removeLayer(weatherMarker); weatherMarker = null; }
-        if (this.checked && aiMap) { const c = aiMap.getCenter(); loadPointWeather(c.lat, c.lng); }
-      });
-      weatherWindToggle?.addEventListener('change', function() {
-        if (!this.checked && weatherWindMarker && aiMap) { aiMap.removeLayer(weatherWindMarker); weatherWindMarker = null; }
-        // Wind is shown in the point-weather card; no extra vector layer is created here.
-      });
-      weatherCloudToggle?.addEventListener('change', function() {
-        // Open-Meteo cloud cover is a point/forecast variable, not a satellite tile.
-        if (this.checked && aiMap) { const c = aiMap.getCenter(); loadPointWeather(c.lat, c.lng); }
-      });
-      mapLocateBtn?.addEventListener('click', function() {
-        if (!navigator.geolocation || !aiMap) return;
-        navigator.geolocation.getCurrentPosition(function(pos) {
-          const lat = pos.coords.latitude, lng = pos.coords.longitude;
-          aiMap.setView([lat,lng], Math.max(aiMap.getZoom(), 12));
-          if (weatherPanel.classList.contains('open')) loadPointWeather(lat,lng);
-        }, function(err) { console.warn('[WEATHER] geolocation:', err); }, { enableHighAccuracy:true, timeout:10000, maximumAge:60000 });
-      });
-      mapGpsBtn?.addEventListener('click', function() {
-        if (!navigator.geolocation || !aiMap) return;
-        navigator.geolocation.getCurrentPosition(function(pos) {
-          const lat = pos.coords.latitude, lng = pos.coords.longitude;
-          aiMap.setView([lat,lng], Math.max(aiMap.getZoom(), 12));
-          if (weatherPanel.classList.contains('open')) loadPointWeather(lat,lng);
-        }, function(err) { console.warn('[WEATHER] geolocation:', err); }, { enableHighAccuracy:true, timeout:10000, maximumAge:60000 });
-      });
-      aiMapElement?.addEventListener('click', function() {});
 
       // =========================================================
       // 15. SỰ KIỆN MỞ/ĐÓNG BẢN ĐỒ, FIELD REPORT (giữ nguyên)
@@ -5390,86 +5148,6 @@ closeMapAi.addEventListener('click', function() {
   #mapAiPanel.map-ai-panel #mapGpsBtn { top: 128px !important; }
 }
 
-
-
-/* =========================================================
-   THỜI TIẾT TÍCH HỢP — WEATHER RADAR + POINT WEATHER
-   Không thay đổi GIS hiện hữu; chỉ thêm một lớp phủ tùy chọn.
-   ========================================================= */
-#mapAiPanel .weather-panel {
-  position: absolute;
-  top: 168px;
-  left: 12px;
-  width: min(300px, calc(100vw - 24px));
-  max-height: min(64vh, 560px);
-  overflow-y: auto;
-  z-index: 4600;
-  display: none;
-  border-radius: 18px;
-  background: rgba(255,255,255,.96);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 35px rgba(0,0,0,.22);
-  border: 1px solid rgba(255,255,255,.75);
-  color: #082a4a;
-}
-#mapAiPanel .weather-panel.open { display: block; }
-#mapAiPanel .weather-head {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:12px 14px 10px; background:#082a4a; color:#fff;
-  border-radius:18px 18px 0 0;
-}
-#mapAiPanel .weather-head strong { font-size:14px; font-weight:800; }
-#mapAiPanel #weatherClose {
-  width:30px; height:30px; border:0; border-radius:9px;
-  background:rgba(255,255,255,.13); color:#fff; font-size:18px;
-}
-#mapAiPanel .weather-options { padding:10px 12px 6px; }
-#mapAiPanel .weather-option {
-  display:flex; align-items:center; gap:9px; min-height:38px;
-  font-size:13px; font-weight:600; color:#23445f;
-}
-#mapAiPanel .weather-option input { width:19px; height:19px; accent-color:#1677ff; }
-#mapAiPanel .weather-now {
-  margin:5px 12px 10px; padding:11px 12px; border-radius:13px;
-  background:#f2f7fb; border:1px solid #dce7f0;
-}
-#mapAiPanel .weather-now-title { font-size:11px; color:#6a7d8e; font-weight:700; margin-bottom:5px; }
-#mapAiPanel .weather-location { font-size:13px; font-weight:800; color:#082a4a; margin-bottom:8px; }
-#mapAiPanel .weather-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-#mapAiPanel .weather-kpi { background:#fff; border:1px solid #e4ebf1; border-radius:10px; padding:7px 8px; }
-#mapAiPanel .weather-kpi span { display:block; font-size:9px; color:#78909c; text-transform:uppercase; font-weight:700; }
-#mapAiPanel .weather-kpi b { display:block; margin-top:2px; font-size:13px; color:#082a4a; }
-#mapAiPanel .weather-forecast { padding:0 12px 10px; }
-#mapAiPanel .weather-forecast-title { font-size:11px; font-weight:800; color:#496075; margin:2px 0 6px; }
-#mapAiPanel .weather-hours { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
-#mapAiPanel .weather-hour { background:#fff; border:1px solid #e4ebf1; border-radius:10px; padding:7px 4px; text-align:center; }
-#mapAiPanel .weather-hour small { display:block; color:#78909c; font-size:9px; }
-#mapAiPanel .weather-hour b { display:block; margin:3px 0; font-size:12px; color:#082a4a; }
-#mapAiPanel .weather-hour em { font-style:normal; color:#1677ff; font-size:10px; }
-#mapAiPanel .rain-legend { padding:0 12px 12px; }
-#mapAiPanel .rain-legend-title { font-size:10px; font-weight:800; color:#496075; margin-bottom:5px; }
-#mapAiPanel .rain-legend-bar {
-  height:10px; border-radius:6px;
-  background:linear-gradient(90deg,#2449ff 0%,#28a7ff 20%,#20c85a 42%,#ffe600 62%,#ff8a00 80%,#ef1d25 100%);
-}
-#mapAiPanel .rain-legend-labels { display:flex; justify-content:space-between; font-size:8px; color:#718397; margin-top:3px; }
-#mapAiPanel .weather-source { padding:7px 12px 11px; font-size:9px; color:#81909d; border-top:1px solid #edf2f6; }
-#mapAiPanel .weather-source a { color:#1677ff; text-decoration:none; }
-#mapAiPanel #weatherTimeRow { padding:0 12px 10px; }
-#mapAiPanel #weatherTime { width:100%; accent-color:#1677ff; }
-#mapAiPanel .weather-loading { font-size:12px; color:#64748b; padding:8px 0; }
-#mapAiPanel .weather-error { font-size:12px; color:#b91c1c; padding:6px 0; }
-
-@media (max-width:600px) {
-  #mapAiPanel .weather-panel {
-    top: 168px; left: 10px; width: min(292px, calc(100vw - 20px));
-    max-height: 58vh;
-  }
-}
-@media (min-width:601px) {
-  #mapAiPanel .weather-panel { top: 172px; left: 14px; }
-}
 </style>
 
 <script>
