@@ -3782,7 +3782,7 @@ if (cameraBtn && imageInput) {
       // Không thay đổi GIS Master, Search Index, KML/KMZ hay marker.
       // =========================================================
       const TL_WEATHER_API_BASE = 'https://api.open-meteo.com/v1/forecast';
-      const TL_WEATHER_CACHE_TTL = 5 * 60 * 1000; // 5 phút — dữ liệu hiện tại được làm mới nhanh hơn
+      const TL_WEATHER_CACHE_TTL = 2 * 60 * 1000; // 5 phút — dữ liệu hiện tại được làm mới nhanh hơn
       const TL_WEATHER_CACHE = new Map();
 
       function tlWeatherCacheKey(lat, lng) {
@@ -3828,6 +3828,8 @@ if (cameraBtn && imageInput) {
         const now = Date.now();
         let start = -1;
         for (let i = 0; i < times.length; i++) {
+          // Open-Meteo trả giờ theo timezone đã yêu cầu; Date.parse vẫn xử lý được
+          // chuỗi ISO có offset. Nếu không parse được, dùng phần tử đầu tiên.
           const t = Date.parse(times[i]);
           if (Number.isFinite(t) && t >= now - 60 * 60 * 1000) {
             start = i;
@@ -3845,44 +3847,58 @@ if (cameraBtn && imageInput) {
       }
 
       async function tlFetchWeather(lat, lng, force = false) {
+        lat = Number(lat);
+        lng = Number(lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          throw new Error('Tọa độ công trình không hợp lệ.');
+        }
+
         const key = tlWeatherCacheKey(lat, lng);
         const cached = TL_WEATHER_CACHE.get(key);
         if (!force && cached && (Date.now() - cached.timestamp) < TL_WEATHER_CACHE_TTL) {
           return cached.data;
         }
 
-        const params = new URLSearchParams({
-          latitude: String(lat),
-          longitude: String(lng),
-          current: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
-          hourly: 'precipitation,temperature_2m',
-          forecast_days: '2',
-          timezone: 'Asia/Ho_Chi_Minh'
-        });
+        // Dùng đúng dạng URL đã hoạt động ở module thời tiết hiện hữu của THỦY LỢI AI.
+        // Chỉ lấy 6 giờ dự báo để phản hồi nhanh trên mobile.
+        const url = TL_WEATHER_API_BASE +
+          '?latitude=' + encodeURIComponent(lat) +
+          '&longitude=' + encodeURIComponent(lng) +
+          '&current=' + encodeURIComponent('temperature_2m,relative_humidity_2m,precipitation,rain,cloud_cover,wind_speed_10m,wind_direction_10m,weather_code') +
+          '&hourly=' + encodeURIComponent('precipitation,rain,temperature_2m,wind_speed_10m,wind_direction_10m,cloud_cover') +
+          '&forecast_hours=6' +
+          '&timezone=Asia%2FBangkok';
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        let response;
+        const timeout = setTimeout(() => controller.abort(), 8000);
+
         try {
-          response = await fetch(TL_WEATHER_API_BASE + '?' + params.toString(), {
+          const response = await fetch(url, {
             method: 'GET',
             cache: 'no-store',
-            mode: 'cors',
             headers: { 'Accept': 'application/json' },
             signal: controller.signal
           });
+
+          if (!response.ok) {
+            throw new Error('Open-Meteo HTTP ' + response.status);
+          }
+
+          const data = await response.json();
+          if (!data || !data.current) {
+            throw new Error('Open-Meteo không trả về current weather.');
+          }
+
+          TL_WEATHER_CACHE.set(key, { timestamp: Date.now(), data });
+          return data;
+        } catch (error) {
+          if (error?.name === 'AbortError') {
+            throw new Error('Kết nối thời tiết quá thời gian chờ.');
+          }
+          throw error;
         } finally {
           clearTimeout(timeout);
         }
-
-        if (!response.ok) {
-          throw new Error('Weather API HTTP ' + response.status);
-        }
-
-        const data = await response.json();
-        if (!data?.current) throw new Error('Weather API không trả về dữ liệu hiện tại.');
-        TL_WEATHER_CACHE.set(key, { timestamp: Date.now(), data });
-        return data;
       }
 
       function tlRenderWeather(card, data) {
@@ -3998,7 +4014,7 @@ if (cameraBtn && imageInput) {
       }
 
       // =========================================================
-      // WEATHER DASHBOARD DIRECT LOADER V3.2
+      // WEATHER DASHBOARD DIRECT LOADER V3.3
       // Không phụ thuộc card thời tiết ẩn của popup cũ.
       // Chỉ thay presentation/integration của popup; nguồn thời tiết vẫn Open-Meteo.
       // =========================================================
@@ -4050,9 +4066,15 @@ if (cameraBtn && imageInput) {
           weatherBox?.setAttribute('data-weather-state','ready');
         } catch (error) {
           console.warn('🌦️ Dashboard Weather API error:', error);
-          if (timeEl) timeEl.textContent = 'Tạm thời lỗi';
-          if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:9px;color:#b45309;padding:8px 4px;">⚠️ Chưa lấy được thời tiết hiện tại</div>';
-          if (forecastEl) forecastEl.textContent = '↻ Bấm cập nhật để thử lại';
+          if (timeEl) timeEl.textContent = 'Không kết nối được';
+          if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:9px;color:#b45309;padding:8px 4px;line-height:1.45;">⚠️ Chưa lấy được thời tiết hiện tại<br><button type="button" class="tl-weather-inline-retry" style="margin-top:5px;border:1px solid #c8ddec;border-radius:8px;background:#fff;color:#1265ba;padding:4px 8px;font:800 9px inherit;cursor:pointer;">↻ Thử lại</button></div>';
+          if (forecastEl) forecastEl.textContent = 'Kiểm tra kết nối rồi thử lại';
+          const retryBtn = grid?.querySelector('.tl-weather-inline-retry');
+          if (retryBtn) retryBtn.addEventListener('click', function(ev) {
+            ev.preventDefault(); ev.stopPropagation();
+            retryBtn.disabled = true;
+            Promise.resolve(tlLoadDashboardWeather(root, lat, lng, true)).finally(() => { retryBtn.disabled = false; });
+          });
           if (rainCard) {
             const v = rainCard.querySelector('.tl-dashboard-mini-value');
             const t = rainCard.querySelector('.tl-dashboard-mini-time');
