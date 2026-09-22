@@ -3998,19 +3998,10 @@ if (cameraBtn && imageInput) {
         }
       }
 
+      // LEGACY WEATHER INIT: giữ lại để tương thích cấu trúc cũ nhưng KHÔNG được gọi
+      // từ popup dashboard. Weather hiện tại chỉ dùng tlLoadDashboardWeather().
       function tlInitWeatherForPopup(layer, mapLat, mapLng) {
-        if (!layer || !Number.isFinite(Number(mapLat)) || !Number.isFinite(Number(mapLng))) return;
-
-        const root = layer.getPopup()?.getElement?.();
-        if (!root) return;
-
-        const card = root.querySelector('.tl-weather-card');
-        if (!card) return;
-
-        if (card.dataset.tlWeatherBound !== '1') {
-          card.dataset.tlWeatherBound = '1';
-          tlLoadWeatherForPopup(card, mapLat, mapLng, false);
-        }
+        console.warn('🌦️ Legacy weather initializer disabled; dashboard weather uses the single loader.');
       }
 
       // =========================================================
@@ -4485,48 +4476,51 @@ if (cameraBtn && imageInput) {
                 touchY = null;
               }, {passive:true});
             }
+            // ========================================================
+            // WEATHER ENGINE — SINGLE SOURCE OF TRUTH
+            // Không gọi tlInitWeatherForPopup() / .tl-weather-card.
+            // Dashboard visible là nơi duy nhất nhận dữ liệu thời tiết.
+            // ========================================================
             try { tlInitLiveForPopup(layer, name); } catch (livePopupError) { console.warn('📊 Technical Live popup error:', livePopupError); }
-            // Weather dùng tọa độ thực của marker làm phương án dự phòng.
-            // Một số feature GIS có thể không giữ tọa độ ở geometry/properties sau khi
-            // qua các bước xử lý dữ liệu, nhưng Leaflet marker vẫn luôn có LatLng.
-            let weatherLat = mapLat;
-            let weatherLng = mapLng;
-            if (!Number.isFinite(Number(weatherLat)) || !Number.isFinite(Number(weatherLng))) {
-              try {
-                const layerLatLng = layer?.getLatLng?.();
-                if (layerLatLng) {
-                  weatherLat = Number(layerLatLng.lat);
-                  weatherLng = Number(layerLatLng.lng);
-                }
-              } catch (weatherCoordError) {
-                console.warn('🌦️ Không đọc được tọa độ marker cho thời tiết:', weatherCoordError);
+
+            let weatherLat = Number(mapLat);
+            let weatherLng = Number(mapLng);
+            // Ưu tiên tọa độ thực tế của marker đang mở popup.
+            try {
+              const markerLatLng = layer?.getLatLng?.();
+              if (markerLatLng && Number.isFinite(Number(markerLatLng.lat)) && Number.isFinite(Number(markerLatLng.lng))) {
+                weatherLat = Number(markerLatLng.lat);
+                weatherLng = Number(markerLatLng.lng);
               }
-            }
+            } catch (_) {}
 
-            const weatherHasPosition = Number.isFinite(Number(weatherLat)) && Number.isFinite(Number(weatherLng));
+            const weatherRoot = root;
+            const weatherRefresh = weatherRoot.querySelector('[data-tl-weather-mini-refresh]');
+            if (Number.isFinite(weatherLat) && Number.isFinite(weatherLng)) {
+              // Chờ Leaflet hoàn tất DOM popup rồi mới khởi chạy duy nhất 1 weather request.
+              requestAnimationFrame(() => {
+                Promise.resolve(tlLoadDashboardWeather(weatherRoot, weatherLat, weatherLng, false))
+                  .catch(err => console.warn('🌦️ Dashboard Weather loader error:', err));
+              });
 
-            if (weatherHasPosition) {
-              // V3.2: tải trực tiếp vào dashboard visible, không phụ thuộc card weather ẩn.
-              // Không thay đổi dữ liệu GIS; chỉ bổ sung fallback tọa độ từ chính marker đang mở popup.
-              try { tlLoadDashboardWeather(root, weatherLat, weatherLng, false); } catch (weatherPopupError) { console.warn('🌦️ Weather dashboard error:', weatherPopupError); }
-              const weatherRefresh = root.querySelector('[data-tl-weather-mini-refresh]');
               if (weatherRefresh && weatherRefresh.dataset.bound !== '1') {
                 weatherRefresh.dataset.bound = '1';
                 weatherRefresh.addEventListener('click', function(ev) {
                   ev.preventDefault();
                   ev.stopPropagation();
                   weatherRefresh.classList.add('is-loading');
-                  Promise.resolve(tlLoadDashboardWeather(root, weatherLat, weatherLng, true)).finally(() => weatherRefresh.classList.remove('is-loading'));
+                  Promise.resolve(tlLoadDashboardWeather(weatherRoot, weatherLat, weatherLng, true))
+                    .catch(err => console.warn('🌦️ Dashboard Weather refresh error:', err))
+                    .finally(() => weatherRefresh.classList.remove('is-loading'));
                 });
               }
             } else {
-              const weatherTime = root.querySelector('[data-tl-dashboard-weather-time]');
-              const weatherForecast = root.querySelector('[data-tl-dashboard-forecast]');
-              const weatherGrid = root.querySelector('[data-tl-dashboard-weather-grid]');
+              const weatherTime = weatherRoot.querySelector('[data-tl-dashboard-weather-time]');
+              const weatherForecast = weatherRoot.querySelector('[data-tl-dashboard-forecast]');
+              const weatherGrid = weatherRoot.querySelector('[data-tl-dashboard-weather-grid]');
               if (weatherTime) weatherTime.textContent = 'Chưa có tọa độ';
               if (weatherForecast) weatherForecast.textContent = '📍 Chưa có tọa độ công trình để lấy thời tiết.';
-              if (weatherGrid) weatherGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:9px;color:#7c8e9d;padding:8px;">Chưa có tọa độ — giữ nguyên dữ liệu GIS.</div>';
-              console.warn('🌦️ Weather: không có tọa độ hợp lệ cho popup', { mapLat, mapLng, featureGeometry: feature.geometry?.type });
+              if (weatherGrid) weatherGrid.innerHTML = '<div style=\"grid-column:1/-1;text-align:center;font-size:9px;color:#7c8e9d;padding:8px;\">Chưa có tọa độ — giữ nguyên dữ liệu GIS.</div>';
             }
           });
         }
