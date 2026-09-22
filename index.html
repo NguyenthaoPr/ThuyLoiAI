@@ -1627,6 +1627,191 @@
       background: #eef6ff;
     }
 
+
+    /* =========================================================
+       POPUP V2 – NÂNG CẤP PRESENTATION, KHÔNG ĐỔI DATA ENGINE
+       ========================================================= */
+    .tl-popup-v2 {
+      max-height: min(76vh, 680px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tl-popup-v2 .tl-popup-body {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+
+    .tl-popup-section {
+      margin: 0 0 10px;
+    }
+
+    .tl-popup-section-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      margin-bottom: 6px;
+      padding: 0 2px;
+      color: #0b3153;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .3px;
+      text-transform: uppercase;
+    }
+
+    .tl-popup-section-head > span:first-child {
+      font-size: 13px;
+    }
+
+    .tl-popup-source-badge {
+      margin-left: auto;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #eaf3ff;
+      color: #1565c0;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+
+    .tl-popup-source-badge.weather {
+      background: #eef8ff;
+      color: #1670a8;
+    }
+
+    .tl-popup-live-section .tl-live-card,
+    .tl-popup-weather-section .tl-weather-card {
+      margin: 0;
+    }
+
+    .tl-popup-grid-core {
+      margin-bottom: 0;
+    }
+
+    .tl-popup-operation {
+      padding: 8px 10px;
+      border: 1px solid #e7eef4;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+
+    .tl-popup-operation-row {
+      display: flex;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid #e9eff4;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .tl-popup-operation-row:last-child {
+      border-bottom: 0;
+    }
+
+    .tl-popup-operation-label {
+      flex: 0 0 76px;
+      color: #78909c;
+      font-weight: 700;
+    }
+
+    .tl-popup-operation-value {
+      min-width: 0;
+      flex: 1;
+      color: #0b2a44;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .tl-popup-actions-section {
+      margin-top: 2px;
+    }
+
+    .tl-popup-action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .tl-popup-action {
+      min-height: 42px;
+      padding: 7px 6px;
+      border: 1px solid #dce8f2;
+      border-radius: 11px;
+      background: #ffffff;
+      color: #0b3153;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      text-decoration: none;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.15;
+      text-align: center;
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+      box-sizing: border-box;
+    }
+
+    .tl-popup-action:hover {
+      background: #f5f9ff;
+      border-color: #b9d3ea;
+    }
+
+    .tl-popup-action:active {
+      transform: translateY(1px);
+    }
+
+    .tl-popup-action .action-icon {
+      font-size: 14px;
+      flex: none;
+    }
+
+    .tl-popup-action-google {
+      border-color: #9fc7f4;
+      color: #1a73e8;
+    }
+
+    .tl-popup-action-refresh {
+      border-color: #a8d5c1;
+      color: #087f5b;
+    }
+
+    .tl-popup-action-report {
+      border-color: #c8b7f2;
+      color: #6d28d9;
+    }
+
+    .tl-popup-action-map {
+      border-color: #b9d3ea;
+      color: #155e9a;
+    }
+
+    .tl-popup-v2 .tl-popup-toggle {
+      margin-top: 2px;
+    }
+
+    .tl-popup-v2 .tl-popup-detail {
+      margin-bottom: 2px;
+    }
+
+    @media (max-width: 600px) {
+      .tl-popup-v2 {
+        max-height: 72vh;
+      }
+
+      .tl-popup-action {
+        min-height: 40px;
+        font-size: 9px;
+      }
+
+      .tl-popup-operation-row {
+        font-size: 9px;
+      }
+    }
+
     @media (max-width: 600px) {
       .tl-popup-container {
         max-width: 280px;
@@ -3919,7 +4104,9 @@ if (cameraBtn && imageInput) {
       }
 
       // =========================================================
-      // 5. POPUP HIỆN ĐẠI (giữ nguyên)
+      // 5. POPUP HIỆN ĐẠI – NÂNG CẤP GIAO DIỆN
+      // GIỮ NGUYÊN GIS / SEARCH / WEATHER ENGINE / LIVE ENGINE
+      // Chỉ nâng cấp lớp trình bày Popup và bổ sung các điểm truy cập chức năng.
       // =========================================================
       function buildModernPopup(feature, layer) {
         const p = feature.properties || {};
@@ -3944,6 +4131,7 @@ if (cameraBtn && imageInput) {
           khac: '📍'
         };
         const iconChar = popupIconMap[type] || '📍';
+
         const headerColor = {
           ho: '#0b3153',
           tram_bom: '#0a4b6e',
@@ -3956,111 +4144,315 @@ if (cameraBtn && imageInput) {
           ong: '#4b5e6b',
           khu_tuoi: '#2e7d32',
           khac: '#2c3e50'
-        } [type] || '#0b3153';
+        }[type] || '#0b3153';
 
-        const statusVal = p.status || p.Status || p.trang_thai || p.TrangThai || p.tinh_trang || p.TinhTrang ||
-        'Chưa cập nhật';
-        const statusColor = statusVal.toLowerCase().includes('tốt') ? '#10b981' :
-          statusVal.toLowerCase().includes('xấu') ? '#ef4444' :
-          statusVal.toLowerCase().includes('cảnh báo') ? '#f59e0b' : '#10b981';
+        const statusVal = p.status || p.Status || p.trang_thai || p.TrangThai ||
+          p.tinh_trang || p.TinhTrang || 'Chưa cập nhật';
 
-        let mapLat = null,
-          mapLng = null;
+        const statusText = String(statusVal);
+        const statusColor =
+          statusText.toLowerCase().includes('tốt') ||
+          statusText.toLowerCase().includes('bình thường') ||
+          statusText.toLowerCase().includes('ổn định') ||
+          statusText.toLowerCase().includes('hoạt động') ? '#10b981' :
+          statusText.toLowerCase().includes('xấu') ||
+          statusText.toLowerCase().includes('hỏng') ||
+          statusText.toLowerCase().includes('không hoạt động') ? '#ef4444' :
+          statusText.toLowerCase().includes('cảnh báo') ||
+          statusText.toLowerCase().includes('bất thường') ? '#f59e0b' : '#10b981';
+
+        // ---------------------------------------------------------
+        // Tọa độ: GIỮ NGUYÊN cách lấy tọa độ của GIS hiện hữu.
+        // ---------------------------------------------------------
+        let mapLat = null, mapLng = null;
         const coords = feature.geometry?.coordinates;
-        if (feature.geometry?.type === 'Point' && Array.isArray(coords) && coords.length >= 2) {
+
+        if (feature.geometry?.type === 'Point' &&
+            Array.isArray(coords) && coords.length >= 2) {
           mapLng = Number(coords[0]);
           mapLat = Number(coords[1]);
         }
+
         if (!Number.isFinite(mapLat) || !Number.isFinite(mapLng)) {
           const latVal = p.latitude ?? p.Latitude ?? p.lat ?? p.Lat ?? p.vi_do ?? p.ViDo;
           const lngVal = p.longitude ?? p.Longitude ?? p.lng ?? p.Lng ?? p.kinh_do ?? p.KinhDo;
+
           if (latVal !== undefined && lngVal !== undefined) {
             mapLat = Number(latVal);
             mapLng = Number(lngVal);
           }
         }
+
         const hasPosition = Number.isFinite(mapLat) && Number.isFinite(mapLng);
-        const googleMapsUrl = hasPosition ? `https://www.google.com/maps?q=${mapLat},${mapLng}` : '#';
+        const googleMapsUrl = hasPosition
+          ? `https://www.google.com/maps?q=${mapLat},${mapLng}`
+          : '#';
 
-        function e(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+        function e(v) {
+          return String(v ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        }
 
-        let html = `
-              <div class="tl-popup-container">
-                <div class="tl-popup-header" style="--header-bg:${headerColor};">
-                  <div class="tl-popup-icon">${iconChar}</div>
-                  <div class="tl-popup-title-group">
-                    <div class="tl-popup-name">${e(name)}</div>
-                    <span class="tl-popup-badge">${e(label)}</span>
-                  </div>
-                </div>
-                <div class="tl-popup-body">
-                  <div class="tl-popup-status" style="--status-color:${statusColor};">
-                    <div class="tl-popup-status-dot"></div>
-                    <div>
-                      <div class="tl-popup-status-label">Trạng thái</div>
-                      <div class="tl-popup-status-text">${e(statusVal)}</div>
-                    </div>
-                  </div>
-                  <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}">
-                    <div class="tl-live-head">
-                      <div class="tl-live-title">📊 Quan trắc thực tế</div>
-                      <div class="tl-live-updated" data-tl-live-updated>AI_DATA</div>
-                    </div>
-                    <div data-tl-live-body>
-                      <div class="tl-live-loading">⏳ Đang đọc số liệu quan trắc mới nhất…</div>
-                    </div>
-                  </div>
-                  ${ hasPosition ? `
-                    <div class="tl-weather-card" data-tl-weather="pending">
-                      <div class="tl-weather-head">
-                        <div class="tl-weather-title">🌦️ Thời tiết tại công trình</div>
-                        <div class="tl-weather-update" data-tl-weather-updated>Đang tải…</div>
-                      </div>
-                      <div data-tl-weather-body>
-                        <div class="tl-weather-loading">⏳ Đang lấy dữ liệu thời tiết theo tọa độ…</div>
-                      </div>
-                    </div>
-                  ` : '' }
-                  <div class="tl-popup-grid">
-                    ${ code ? `
-                      <div class="tl-popup-item">
-                        <div class="tl-popup-item-label">Mã công trình</div>
-                        <div class="tl-popup-item-value">${e(code)}</div>
-                      </div>
-                    ` : '' }
-                    ${ station ? `
-                      <div class="tl-popup-item">
-                        <div class="tl-popup-item-label">Lý trình / vị trí</div>
-                        <div class="tl-popup-item-value">${e(station)}</div>
-                      </div>
-                    ` : '' }
-                  </div>
-                  <div class="tl-popup-actions">
-                    ${ hasPosition ? `
-                      <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="tl-popup-btn-google">
-                        🗺️ GOOGLE MAPS
-                      </a>
-                    ` : '' }
-                    <button class="tl-popup-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('open'); this.textContent = this.nextElementSibling.classList.contains('open') ? '🔼 THU GỌN' : '🔎 XEM CHI TIẾT';">
-                      🔎 XEM CHI TIẾT
-                    </button>
-                    <div class="tl-popup-detail">
-                      <div class="tl-popup-detail-title">📋 Thông số kỹ thuật</div>
-                      <div class="tl-popup-detail-content">
-                        ${ description ? (description.includes('<table') || description.includes('<TABLE') ? description : e(description)) : 'Không có dữ liệu chi tiết.' }
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="tl-popup-footer">🗺️ GIS Master • 🌦️ Thời tiết theo tọa độ • THỦY LỢI AI</div>
+        // ---------------------------------------------------------
+        // Thông số kỹ thuật cốt lõi:
+        // CHỈ lấy những trường đã có trong GIS/feature.
+        // Không tự tạo dữ liệu mới.
+        // ---------------------------------------------------------
+        const coreCandidates = [
+          ['MNDBT', p.MNDBT ?? p.mndbt ?? p.mndbt_m ?? p.MucNuocDBT, 'm'],
+          ['MNDGC', p.MNDGC ?? p.mndgc ?? p.mndgc_m ?? p.MucNuocDGC, 'm'],
+          ['Dung tích', p.dung_tich ?? p.DungTich ?? p.dungTich ?? p.capacity, ''],
+          ['Công suất', p.cong_suat ?? p.CongSuat ?? p.congSuat, ''],
+          ['Lưu lượng', p.luu_luong ?? p.LuuLuong ?? p.luuLuong ?? p.flow, ''],
+          ['Số máy', p.so_may ?? p.SoMay ?? p.soMay, ''],
+          ['Độ mặn', p.do_man ?? p.DoMan ?? p.doMan ?? p.salinity, '‰']
+        ];
+
+        const coreItems = coreCandidates
+          .filter(item => item[1] !== undefined && item[1] !== null && String(item[1]).trim() !== '')
+          .map(item => {
+            const suffix = item[2] ? ' ' + item[2] : '';
+            return `
+              <div class="tl-popup-item">
+                <div class="tl-popup-item-label">${e(item[0])}</div>
+                <div class="tl-popup-item-value">${e(item[1])}${suffix}</div>
               </div>
             `;
+          })
+          .join('');
 
-        layer.bindPopup(html, { maxWidth: 360, minWidth: 220, closeButton: true, autoPan: true,
-          autoPanPadding: [20, 20] });
+        const coreSection = coreItems ? `
+          <div class="tl-popup-section">
+            <div class="tl-popup-section-head">
+              <span>📐</span>
+              <span>Thông số kỹ thuật cốt lõi</span>
+            </div>
+            <div class="tl-popup-grid tl-popup-grid-core">
+              ${coreItems}
+            </div>
+          </div>
+        ` : '';
 
-        // Weather chỉ tải khi popup mở, không làm chậm quá trình nạp hàng nghìn marker.
+        // ---------------------------------------------------------
+        // Thông tin vận hành:
+        // Chỉ hiển thị các trường đã có; không thay đổi dữ liệu nguồn.
+        // ---------------------------------------------------------
+        const operationCandidates = [
+          ['Vận hành', p.van_hanh ?? p.VanHanh ?? p.vanHanh],
+          ['Đơn vị quản lý', p.don_vi ?? p.DonVi ?? p.donVi ?? p.don_vi_quan_ly ?? p.DonViQuanLy],
+          ['Khu vực', p.khu_vuc ?? p.KhuVuc ?? p.khuVuc],
+          ['Ghi chú', p.note ?? p.Note ?? p.ghi_chu ?? p.GhiChu]
+        ];
+
+        const operationItems = operationCandidates
+          .filter(item => item[1] !== undefined && item[1] !== null && String(item[1]).trim() !== '')
+          .map(item => `
+            <div class="tl-popup-operation-row">
+              <span class="tl-popup-operation-label">${e(item[0])}</span>
+              <span class="tl-popup-operation-value">${e(item[1])}</span>
+            </div>
+          `)
+          .join('');
+
+        const operationSection = operationItems ? `
+          <div class="tl-popup-section">
+            <div class="tl-popup-section-head">
+              <span>⚙️</span>
+              <span>Thông tin vận hành</span>
+            </div>
+            <div class="tl-popup-operation">
+              ${operationItems}
+            </div>
+          </div>
+        ` : '';
+
+        let html = `
+          <div class="tl-popup-container tl-popup-v2">
+
+            <!-- ① HEADER CÔNG TRÌNH -->
+            <div class="tl-popup-header" style="--header-bg:${headerColor};">
+              <div class="tl-popup-icon">${iconChar}</div>
+              <div class="tl-popup-title-group">
+                <div class="tl-popup-name">${e(name)}</div>
+                <span class="tl-popup-badge">${e(label)}</span>
+              </div>
+            </div>
+
+            <div class="tl-popup-body">
+
+              <!-- ② TRẠNG THÁI -->
+              <div class="tl-popup-status" style="--status-color:${statusColor};">
+                <div class="tl-popup-status-dot"></div>
+                <div>
+                  <div class="tl-popup-status-label">Trạng thái công trình</div>
+                  <div class="tl-popup-status-text">${e(statusVal)}</div>
+                </div>
+              </div>
+
+              <!-- ③ THÔNG SỐ KỸ THUẬT CỐT LÕI -->
+              ${coreSection}
+
+              <!-- ④ QUAN TRẮC THỰC TẾ AI_DATA
+                   GIỮ NGUYÊN LIVE ENGINE VERCEL -->
+              <div class="tl-popup-section tl-popup-live-section">
+                <div class="tl-popup-section-head">
+                  <span>📊</span>
+                  <span>Quan trắc thực tế – AI_DATA</span>
+                  <span class="tl-popup-source-badge">LIVE</span>
+                </div>
+
+                <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}">
+                  <div class="tl-live-head">
+                    <div class="tl-live-title">📊 Số liệu hiện tại</div>
+                    <div class="tl-live-updated" data-tl-live-updated>AI_DATA</div>
+                  </div>
+                  <div data-tl-live-body>
+                    <div class="tl-live-loading">⏳ Đang đọc số liệu quan trắc mới nhất…</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ⑤ THỜI TIẾT
+                   GIỮ NGUYÊN WEATHER ENGINE ĐANG CHẠY ĐƯỢC -->
+              ${hasPosition ? `
+                <div class="tl-popup-section tl-popup-weather-section">
+                  <div class="tl-popup-section-head">
+                    <span>🌦️</span>
+                    <span>Thời tiết tại công trình</span>
+                    <span class="tl-popup-source-badge weather">OPEN-METEO</span>
+                  </div>
+
+                  <div class="tl-weather-card" data-tl-weather="pending">
+                    <div class="tl-weather-head">
+                      <div class="tl-weather-title">🌦️ Thời tiết hiện tại</div>
+                      <div class="tl-weather-update" data-tl-weather-updated>Đang tải…</div>
+                    </div>
+                    <div data-tl-weather-body>
+                      <div class="tl-weather-loading">⏳ Đang lấy dữ liệu thời tiết theo tọa độ…</div>
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- ⑥ THÔNG TIN VẬN HÀNH -->
+              ${operationSection}
+
+              <!-- ⑦ THÔNG TIN NHẬN DIỆN -->
+              <div class="tl-popup-section">
+                <div class="tl-popup-section-head">
+                  <span>📍</span>
+                  <span>Thông tin công trình</span>
+                </div>
+
+                <div class="tl-popup-grid">
+                  ${code ? `
+                    <div class="tl-popup-item">
+                      <div class="tl-popup-item-label">Mã công trình</div>
+                      <div class="tl-popup-item-value">${e(code)}</div>
+                    </div>
+                  ` : ''}
+
+                  ${station ? `
+                    <div class="tl-popup-item">
+                      <div class="tl-popup-item-label">Lý trình / vị trí</div>
+                      <div class="tl-popup-item-value">${e(station)}</div>
+                    </div>
+                  ` : ''}
+
+                  ${hasPosition ? `
+                    <div class="tl-popup-item">
+                      <div class="tl-popup-item-label">Tọa độ</div>
+                      <div class="tl-popup-item-value">${mapLat.toFixed(6)}, ${mapLng.toFixed(6)}</div>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+
+              <!-- ⑧ CÁC CHỨC NĂNG -->
+              <div class="tl-popup-section tl-popup-actions-section">
+                <div class="tl-popup-section-head">
+                  <span>⚡</span>
+                  <span>Chức năng</span>
+                </div>
+
+                <div class="tl-popup-action-grid">
+
+                  ${hasPosition ? `
+                    <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer"
+                       class="tl-popup-action tl-popup-action-google">
+                      <span class="action-icon">🗺️</span>
+                      <span>Google Maps</span>
+                    </a>
+                  ` : ''}
+
+                  <button type="button" class="tl-popup-action tl-popup-action-refresh"
+                          onclick="this.closest('.tl-popup-container').querySelector('.tl-live-refresh')?.click();">
+                    <span class="action-icon">🔄</span>
+                    <span>Cập nhật thực tế</span>
+                  </button>
+
+                  <button type="button" class="tl-popup-action tl-popup-action-report"
+                          onclick="document.getElementById('fieldReportBtn')?.click();">
+                    <span class="action-icon">📋</span>
+                    <span>Báo cáo hiện trường</span>
+                  </button>
+
+                  <button type="button" class="tl-popup-action tl-popup-action-map"
+                          onclick="document.getElementById('mapAiBtn')?.click();">
+                    <span class="action-icon">🗺️</span>
+                    <span>Bản đồ AI</span>
+                  </button>
+
+                </div>
+              </div>
+
+              <!-- ⑨ CHI TIẾT -->
+              <button class="tl-popup-toggle" type="button"
+                      onclick="
+                        const detail=this.nextElementSibling;
+                        detail.classList.toggle('open');
+                        this.textContent=detail.classList.contains('open')?'🔼 THU GỌN':'🔎 XEM CHI TIẾT';
+                      ">
+                🔎 XEM CHI TIẾT
+              </button>
+
+              <div class="tl-popup-detail">
+                <div class="tl-popup-detail-title">📋 Thông tin kỹ thuật chi tiết</div>
+                <div class="tl-popup-detail-content">
+                  ${description
+                    ? (description.includes('<table') || description.includes('<TABLE')
+                        ? description
+                        : e(description))
+                    : 'Không có dữ liệu chi tiết.'}
+                </div>
+              </div>
+
+            </div>
+
+            <div class="tl-popup-footer">
+              🗺️ GIS Master • 📊 AI_DATA • 🌦️ Thời tiết theo tọa độ • THỦY LỢI AI
+            </div>
+          </div>
+        `;
+
+        // ---------------------------------------------------------
+        // Bind popup:
+        // KHÔNG thay đổi cơ chế GIS hiện hữu.
+        // ---------------------------------------------------------
+        layer.bindPopup(html, {
+          maxWidth: 360,
+          minWidth: 220,
+          closeButton: true,
+          autoPan: true,
+          autoPanPadding: [20, 20]
+        });
+
+        // Weather chỉ tải khi popup mở.
+        // GIỮ NGUYÊN WEATHER ENGINE ĐÃ CHẠY ĐƯỢC.
         if (hasPosition && !layer._tlWeatherBound) {
           layer._tlWeatherBound = true;
           layer.on('popupopen', function() {
@@ -4072,7 +4464,7 @@ if (cameraBtn && imageInput) {
           });
         }
 
-        // Live API không phụ thuộc tọa độ; vẫn tải khi popup mở với công trình không có lat/lng.
+        // Live API vẫn tải độc lập khi popup mở.
         if (!layer._tlLiveBound) {
           layer._tlLiveBound = true;
           layer.on('popupopen', function() {
