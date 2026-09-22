@@ -3782,7 +3782,7 @@ if (cameraBtn && imageInput) {
       // Không thay đổi GIS Master, Search Index, KML/KMZ hay marker.
       // =========================================================
       const TL_WEATHER_API_BASE = 'https://api.open-meteo.com/v1/forecast';
-      const TL_WEATHER_CACHE_TTL = 2 * 60 * 1000; // 5 phút — dữ liệu hiện tại được làm mới nhanh hơn
+      const TL_WEATHER_CACHE_TTL = 30 * 60 * 1000; // 30 phút
       const TL_WEATHER_CACHE = new Map();
 
       function tlWeatherCacheKey(lat, lng) {
@@ -3859,46 +3859,34 @@ if (cameraBtn && imageInput) {
           return cached.data;
         }
 
-        // Dùng đúng dạng URL đã hoạt động ở module thời tiết hiện hữu của THỦY LỢI AI.
-        // Chỉ lấy 6 giờ dự báo để phản hồi nhanh trên mobile.
-        const url = TL_WEATHER_API_BASE +
-          '?latitude=' + encodeURIComponent(lat) +
-          '&longitude=' + encodeURIComponent(lng) +
-          '&current=' + encodeURIComponent('temperature_2m,relative_humidity_2m,precipitation,rain,cloud_cover,wind_speed_10m,wind_direction_10m,weather_code') +
-          '&hourly=' + encodeURIComponent('precipitation,rain,temperature_2m,wind_speed_10m,wind_direction_10m,cloud_cover') +
-          '&forecast_hours=6' +
-          '&timezone=Asia%2FBangkok';
+        // GIỮ NGUYÊN CÁCH GỌI ĐÃ CHẠY THÀNH CÔNG Ở FILE THỜI TIẾT GỐC.
+        // Không dùng forecast_hours, không thêm header/signal để tránh làm thay đổi
+        // hành vi request đã được kiểm chứng.
+        const params = new URLSearchParams({
+          latitude: String(lat),
+          longitude: String(lng),
+          current: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
+          hourly: 'precipitation,temperature_2m',
+          forecast_days: '2',
+          timezone: 'Asia/Ho_Chi_Minh'
+        });
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(TL_WEATHER_API_BASE + '?' + params.toString(), {
+          method: 'GET',
+          cache: 'no-store'
+        });
 
-        try {
-          const response = await fetch(url, {
-            method: 'GET',
-            cache: 'no-store',
-            headers: { 'Accept': 'application/json' },
-            signal: controller.signal
-          });
-
-          if (!response.ok) {
-            throw new Error('Open-Meteo HTTP ' + response.status);
-          }
-
-          const data = await response.json();
-          if (!data || !data.current) {
-            throw new Error('Open-Meteo không trả về current weather.');
-          }
-
-          TL_WEATHER_CACHE.set(key, { timestamp: Date.now(), data });
-          return data;
-        } catch (error) {
-          if (error?.name === 'AbortError') {
-            throw new Error('Kết nối thời tiết quá thời gian chờ.');
-          }
-          throw error;
-        } finally {
-          clearTimeout(timeout);
+        if (!response.ok) {
+          throw new Error('Weather API HTTP ' + response.status);
         }
+
+        const data = await response.json();
+        if (!data || !data.current) {
+          throw new Error('Weather API không trả về dữ liệu hiện tại.');
+        }
+
+        TL_WEATHER_CACHE.set(key, { timestamp: Date.now(), data });
+        return data;
       }
 
       function tlRenderWeather(card, data) {
