@@ -2388,7 +2388,7 @@
     }
     .tl-popup-collapse-btn:active { transform: scale(.95); }
 
-    .tl-dashboard-popup .tl-popup-body { padding: 10px 12px 12px; max-height: min(72vh, 620px); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: thin; }
+    .tl-dashboard-popup .tl-popup-body { padding: 10px 12px 12px; max-height: min(50vh, 440px); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: thin; }
     .tl-dashboard-handle {
       width: 42px;
       height: 5px;
@@ -2507,7 +2507,7 @@
 
     /* Leaflet: giữ popup dashboard trong vùng nhìn thấy nhưng cho phép cuộn nội dung. */
     .tl-dashboard-leaflet-popup .leaflet-popup-content-wrapper {
-      max-height: min(76vh, 680px) !important;
+      max-height: min(54vh, 500px) !important;
       overflow: hidden !important;
       padding: 0 !important;
       border-radius: 22px !important;
@@ -2515,7 +2515,7 @@
     .tl-dashboard-leaflet-popup .leaflet-popup-content {
       margin: 0 !important;
       width: auto !important;
-      max-height: min(76vh, 680px) !important;
+      max-height: min(54vh, 500px) !important;
       overflow: hidden !important;
     }
     .tl-dashboard-leaflet-popup .leaflet-popup-tip { margin-top: -1px; }
@@ -2525,8 +2525,8 @@
       .tl-dashboard-popup { width:calc(100vw - 24px); max-width:390px; border-radius:22px; }
       .tl-dashboard-popup .tl-popup-header { padding:11px 12px 9px; }
       .tl-dashboard-popup .tl-popup-name { font-size:15px; }
-      .tl-dashboard-popup .tl-popup-body { padding:8px 9px 10px; }
-      .tl-dashboard-kpi { font-size:37px; }
+      .tl-dashboard-popup .tl-popup-body { padding:7px 8px 8px; }
+      .tl-dashboard-kpi { font-size:34px; }
       .tl-dashboard-weather-grid { gap:5px; }
       .tl-dashboard-weather-item { padding-left:2px; padding-right:2px; }
       .tl-dashboard-actions { grid-template-columns:minmax(0,1.5fr) minmax(88px,.7fr); }
@@ -3998,6 +3998,72 @@ if (cameraBtn && imageInput) {
       }
 
       // =========================================================
+      // WEATHER DASHBOARD DIRECT LOADER V3.2
+      // Không phụ thuộc card thời tiết ẩn của popup cũ.
+      // Chỉ thay presentation/integration của popup; nguồn thời tiết vẫn Open-Meteo.
+      // =========================================================
+      async function tlLoadDashboardWeather(root, lat, lng, force = false) {
+        if (!root || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return;
+
+        const weatherBox = root.querySelector('[data-tl-dashboard-weather]');
+        const grid = root.querySelector('[data-tl-dashboard-weather-grid]');
+        const timeEl = root.querySelector('[data-tl-dashboard-weather-time]');
+        const forecastEl = root.querySelector('[data-tl-dashboard-forecast]');
+        const rainCard = root.querySelector('[data-tl-weather-current-rain]');
+
+        if (timeEl) timeEl.textContent = 'Đang tải…';
+        if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:9px;color:#71879a;padding:8px 4px;">⏳ Đang lấy dữ liệu thời tiết…</div>';
+        if (forecastEl) forecastEl.textContent = '☁️ Dự báo mưa 6 giờ tới: —';
+        if (rainCard) {
+          const v = rainCard.querySelector('.tl-dashboard-mini-value');
+          const t = rainCard.querySelector('.tl-dashboard-mini-time');
+          if (v) v.textContent = 'Đang tải…';
+          if (t) t.textContent = 'Theo tọa độ công trình';
+        }
+
+        try {
+          const data = await tlFetchWeather(Number(lat), Number(lng), force);
+          const current = data?.current || {};
+          const temperature = Number(current.temperature_2m);
+          const precipitation = Number(current.precipitation);
+          const humidity = Number(current.relative_humidity_2m);
+          const wind = Number(current.wind_speed_10m);
+          const next6 = tlWeatherNext6hRain(data);
+          const apiTime = current.time ? tlWeatherApiTimeLabel(current.time) : tlWeatherCurrentLabel();
+
+          if (timeEl) timeEl.textContent = 'Cập nhật ' + apiTime;
+          if (grid) {
+            grid.innerHTML = `
+              <div class="tl-dashboard-weather-item"><div class="icon">🌡</div><div class="value">${tlFormatNumber(temperature,1)}°C</div><div class="label">Nhiệt độ</div></div>
+              <div class="tl-dashboard-weather-item"><div class="icon">💧</div><div class="value">${tlFormatNumber(humidity,0)}%</div><div class="label">Độ ẩm</div></div>
+              <div class="tl-dashboard-weather-item"><div class="icon">≋</div><div class="value">${tlFormatNumber(wind,1)} km/h</div><div class="label">Gió</div></div>
+              <div class="tl-dashboard-weather-item"><div class="icon">🌧</div><div class="value">${tlFormatNumber(precipitation,1)} mm</div><div class="label">Mưa hiện tại</div></div>
+            `;
+          }
+          if (forecastEl) forecastEl.innerHTML = '☁️ <strong>Dự báo mưa 6 giờ tới:</strong> ' + (next6 == null ? '—' : tlFormatNumber(next6,1) + ' mm');
+          if (rainCard) {
+            const v = rainCard.querySelector('.tl-dashboard-mini-value');
+            const t = rainCard.querySelector('.tl-dashboard-mini-time');
+            if (v) v.textContent = tlFormatNumber(precipitation,1) + ' mm';
+            if (t) t.textContent = 'Cập nhật ' + apiTime;
+          }
+          weatherBox?.setAttribute('data-weather-state','ready');
+        } catch (error) {
+          console.warn('🌦️ Dashboard Weather API error:', error);
+          if (timeEl) timeEl.textContent = 'Tạm thời lỗi';
+          if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:9px;color:#b45309;padding:8px 4px;">⚠️ Chưa lấy được thời tiết hiện tại</div>';
+          if (forecastEl) forecastEl.textContent = '↻ Bấm cập nhật để thử lại';
+          if (rainCard) {
+            const v = rainCard.querySelector('.tl-dashboard-mini-value');
+            const t = rainCard.querySelector('.tl-dashboard-mini-time');
+            if (v) v.textContent = '—';
+            if (t) t.textContent = 'Chưa có dữ liệu';
+          }
+          weatherBox?.setAttribute('data-weather-state','error');
+        }
+      }
+
+      // =========================================================
       // LIVE ENGINE – ĐỌC QUAN TRẮC THỰC TẾ TỪ AI_DATA QUA VERCEL
       // BỔ SUNG, KHÔNG THAY ĐỔI GIS / SEARCH / MARKER / KML
       // =========================================================
@@ -4362,7 +4428,7 @@ if (cameraBtn && imageInput) {
           </div>
         `;
 
-        layer.bindPopup(html, { maxWidth: 410, minWidth: 220, closeButton: true, autoPan: true, autoPanPadding: [16, 16], className: 'tl-dashboard-leaflet-popup' });
+        layer.bindPopup(html, { maxWidth: 410, minWidth: 220, closeButton: true, autoPan: true, autoPanPadding: [12, 12], className: 'tl-dashboard-leaflet-popup' });
 
         if (!layer._tlDashboardBound) {
           layer._tlDashboardBound = true;
@@ -4399,7 +4465,8 @@ if (cameraBtn && imageInput) {
             }
             try { tlInitLiveForPopup(layer, name); } catch (livePopupError) { console.warn('📊 Technical Live popup error:', livePopupError); }
             if (hasPosition) {
-              try { tlInitWeatherForPopup(layer, mapLat, mapLng); } catch (weatherPopupError) { console.warn('🌦️ Weather popup error:', weatherPopupError); }
+              // V3.2: tải trực tiếp vào dashboard visible, không phụ thuộc card weather ẩn.
+              try { tlLoadDashboardWeather(root, mapLat, mapLng, false); } catch (weatherPopupError) { console.warn('🌦️ Weather dashboard error:', weatherPopupError); }
               const weatherRefresh = root.querySelector('[data-tl-weather-mini-refresh]');
               if (weatherRefresh && weatherRefresh.dataset.bound !== '1') {
                 weatherRefresh.dataset.bound = '1';
@@ -4407,8 +4474,7 @@ if (cameraBtn && imageInput) {
                   ev.preventDefault();
                   ev.stopPropagation();
                   weatherRefresh.classList.add('is-loading');
-                  const weatherCard = root.querySelector('.tl-weather-card');
-                  Promise.resolve(tlLoadWeatherForPopup(weatherCard, mapLat, mapLng, true)).finally(() => weatherRefresh.classList.remove('is-loading'));
+                  Promise.resolve(tlLoadDashboardWeather(root, mapLat, mapLng, true)).finally(() => weatherRefresh.classList.remove('is-loading'));
                 });
               }
             } else {
