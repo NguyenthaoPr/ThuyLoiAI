@@ -1412,6 +1412,130 @@
     }
 
     /* =========================================================
+       QUAN TRẮC THỰC TẾ AI_DATA – BỔ SUNG, KHÔNG THAY ĐỔI GIS
+       Technical Module chạy trên Vercel
+       ========================================================= */
+    .tl-live-card {
+      margin: 10px 0 12px;
+      padding: 10px 11px;
+      border: 1px solid #dce8f2;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f8fbff 0%, #f2f7fb 100%);
+    }
+    .tl-live-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .tl-live-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0b3153;
+      letter-spacing: .35px;
+      text-transform: uppercase;
+    }
+    .tl-live-updated {
+      font-size: 9px;
+      color: #78909c;
+      white-space: nowrap;
+    }
+    .tl-live-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .tl-live-item {
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: #ffffff;
+      border: 1px solid #e7eef4;
+    }
+    .tl-live-label {
+      font-size: 9px;
+      color: #78909c;
+      font-weight: 700;
+    }
+    .tl-live-value {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #0b2a44;
+      font-weight: 800;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .tl-live-status {
+      margin-bottom: 7px;
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: #ecfdf5;
+      color: #166534;
+      font-size: 10px;
+      line-height: 1.4;
+      font-weight: 700;
+    }
+    .tl-live-status.warning {
+      background: #fffbeb;
+      color: #92400e;
+    }
+    .tl-live-status.danger {
+      background: #fef2f2;
+      color: #991b1b;
+    }
+    .tl-live-status.info {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .tl-live-note {
+      margin-top: 7px;
+      padding: 6px 8px;
+      border-radius: 9px;
+      background: #eef6ff;
+      color: #155e9a;
+      font-size: 9px;
+      line-height: 1.4;
+    }
+    .tl-live-refresh {
+      margin-top: 7px;
+      width: 100%;
+      border: 1px solid #b9d3ea;
+      border-radius: 9px;
+      background: #ffffff;
+      color: #1565c0;
+      padding: 6px 8px;
+      font-size: 10px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .tl-live-refresh:hover {
+      background: #eef6ff;
+    }
+    .tl-live-loading,
+    .tl-live-error {
+      padding: 8px 9px;
+      border-radius: 10px;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+    .tl-live-loading {
+      color: #52697c;
+      background: #f4f7fa;
+    }
+    .tl-live-error {
+      color: #9a3412;
+      background: #fff7ed;
+    }
+    @media (max-width: 600px) {
+      .tl-live-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .tl-live-value {
+        font-size: 11px;
+      }
+    }
+
+    /* =========================================================
        THỜI TIẾT THEO TỌA ĐỘ – BỔ SUNG, KHÔNG THAY ĐỔI GIS
        ========================================================= */
     .tl-weather-card {
@@ -2947,6 +3071,12 @@
       ).replace(/\/$/, '');
       const GIS_DATA_URL = GIS_API_BASE + '/gis/data';
 
+      // Technical Module chạy độc lập trên Vercel.
+      // Chỉ dùng cho API quan trắc thực tế; không thay đổi GIS API trên Render.
+      const TL_TECHNICAL_API_BASE = String(
+        window.THULYLOI_TECHNICAL_API || 'https://thuyloiai-technical-vercel.vercel.app'
+      ).replace(/\/$/, '');
+
       window.preparedImageBlob = null;
       window.preparedImageName = 'image.jpg';
       window.reportTitle = '';
@@ -3618,6 +3748,177 @@ if (cameraBtn && imageInput) {
       }
 
       // =========================================================
+      // LIVE ENGINE – ĐỌC QUAN TRẮC THỰC TẾ TỪ AI_DATA QUA VERCEL
+      // BỔ SUNG, KHÔNG THAY ĐỔI GIS / SEARCH / MARKER / KML
+      // =========================================================
+      const TL_LIVE_TIMEOUT = 12000;
+
+      function tlLiveFormatNumber(value, digits = 2) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toFixed(digits) : '—';
+      }
+
+      function tlLiveTimeLabel(value) {
+        if (!value) return '—';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value);
+        try {
+          return new Intl.DateTimeFormat('vi-VN', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          }).format(d);
+        } catch (_) {
+          return String(value);
+        }
+      }
+
+      function tlLiveFetchUrl(facility) {
+        return TL_TECHNICAL_API_BASE + '/api/live?facility=' + encodeURIComponent(String(facility || ''));
+      }
+
+      async function tlFetchLive(facility, force = false) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TL_LIVE_TIMEOUT);
+        try {
+          const url = tlLiveFetchUrl(facility) + (force ? '&fresh=1&ts=' + Date.now() : '&fresh=1');
+          const response = await fetch(url, {
+            method: 'GET',
+            cache: 'no-store',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal
+          });
+
+          let data = null;
+          try { data = await response.json(); } catch (_) {}
+
+          if (!response.ok || !data || data.ok !== true) {
+            const message = data?.error || ('Technical API HTTP ' + response.status);
+            const err = new Error(message);
+            err.status = response.status;
+            throw err;
+          }
+          return data;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      function tlRenderLive(card, payload) {
+        if (!card) return;
+        const body = card.querySelector('[data-tl-live-body]');
+        const updated = card.querySelector('[data-tl-live-updated]');
+        if (!body) return;
+
+        const data = payload?.data || payload || {};
+        const water = data.water_level || null;
+        const rainfall = data.rainfall || null;
+        const limits = data.limits || {};
+        const status = data.status || {};
+        const statusLevel = ['danger', 'warning', 'info'].includes(status.level) ? status.level : '';
+
+        const waterLabel = water?.parameter || 'Mực nước';
+        const waterTime = water?.time ? tlLiveTimeLabel(water.time) : '—';
+        const rainLabel = rainfall?.parameter || 'Lượng mưa';
+        const rainTime = rainfall?.time ? tlLiveTimeLabel(rainfall.time) : '—';
+
+        body.innerHTML = `
+          <div class="tl-live-status ${statusLevel}">
+            ${status.label ? esc(status.label) : 'Đã kết nối AI_DATA'}
+            ${status.message ? '<br><span style="font-weight:600;">' + esc(status.message) + '</span>' : ''}
+          </div>
+          <div class="tl-live-grid">
+            <div class="tl-live-item">
+              <div class="tl-live-label">💧 ${esc(waterLabel)}</div>
+              <div class="tl-live-value">${water ? tlLiveFormatNumber(water.value, 2) + ' m' : '—'}</div>
+            </div>
+            <div class="tl-live-item">
+              <div class="tl-live-label">🌧️ ${esc(rainLabel)}</div>
+              <div class="tl-live-value">${rainfall ? tlLiveFormatNumber(rainfall.value, 2) + ' mm' : '—'}</div>
+            </div>
+            <div class="tl-live-item">
+              <div class="tl-live-label">📏 MNDBT</div>
+              <div class="tl-live-value">${limits.MNDBT == null ? '—' : tlLiveFormatNumber(limits.MNDBT, 2) + ' m'}</div>
+            </div>
+            <div class="tl-live-item">
+              <div class="tl-live-label">📏 MNDGC</div>
+              <div class="tl-live-value">${limits.MNDGC == null ? '—' : tlLiveFormatNumber(limits.MNDGC, 2) + ' m'}</div>
+            </div>
+          </div>
+          <div class="tl-live-note">
+            🕒 Mực nước: ${esc(waterTime)}<br>
+            🕒 Lượng mưa: ${esc(rainTime)}
+          </div>
+          <button type="button" class="tl-live-refresh">🔄 Cập nhật số liệu thực tế</button>
+        `;
+
+        if (updated) updated.textContent = data.updated_label ? 'AI_DATA • ' + data.updated_label : 'AI_DATA';
+        card.dataset.tlLive = 'ready';
+
+        const refresh = body.querySelector('.tl-live-refresh');
+        if (refresh) {
+          refresh.addEventListener('click', function() {
+            tlLoadLiveForPopup(card, card.dataset.tlLiveFacility || '', true);
+          });
+        }
+      }
+
+      function tlRenderLiveError(card, error) {
+        if (!card) return;
+        const body = card.querySelector('[data-tl-live-body]');
+        const updated = card.querySelector('[data-tl-live-updated]');
+        if (!body) return;
+
+        const status = Number(error?.status);
+        const notFound = status === 404;
+        body.innerHTML = `
+          <div class="tl-live-error">
+            ${notFound ? 'ℹ️ Chưa có số liệu quan trắc cho công trình này trong AI_DATA.' : '⚠️ Chưa lấy được số liệu quan trắc thực tế.'}
+            ${!notFound ? '<br><span style="font-size:9px;">' + esc(error?.message || 'Technical API không phản hồi.') + '</span>' : ''}
+            <button type="button" class="tl-live-refresh">🔄 Thử lại</button>
+          </div>
+        `;
+        if (updated) updated.textContent = notFound ? 'Chưa có dữ liệu' : 'Tạm thời lỗi';
+        card.dataset.tlLive = 'error';
+
+        const refresh = body.querySelector('.tl-live-refresh');
+        if (refresh) {
+          refresh.addEventListener('click', function() {
+            tlLoadLiveForPopup(card, card.dataset.tlLiveFacility || '', true);
+          });
+        }
+        console.warn('📊 Technical Live API error:', error);
+      }
+
+      async function tlLoadLiveForPopup(card, facility, force = false) {
+        if (!card || !String(facility || '').trim()) return;
+        card.dataset.tlLiveFacility = String(facility);
+        const body = card.querySelector('[data-tl-live-body]');
+        const updated = card.querySelector('[data-tl-live-updated]');
+        if (body) body.innerHTML = '<div class="tl-live-loading">⏳ Đang đọc số liệu quan trắc mới nhất từ AI_DATA…</div>';
+        if (updated) updated.textContent = 'Đang cập nhật…';
+
+        try {
+          const data = await tlFetchLive(facility, force);
+          tlRenderLive(card, data);
+        } catch (error) {
+          tlRenderLiveError(card, error);
+        }
+      }
+
+      function tlInitLiveForPopup(layer, facility) {
+        if (!layer || !String(facility || '').trim()) return;
+        const root = layer.getPopup()?.getElement?.();
+        if (!root) return;
+        const card = root.querySelector('.tl-live-card');
+        if (!card) return;
+        if (card.dataset.tlLiveBound !== '1') {
+          card.dataset.tlLiveBound = '1';
+          tlLoadLiveForPopup(card, facility, false);
+        }
+      }
+
+      // =========================================================
       // 5. POPUP HIỆN ĐẠI (giữ nguyên)
       // =========================================================
       function buildModernPopup(feature, layer) {
@@ -3701,6 +4002,15 @@ if (cameraBtn && imageInput) {
                       <div class="tl-popup-status-text">${e(statusVal)}</div>
                     </div>
                   </div>
+                  <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}">
+                    <div class="tl-live-head">
+                      <div class="tl-live-title">📊 Quan trắc thực tế</div>
+                      <div class="tl-live-updated" data-tl-live-updated>AI_DATA</div>
+                    </div>
+                    <div data-tl-live-body>
+                      <div class="tl-live-loading">⏳ Đang đọc số liệu quan trắc mới nhất…</div>
+                    </div>
+                  </div>
                   ${ hasPosition ? `
                     <div class="tl-weather-card" data-tl-weather="pending">
                       <div class="tl-weather-head">
@@ -3758,6 +4068,18 @@ if (cameraBtn && imageInput) {
               tlInitWeatherForPopup(layer, mapLat, mapLng);
             } catch (weatherPopupError) {
               console.warn('🌦️ Weather popup error:', weatherPopupError);
+            }
+          });
+        }
+
+        // Live API không phụ thuộc tọa độ; vẫn tải khi popup mở với công trình không có lat/lng.
+        if (!layer._tlLiveBound) {
+          layer._tlLiveBound = true;
+          layer.on('popupopen', function() {
+            try {
+              tlInitLiveForPopup(layer, name);
+            } catch (livePopupError) {
+              console.warn('📊 Technical Live popup error:', livePopupError);
             }
           });
         }
