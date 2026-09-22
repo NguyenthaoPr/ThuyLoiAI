@@ -2388,7 +2388,7 @@
     }
     .tl-popup-collapse-btn:active { transform: scale(.95); }
 
-    .tl-dashboard-popup .tl-popup-body { padding: 10px 12px 12px; }
+    .tl-dashboard-popup .tl-popup-body { padding: 10px 12px 12px; max-height: min(72vh, 620px); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: thin; }
     .tl-dashboard-handle {
       width: 42px;
       height: 5px;
@@ -2450,6 +2450,8 @@
 
     .tl-dashboard-weather {
       margin-top:9px;
+      position:relative;
+      z-index:2;
       padding:9px 10px;
       border-radius:15px;
       background:rgba(245,249,253,.92);
@@ -2463,6 +2465,12 @@
     .tl-dashboard-weather-item .icon { font-size:13px; line-height:1; opacity:.78; }
     .tl-dashboard-weather-item .value { margin-top:3px; font-size:11px; font-weight:850; color:#163c5e; white-space:nowrap; }
     .tl-dashboard-weather-item .label { margin-top:2px; font-size:7px; color:#8496a5; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    .tl-weather-mini-refresh { width:25px; height:25px; border:1px solid #cfe1ef; border-radius:50%; background:#fff; color:#1265ba; font:900 14px/1 inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 7px rgba(8,35,61,.07); }
+    .tl-weather-mini-refresh:active { transform:scale(.94); }
+    .tl-weather-mini-refresh.is-loading { animation:tlWeatherSpin .8s linear infinite; }
+    @keyframes tlWeatherSpin { to { transform:rotate(360deg); } }
+
     .tl-dashboard-forecast { margin-top:6px; padding:7px 8px; border-radius:10px; background:#edf6ff; color:#155e9a; font-size:9px; }
 
     .tl-dashboard-actions { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(94px,.75fr); gap:8px; margin-top:10px; }
@@ -2497,7 +2505,22 @@
     .tl-dashboard-popup.status-normal { --dashboard-accent:#10b981; }
     .tl-dashboard-popup.status-info { --dashboard-accent:#64748b; }
 
-    /* Mobile: Bottom Sheet visual, sem alterar a posição do layer GIS. */
+    /* Leaflet: giữ popup dashboard trong vùng nhìn thấy nhưng cho phép cuộn nội dung. */
+    .tl-dashboard-leaflet-popup .leaflet-popup-content-wrapper {
+      max-height: min(76vh, 680px) !important;
+      overflow: hidden !important;
+      padding: 0 !important;
+      border-radius: 22px !important;
+    }
+    .tl-dashboard-leaflet-popup .leaflet-popup-content {
+      margin: 0 !important;
+      width: auto !important;
+      max-height: min(76vh, 680px) !important;
+      overflow: hidden !important;
+    }
+    .tl-dashboard-leaflet-popup .leaflet-popup-tip { margin-top: -1px; }
+
+    /* Mobile: Bottom Sheet visual, không thay đổi vị trí của layer GIS. */
     @media (max-width:600px) {
       .tl-dashboard-popup { width:calc(100vw - 24px); max-width:390px; border-radius:22px; }
       .tl-dashboard-popup .tl-popup-header { padding:11px 12px 9px; }
@@ -3759,7 +3782,7 @@ if (cameraBtn && imageInput) {
       // Không thay đổi GIS Master, Search Index, KML/KMZ hay marker.
       // =========================================================
       const TL_WEATHER_API_BASE = 'https://api.open-meteo.com/v1/forecast';
-      const TL_WEATHER_CACHE_TTL = 30 * 60 * 1000; // 30 phút
+      const TL_WEATHER_CACHE_TTL = 5 * 60 * 1000; // 5 phút — dữ liệu hiện tại được làm mới nhanh hơn
       const TL_WEATHER_CACHE = new Map();
 
       function tlWeatherCacheKey(lat, lng) {
@@ -3779,6 +3802,20 @@ if (cameraBtn && imageInput) {
           }).format(new Date());
         } catch (_) {
           return '';
+        }
+      }
+
+
+      function tlWeatherApiTimeLabel(value) {
+        if (!value) return tlWeatherCurrentLabel();
+        const d = new Date(value);
+        if (!Number.isFinite(d.getTime())) return String(value);
+        try {
+          return new Intl.DateTimeFormat('vi-VN', {
+            hour: '2-digit', minute: '2-digit', hour12: false
+          }).format(d);
+        } catch (_) {
+          return String(value);
         }
       }
 
@@ -3823,16 +3860,27 @@ if (cameraBtn && imageInput) {
           timezone: 'Asia/Ho_Chi_Minh'
         });
 
-        const response = await fetch(TL_WEATHER_API_BASE + '?' + params.toString(), {
-          method: 'GET',
-          cache: 'no-store'
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        let response;
+        try {
+          response = await fetch(TL_WEATHER_API_BASE + '?' + params.toString(), {
+            method: 'GET',
+            cache: 'no-store',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
 
         if (!response.ok) {
           throw new Error('Weather API HTTP ' + response.status);
         }
 
         const data = await response.json();
+        if (!data?.current) throw new Error('Weather API không trả về dữ liệu hiện tại.');
         TL_WEATHER_CACHE.set(key, { timestamp: Date.now(), data });
         return data;
       }
@@ -3855,8 +3903,9 @@ if (cameraBtn && imageInput) {
         const dashboardCard = popupRoot?.querySelector('[data-tl-dashboard-weather]');
         if (dashboardCard) {
           const timeText = tlWeatherCurrentLabel();
+          const apiTime = data?.current?.time ? tlWeatherApiTimeLabel(data.current.time) : timeText;
           const timeEl = dashboardCard.querySelector('[data-tl-dashboard-weather-time]');
-          if (timeEl) timeEl.textContent = 'Cập nhật ' + timeText;
+          if (timeEl) timeEl.textContent = 'Cập nhật ' + apiTime;
           const grid = dashboardCard.querySelector('[data-tl-dashboard-weather-grid]');
           if (grid) {
             grid.innerHTML = `
@@ -3869,7 +3918,7 @@ if (cameraBtn && imageInput) {
           const currentRain = popupRoot.querySelector('[data-tl-weather-current-rain]');
           if (currentRain) {
             currentRain.querySelector('.tl-dashboard-mini-value').textContent = tlFormatNumber(precipitation,1) + ' mm';
-            currentRain.querySelector('.tl-dashboard-mini-time').textContent = 'Cập nhật ' + timeText;
+            currentRain.querySelector('.tl-dashboard-mini-time').textContent = 'Cập nhật ' + apiTime;
           }
           const forecast = dashboardCard.querySelector('[data-tl-dashboard-forecast]');
           if (forecast) forecast.innerHTML = '☁️ <strong>Dự báo mưa 6 giờ tới:</strong> ' + (next6 == null ? '—' : tlFormatNumber(next6,1) + ' mm');
@@ -3885,7 +3934,7 @@ if (cameraBtn && imageInput) {
           </div>
           <div class="tl-weather-forecast">☁️ <strong>Dự báo mưa 6 giờ tới:</strong> ${next6 == null ? '—' : tlFormatNumber(next6,1) + ' mm'}</div>
         `;
-        if (updated) updated.textContent = 'Cập nhật ' + tlWeatherCurrentLabel();
+        if (updated) updated.textContent = 'Cập nhật ' + (data?.current?.time ? tlWeatherApiTimeLabel(data.current.time) : tlWeatherCurrentLabel());
         card.dataset.tlWeather = 'ready';
       }
 
@@ -4071,7 +4120,7 @@ if (cameraBtn && imageInput) {
           <div class="tl-dashboard-weather" data-tl-dashboard-weather>
             <div class="tl-dashboard-weather-head">
               <div class="tl-dashboard-weather-title">🌦️ THỜI TIẾT TẠI CÔNG TRÌNH</div>
-              <div class="tl-dashboard-weather-time" data-tl-dashboard-weather-time>Đang tải…</div>
+              <div style="display:flex;align-items:center;gap:5px;"><div class="tl-dashboard-weather-time" data-tl-dashboard-weather-time>Đang tải…</div><button type="button" class="tl-weather-mini-refresh" data-tl-weather-mini-refresh aria-label="Cập nhật thời tiết">↻</button></div>
             </div>
             <div class="tl-dashboard-weather-grid" data-tl-dashboard-weather-grid>
               <div class="tl-dashboard-weather-item"><div class="icon">🌡</div><div class="value">—</div><div class="label">Nhiệt độ</div></div>
@@ -4341,7 +4390,7 @@ if (cameraBtn && imageInput) {
                 if (touchY == null) return;
                 const endY = ev.changedTouches?.[0]?.clientY ?? touchY;
                 const dy = endY - touchY;
-                if (Math.abs(dy) > 30) {
+                if (Math.abs(dy) > 24) {
                   if (dy > 0) { container.classList.add('is-collapsed'); collapse && (collapse.textContent='⌄'); }
                   else { container.classList.remove('is-collapsed'); collapse && (collapse.textContent='⌃'); }
                 }
@@ -4351,6 +4400,17 @@ if (cameraBtn && imageInput) {
             try { tlInitLiveForPopup(layer, name); } catch (livePopupError) { console.warn('📊 Technical Live popup error:', livePopupError); }
             if (hasPosition) {
               try { tlInitWeatherForPopup(layer, mapLat, mapLng); } catch (weatherPopupError) { console.warn('🌦️ Weather popup error:', weatherPopupError); }
+              const weatherRefresh = root.querySelector('[data-tl-weather-mini-refresh]');
+              if (weatherRefresh && weatherRefresh.dataset.bound !== '1') {
+                weatherRefresh.dataset.bound = '1';
+                weatherRefresh.addEventListener('click', function(ev) {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  weatherRefresh.classList.add('is-loading');
+                  const weatherCard = root.querySelector('.tl-weather-card');
+                  Promise.resolve(tlLoadWeatherForPopup(weatherCard, mapLat, mapLng, true)).finally(() => weatherRefresh.classList.remove('is-loading'));
+                });
+              }
             } else {
               const weatherTime = root.querySelector('[data-tl-dashboard-weather-time]');
               const weatherForecast = root.querySelector('[data-tl-dashboard-forecast]');
