@@ -4359,7 +4359,20 @@ if (cameraBtn && imageInput) {
         const minLabel = tlLiveFormatNumber(minData, 2);
         const maxLabel = tlLiveFormatNumber(maxData, 2);
         const dataEnough = arr.length >= 2;
-
+// Trạng thái thiếu dữ liệu lịch sử: hiển thị gọn thay vì vẽ chart gây hiểu lầm
+if (!dataEnough) {
+  const onlyValue = current == null ? '—' : tlLiveFormatNumber(current, 2);
+  const refText = Number.isFinite(ref) ? `Cách MNDBT: ${tlLiveFormatNumber(ref - (current||0), 2)} m` : '';
+  return `<div class="tl-water-chart-wrap" aria-label="Mực nước hiện tại — chưa đủ dữ liệu lịch sử">
+    <div class="tl-water-chart-title"><span>Diễn biến mực nước 24 giờ</span></div>
+    <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;height:112px;gap:4px;">
+      <div style="font-size:26px;font-weight:850;color:#0b2a44;">${onlyValue}<span style="font-size:13px;font-weight:650;color:#64748b;margin-left:3px;">m</span></div>
+      ${refText ? `<div style="font-size:10px;color:#dc2626;font-weight:700;">${refText}</div>` : ''}
+      <div style="font-size:9.5px;color:#94a3b8;margin-top:2px;">📡 Đang thu thập dữ liệu lịch sử — biểu đồ xu hướng sẽ hiện sau khi đủ mẫu</div>
+    </div>
+    <div class="tl-water-chart-foot"><span>● Mực nước</span>${Number.isFinite(ref) ? '<span>┄ MNDBT</span>' : ''}<span>1 mẫu thực tế</span></div>
+  </div>`;
+}
         // Last-value badge: keep it attached to the final point, but flip left/up
         // when the current point is too close to the right/top edge.
        // Last-value badge: keep it attached to the final point, but flip left/up
