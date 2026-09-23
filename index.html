@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=4fWqNgU55eb3S0kyCcUA4UZSIECokPpNy28u-uy4EZZgg5PSsGE9OEkBmF-g5w4tfTANBuwFwkK5iexhpelEwyOHLMVk0ydg2lTdXqQqVF78pPafYbvtTzrEFo3LUvvc7AiThV4lDZZaiTizXD4R8kz_p5OJAmhOM4wc0H038kPsnUAIYVg5pxgHDlyU_seVAMezGqTzFrRVY4zXkXo8k8k-acWjq4yAb0FsmW84WqebIL0ESQvokRqZTMOAeMWFAUPIV_FEJpmEh3E5FzsX0JsEfGl35o4RZ9oZlMZFX0DAsn2Wg8rz_uPG7DDHxqesygcN60cxTnB5pd9IG9BNIA" charset="UTF-8"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -1936,6 +1936,48 @@
       color:#94a3b8;
       margin-top:2px;
     }
+
+    .tl-water-chart-wrap {
+      margin: 8px 0 9px;
+      padding: 9px 9px 7px;
+      border-radius: 13px;
+      background: #f8fbfe;
+      border: 1px solid #e3edf5;
+    }
+    .tl-water-chart-title {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:3px;
+      font-size:9px;
+      font-weight:800;
+      color:#52697c;
+      text-transform:uppercase;
+      letter-spacing:.25px;
+    }
+    .tl-water-chart-title strong {
+      font-size:10px;
+      color:#0b3153;
+      text-transform:none;
+      letter-spacing:0;
+    }
+    .tl-water-chart {
+      display:block;
+      width:100%;
+      height:112px;
+    }
+    .tl-water-chart-foot {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:7px;
+      margin-top:1px;
+      font-size:8px;
+      color:#7b8d9b;
+    }
+    .tl-water-chart-foot span:first-child { color:#0284c7; font-weight:700; }
+    .tl-water-chart-foot span:nth-child(2) { color:#dc2626; }
 
     .tl-level-gauge {
       margin: 8px 0;
@@ -4234,12 +4276,21 @@ if (cameraBtn && imageInput) {
           const key = tlLiveHistoryKey(facility);
           const old = JSON.parse(localStorage.getItem(key) || '[]');
           const now = water?.time || new Date().toISOString();
-          const arr = Array.isArray(old) ? old.filter(x => Number.isFinite(Number(x?.v))) : [];
+          const nowMs = new Date(now).getTime();
+          const cutoff = Number.isFinite(nowMs) ? nowMs - 24 * 60 * 60 * 1000 : Date.now() - 24 * 60 * 60 * 1000;
+          const arr = Array.isArray(old)
+            ? old.filter(x => {
+                const v = Number(x?.v);
+                const t = new Date(x?.t).getTime();
+                return Number.isFinite(v) && Number.isFinite(t) && t >= cutoff && t <= nowMs + 60000;
+              })
+            : [];
           const last = arr[arr.length - 1];
           if (!last || Math.abs(Number(last.v) - value) > 0.000001 || String(last.t) !== String(now)) {
             arr.push({ t: now, v: value });
           }
-          const trimmed = arr.slice(-24);
+          arr.sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+          const trimmed = arr.slice(-96);
           localStorage.setItem(key, JSON.stringify(trimmed));
           return trimmed;
         } catch (_) {
@@ -4247,24 +4298,82 @@ if (cameraBtn && imageInput) {
         }
       }
 
-      function tlSparklineSvg(points) {
-        const arr = (Array.isArray(points) ? points : []).filter(x => Number.isFinite(Number(x?.v)));
-        if (arr.length < 2) return '';
-        const vals = arr.map(x => Number(x.v));
-        const min = Math.min(...vals), max = Math.max(...vals);
-        const range = Math.max(max - min, 0.001);
-        const w = 300, h = 48, pad = 3;
-        const pts = vals.map((v,i) => {
-          const x = pad + (i * (w - pad*2) / Math.max(vals.length-1,1));
-          const y = h-pad - ((v-min)/range) * (h-pad*2);
-          return [x,y];
+      function tlWaterLevelChart(points, currentValue, mndbt) {
+        const raw = (Array.isArray(points) ? points : [])
+          .map(x => ({ t: new Date(x?.t), v: Number(x?.v) }))
+          .filter(x => Number.isFinite(x.v) && !Number.isNaN(x.t.getTime()))
+          .sort((a, b) => a.t - b.t);
+
+        const now = raw.length ? raw[raw.length - 1].t : new Date();
+        const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const arr = raw.filter(x => x.t >= cutoff && x.t <= now);
+        const current = Number.isFinite(Number(currentValue)) ? Number(currentValue) : (arr.length ? arr[arr.length - 1].v : null);
+        if (current != null && (!arr.length || Math.abs(arr[arr.length - 1].v - current) > 0.000001)) {
+          arr.push({ t: now, v: current });
+        }
+
+        const vals = arr.map(x => x.v).filter(Number.isFinite);
+        const ref = Number(mndbt);
+        if (!vals.length) return '';
+
+        const minData = Math.min(...vals);
+        const maxData = Math.max(...vals);
+        const minValue = Math.min(minData, Number.isFinite(ref) ? ref : minData);
+        const maxValue = Math.max(maxData, Number.isFinite(ref) ? ref : maxData);
+        const range = Math.max(maxValue - minValue, 0.05);
+        const padValue = Math.max(range * 0.12, 0.02);
+        const yMin = minValue - padValue;
+        const yMax = maxValue + padValue;
+
+        const w = 320, h = 112;
+        const left = 34, right = 8, top = 12, bottom = 24;
+        const plotW = w - left - right;
+        const plotH = h - top - bottom;
+        const xFor = t => left + ((t.getTime() - cutoff.getTime()) / (24 * 60 * 60 * 1000)) * plotW;
+        const yFor = v => top + (1 - ((v - yMin) / (yMax - yMin))) * plotH;
+        const pointsSvg = arr.map(x => `${xFor(x.t).toFixed(1)},${yFor(x.v).toFixed(1)}`).join(' ');
+        const first = arr[0];
+        const last = arr[arr.length - 1];
+        const areaPoints = arr.length > 1
+          ? `${left},${(top + plotH).toFixed(1)} ${pointsSvg} ${xFor(last.t).toFixed(1)},${(top + plotH).toFixed(1)}`
+          : '';
+        const lastX = xFor(last.t), lastY = yFor(last.v);
+        const refY = Number.isFinite(ref) ? yFor(ref) : null;
+        const timeLabels = [0, 6, 12, 18, 24].map(hours => {
+          const d = new Date(now.getTime() - (24 - hours) * 60 * 60 * 1000);
+          const label = `${String(d.getHours()).padStart(2,'0')}h`;
+          return { x: left + (hours / 24) * plotW, label };
         });
-        const line = pts.map(p => p.join(',')).join(' ');
-        const last = pts[pts.length-1];
-        return `<svg class="tl-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Diễn biến mực nước">
-          <polyline points="${line}" fill="none" stroke="#0ea5e9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="${last[0]}" cy="${last[1]}" r="3.2" fill="#ffffff" stroke="#0284c7" stroke-width="2"/>
-        </svg>`;
+        const minLabel = tlLiveFormatNumber(minData, 2);
+        const maxLabel = tlLiveFormatNumber(maxData, 2);
+        const currentLabel = current == null ? '—' : `${tlLiveFormatNumber(current, 2)} m`;
+        const dataEnough = arr.length >= 2;
+
+        return `<div class="tl-water-chart-wrap" aria-label="Diễn biến mực nước trong 24 giờ">
+          <div class="tl-water-chart-title">
+            <span>Diễn biến mực nước 24 giờ</span>
+            <strong>${currentLabel}</strong>
+          </div>
+          <svg class="tl-water-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Biểu đồ mực nước 24 giờ">
+            <line x1="${left}" y1="${top + plotH}" x2="${w-right}" y2="${top + plotH}" stroke="#dbe5ee" stroke-width="1"/>
+            <line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" stroke="#dbe5ee" stroke-width="1"/>
+            <line x1="${left}" y1="${top + plotH/2}" x2="${w-right}" y2="${top + plotH/2}" stroke="#edf2f7" stroke-width="1" stroke-dasharray="3 3"/>
+            ${refY == null ? '' : `<line x1="${left}" y1="${refY.toFixed(1)}" x2="${w-right}" y2="${refY.toFixed(1)}" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="5 4"/><text x="${w-right-2}" y="${Math.max(9, refY-4).toFixed(1)}" text-anchor="end" font-size="8" font-weight="700" fill="#dc2626">MNDBT ${tlLiveFormatNumber(ref,2)} m</text>`}
+            ${areaPoints ? `<polygon points="${areaPoints}" fill="rgba(14,165,233,.10)"/>` : ''}
+            ${dataEnough ? `<polyline points="${pointsSvg}" fill="none" stroke="#0284c7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
+            <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4" fill="#ffffff" stroke="#0284c7" stroke-width="2.2"/>
+            <rect x="${Math.max(left, Math.min(w-right-52, lastX-48)).toFixed(1)}" y="${Math.max(2, lastY-22).toFixed(1)}" width="52" height="18" rx="8" fill="#0b3153"/>
+            <text x="${Math.max(left+26, Math.min(w-right-26, lastX-22)).toFixed(1)}" y="${Math.max(14, lastY-10).toFixed(1)}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#ffffff">${current == null ? '—' : tlLiveFormatNumber(current,2)+' m'}</text>
+            <text x="${left-5}" y="${top+4}" text-anchor="end" font-size="8" fill="#64748b">${maxLabel}</text>
+            <text x="${left-5}" y="${top+plotH}" text-anchor="end" font-size="8" fill="#64748b">${minLabel}</text>
+            ${timeLabels.map(t => `<text x="${t.x.toFixed(1)}" y="${h-7}" text-anchor="middle" font-size="8" fill="#64748b">${t.label}</text>`).join('')}
+          </svg>
+          <div class="tl-water-chart-foot">
+            <span>● Mực nước</span>
+            ${refY == null ? '' : '<span>┄ MNDBT</span>'}
+            <span>${dataEnough ? arr.length + ' mẫu thực tế' : 'Chưa đủ dữ liệu lịch sử 24h'}</span>
+          </div>
+        </div>`;
       }
 
       function tlBuildLevelGauge(waterValue, dead, mndbt, mndgc) {
@@ -4307,18 +4416,14 @@ if (cameraBtn && imageInput) {
         const rainLabel = rainfall?.parameter || 'Lượng mưa';
         const rainTime = rainfall?.time ? tlLiveTimeLabel(rainfall.time) : '—';
         const history = tlTrackLiveHistory(facility, water);
-        const chart = tlSparklineSvg(history);
-        const previous = history.length >= 2 ? Number(history[history.length-2].v) : null;
         const current = Number(water?.value);
-        const delta = Number.isFinite(current) && Number.isFinite(previous) ? current - previous : null;
-        const trendClass = delta == null || Math.abs(delta) < 0.001 ? 'stable' : delta > 0 ? 'up' : 'down';
-        const trendText = delta == null ? '→ Chờ xu hướng' : Math.abs(delta) < 0.001 ? '→ Ổn định' : `${delta > 0 ? '↗' : '↘'} ${delta > 0 ? '+' : ''}${delta.toFixed(2)} m`;
 
         const heroFlow = flow && Number.isFinite(Number(flow.value));
         const hero = heroFlow
           ? `<div class="tl-live-hero-label">Lưu lượng hiện tại</div><div><span class="tl-live-hero-value">${tlLiveFormatNumber(flow.value,2)}</span><span class="tl-live-hero-unit">${esc(flow.unit || 'm³/s')}</span></div>`
           : `<div class="tl-live-hero-label">${esc(waterLabel)}</div><div><span class="tl-live-hero-value">${water ? tlLiveFormatNumber(water.value,2) : '—'}</span><span class="tl-live-hero-unit">m</span></div>`;
 
+        const chart = !heroFlow ? tlWaterLevelChart(history, current, limits.MNDBT) : '';
         const gauge = !heroFlow ? tlBuildLevelGauge(current, card.dataset.deadLevel, limits.MNDBT, limits.MNDGC) : '';
 
         body.innerHTML = `
@@ -4328,9 +4433,8 @@ if (cameraBtn && imageInput) {
           </div>
           <div class="tl-live-hero">
             <div>${hero}</div>
-            <div class="tl-live-trend ${trendClass}">${trendText}</div>
           </div>
-          ${chart ? `<div class="tl-sparkline-wrap">${chart}<div class="tl-sparkline-axis"><span>24h</span><span>Hiện tại</span></div></div>` : ''}
+          ${chart}
           ${gauge}
           <div class="tl-live-grid">
             <div class="tl-live-item"><div class="tl-live-label">🌧️ ${esc(rainLabel)}</div><div class="tl-live-value">${rainfall ? tlLiveFormatNumber(rainfall.value,2) + ' mm' : '—'}</div></div>
