@@ -4362,24 +4362,30 @@ if (cameraBtn && imageInput) {
 
         // Last-value badge: keep it attached to the final point, but flip left/up
         // when the current point is too close to the right/top edge.
-        const badgeW = 64;
-        const badgeH = 19;
-        const badgeGap = 7;
-        let badgeX = lastX + badgeGap;
-        let badgeY = lastY - badgeH / 2;
-        let pointerSide = 'left';
-        if (badgeX + badgeW > w - 2) {
-          badgeX = lastX - badgeGap - badgeW;
-          pointerSide = 'right';
-        }
-        if (badgeY < 2) badgeY = Math.min(h - bottom - badgeH, lastY + 7);
-        if (badgeY + badgeH > h - 2) badgeY = Math.max(2, lastY - badgeH - 7);
-        const badgeMidY = badgeY + badgeH / 2;
-        const pointer = pointerSide === 'left'
-          ? `${lastX},${lastY} ${badgeX},${badgeMidY-4} ${badgeX},${badgeMidY+4}`
-          : `${lastX},${lastY} ${badgeX+badgeW},${badgeMidY-4} ${badgeX+badgeW},${badgeMidY+4}`;
-        const currentNumber = current == null ? '—' : tlLiveFormatNumber(current,2);
-        const currentUnit = current == null ? '' : 'm';
+       // Last-value badge: keep it attached to the final point, but flip left/up
+// when the current point is too close to the right/top edge.
+// Badge co giãn theo độ dài số để không vỡ khi mực nước có 3 chữ số hoặc âm.
+const currentNumber = current == null ? '—' : tlLiveFormatNumber(current,2);
+const currentUnit = current == null ? '' : 'm';
+const badgeText = currentNumber + (currentUnit ? ' ' + currentUnit : '');
+const badgeH = 19;
+const badgeGap = 7;
+const badgeW = Math.max(46, Math.round(badgeText.length * 6.1) + 20);
+let badgeX = lastX + badgeGap;
+let badgeY = lastY - badgeH / 2;
+let pointerSide = 'left';
+if (badgeX + badgeW > w - 2) {
+  badgeX = lastX - badgeGap - badgeW;
+  pointerSide = 'right';
+}
+if (badgeX < 2) badgeX = 2; // chốt an toàn: badge không bao giờ bị cắt viền trái
+if (badgeY < 2) badgeY = Math.min(h - bottom - badgeH, lastY + 7);
+if (badgeY + badgeH > h - 2) badgeY = Math.max(2, lastY - badgeH - 7);
+const badgeMidY = badgeY + badgeH / 2;
+const badgeMidX = badgeX + badgeW / 2;
+const pointer = pointerSide === 'left'
+  ? `${lastX},${lastY} ${badgeX},${badgeMidY-4} ${badgeX},${badgeMidY+4}`
+  : `${lastX},${lastY} ${badgeX+badgeW},${badgeMidY-4} ${badgeX+badgeW},${badgeMidY+4}`;
         const dataEnoughText = dataEnough ? arr.length + ' mẫu thực tế' : 'Chưa đủ dữ liệu lịch sử 24h';
 
         return `<div class="tl-water-chart-wrap" aria-label="Diễn biến mực nước trong 24 giờ">
@@ -4413,8 +4419,7 @@ if (cameraBtn && imageInput) {
             </circle>
             <polygon points="${pointer}" fill="#1E40AF"/>
             <rect x="${badgeX.toFixed(1)}" y="${badgeY.toFixed(1)}" width="${badgeW}" height="${badgeH}" rx="9.5" fill="#1E40AF" class="tl-chart-last"/>
-            <text x="${(badgeX + 30).toFixed(1)}" y="${(badgeY + 12.2).toFixed(1)}" text-anchor="middle" font-size="9.3" font-weight="800" fill="#ffffff">${currentNumber}<tspan dx="2" font-size="6.7" font-weight="600" opacity=".9">${currentUnit}</tspan></text>
-            <text x="${left-5}" y="${top+4}" text-anchor="end" font-size="8" fill="#64748b">${maxLabel}</text>
+           <text x="${badgeMidX.toFixed(1)}" y="${(badgeY + 12.2).toFixed(1)}" text-anchor="middle" font-size="9.3" font-weight="800" fill="#ffffff">${currentNumber}<tspan dx="2" font-size="6.7" font-weight="600" opacity=".9">${currentUnit}</tspan></text>
             <text x="${left-5}" y="${top+plotH}" text-anchor="end" font-size="8" fill="#64748b">${minLabel}</text>
             ${timeLabels.map(t => `<text x="${t.x.toFixed(1)}" y="${h-7}" text-anchor="middle" font-size="8" fill="#64748b">${t.label}</text>`).join('')}
           </svg>
