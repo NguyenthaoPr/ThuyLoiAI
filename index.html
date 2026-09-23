@@ -4278,6 +4278,44 @@ if (cameraBtn && imageInput) {
         }
       }
 
+  const TL_CHART_CACHE = new Map();
+  const TL_CHART_CACHE_TTL = 5 * 60 * 1000; // 5 phút
+
+  async function tlFetchChartHistory(facilityName, code) {
+    const candidates = [];
+    if (code) candidates.push(`${facilityName} (${code})`);
+    candidates.push(facilityName);
+
+    for (const facility of candidates) {
+      const cached = TL_CHART_CACHE.get(facility);
+      if (cached && (Date.now() - cached.timestamp) < TL_CHART_CACHE_TTL) {
+        return cached.points;
+      }
+      try {
+        const url = TL_TECHNICAL_API_BASE + '/api/chart?facility=' + encodeURIComponent(facility) + '&days=2';
+        const response = await fetch(url, { method: 'GET', cache: 'no-store', mode: 'cors', headers: { 'Accept': 'application/json' } });
+        if (!response.ok) continue;
+        const json = await response.json();
+        if (!json || json.ok !== true || !json.data) continue;
+
+        const waterArr = Array.isArray(json.data.water) ? json.data.water
+          : (json.data.waterVariants && json.data.waterParameter && Array.isArray(json.data.waterVariants[json.data.waterParameter])
+              ? json.data.waterVariants[json.data.waterParameter] : []);
+
+        const points = waterArr
+          .map(x => ({ t: x?.time, v: Number(x?.value) }))
+          .filter(x => x.t && Number.isFinite(x.v));
+
+        if (points.length) {
+          TL_CHART_CACHE.set(facility, { timestamp: Date.now(), points });
+          return points;
+        }
+      } catch (e) {
+        console.warn('📈 Chart API error cho facility', facility, e);
+      }
+    }
+    return [];
+  }
       function tlLiveHistoryKey(facility) {
         return 'TL_LIVE_HISTORY_V1:' + String(facility || '').trim();
       }
@@ -4475,7 +4513,7 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
         </div>`;
       }
 
-      function tlRenderLive(card, payload) {
+     function tlRenderLive(card, payload, chartPoints) {
         if (!card) return;
         const body = card.querySelector('[data-tl-live-body]');
         const updated = card.querySelector('[data-tl-live-updated]');
@@ -4494,7 +4532,9 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
         const waterTime = water?.time ? tlLiveTimeLabel(water.time) : '—';
         const rainLabel = rainfall?.parameter || 'Lượng mưa';
         const rainTime = rainfall?.time ? tlLiveTimeLabel(rainfall.time) : '—';
-        const history = tlTrackLiveHistory(facility, water);
+       const history = (Array.isArray(chartPoints) && chartPoints.length >= 2)
+  ? chartPoints
+  : tlTrackLiveHistory(facility, water); // dự phòng khi API chart chưa có đủ dữ liệu
         const current = Number(water?.value);
 
         const heroFlow = flow && Number.isFinite(Number(flow.value));
@@ -4571,12 +4611,15 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
         if (body) body.innerHTML = '<div class="tl-live-loading">⏳ Đang đọc số liệu quan trắc mới nhất từ AI_DATA…</div>';
         if (updated) updated.textContent = 'Đang cập nhật…';
 
-        try {
-          const data = await tlFetchLive(facility, force);
-          tlRenderLive(card, data);
-        } catch (error) {
-          tlRenderLiveError(card, error);
-        }
+      try {
+  const [data, chartPoints] = await Promise.all([
+    tlFetchLive(facility, force),
+    tlFetchChartHistory(facility, card.dataset.facilityCode || '').catch(() => [])
+  ]);
+  tlRenderLive(card, data, chartPoints);
+} catch (error) {
+  tlRenderLiveError(card, error);
+}
       }
 
       function tlInitLiveForPopup(layer, facility) {
@@ -4796,7 +4839,7 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
                   <span class="tl-popup-source-badge">LIVE</span>
                 </div>
 
-                <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}" data-dead-level="${deadLevel == null ? '' : e(deadLevel)}">
+               <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}" data-facility-code="${e(code)}" data-dead-level="${deadLevel == null ? '' : e(deadLevel)}">
                   <div class="tl-live-head">
                     <div class="tl-live-title">📊 Số liệu hiện tại</div>
                     <div class="tl-live-updated" data-tl-live-updated>AI_DATA</div>
