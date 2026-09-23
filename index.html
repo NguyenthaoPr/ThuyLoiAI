@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=4fWqNgU55eb3S0kyCcUA4UZSIECokPpNy28u-uy4EZZgg5PSsGE9OEkBmF-g5w4tfTANBuwFwkK5iexhpelEwyOHLMVk0ydg2lTdXqQqVF78pPafYbvtTzrEFo3LUvvc7AiThV4lDZZaiTizXD4R8kz_p5OJAmhOM4wc0H038kPsnUAIYVg5pxgHDlyU_seVAMezGqTzFrRVY4zXkXo8k8k-acWjq4yAb0FsmW84WqebIL0ESQvokRqZTMOAeMWFAUPIV_FEJpmEh3E5FzsX0JsEfGl35o4RZ9oZlMZFX0DAsn2Wg8rz_uPG7DDHxqesygcN60cxTnB5pd9IG9BNIA" charset="UTF-8"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -1811,6 +1811,259 @@
         font-size: 9px;
       }
     }
+
+    /* =========================================================
+       POPUP V3 – OPERATIONAL FIRST
+       CHỈ NÂNG CẤP PRESENTATION; KHÔNG ĐỔI DATA/GIS ENGINE
+       ========================================================= */
+    .tl-popup-v3 {
+      width: min(380px, 92vw);
+      max-width: 380px;
+      max-height: min(64vh, 620px);
+      border-radius: 20px;
+    }
+
+    .tl-popup-v3 .tl-popup-body {
+      padding: 10px 12px 12px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+
+    .tl-popup-v3 .tl-popup-header {
+      padding: 12px 14px;
+      min-height: 62px;
+    }
+
+    .tl-popup-v3 .tl-popup-name {
+      font-size: 15px;
+    }
+
+    .tl-popup-header-meta {
+      margin-top: 3px;
+      font-size: 9px;
+      color: rgba(255,255,255,.78);
+    }
+
+    .tl-popup-v3 .tl-popup-status {
+      margin-bottom: 9px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px rgba(15,39,66,.04);
+    }
+
+    .tl-popup-v3 .tl-live-card {
+      margin: 0;
+      padding: 10px;
+      border-radius: 16px;
+      border: 1px solid #dce8f2;
+      background: #fbfdff;
+      box-shadow: 0 4px 14px rgba(15,39,66,.05);
+    }
+
+    .tl-popup-v3 .tl-live-head {
+      margin-bottom: 7px;
+    }
+
+    .tl-popup-v3 .tl-live-title {
+      font-size: 10px;
+    }
+
+    .tl-live-hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 2px 2px;
+    }
+
+    .tl-live-hero-label {
+      font-size: 9px;
+      color: #78909c;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .35px;
+      margin-bottom: 2px;
+    }
+
+    .tl-live-hero-value {
+      font-size: 29px;
+      line-height: 1;
+      font-weight: 850;
+      letter-spacing: -.8px;
+      color: #0b2a44;
+    }
+
+    .tl-live-hero-unit {
+      font-size: 13px;
+      font-weight: 650;
+      color: #64748b;
+      margin-left: 3px;
+    }
+
+    .tl-live-trend {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #155e9a;
+      white-space: nowrap;
+    }
+
+    .tl-live-trend.up { background:#ecfdf5; color:#047857; }
+    .tl-live-trend.down { background:#fff7ed; color:#c2410c; }
+    .tl-live-trend.stable { background:#f1f5f9; color:#475569; }
+
+    .tl-sparkline-wrap {
+      margin: 7px 0 8px;
+      padding: 6px 7px 4px;
+      border-radius: 11px;
+      background: #f8fafc;
+      border: 1px solid #edf2f6;
+    }
+
+    .tl-sparkline {
+      width: 100%;
+      height: 48px;
+      display: block;
+    }
+
+    .tl-sparkline-axis {
+      display:flex;
+      justify-content:space-between;
+      font-size:8px;
+      color:#94a3b8;
+      margin-top:2px;
+    }
+
+    .tl-level-gauge {
+      margin: 8px 0;
+      padding: 8px 9px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #edf2f6;
+    }
+
+    .tl-level-gauge-track {
+      position:relative;
+      height:8px;
+      border-radius:999px;
+      background:linear-gradient(90deg,#dbeafe 0 55%,#dcfce7 55% 88%,#fee2e2 88% 100%);
+      overflow:visible;
+    }
+
+    .tl-level-gauge-fill {
+      position:absolute;
+      left:0; top:0; bottom:0;
+      border-radius:999px;
+      background:#0ea5e9;
+      max-width:100%;
+    }
+
+    .tl-level-marker {
+      position:absolute;
+      top:-3px;
+      width:2px;
+      height:14px;
+      background:#64748b;
+    }
+
+    .tl-level-gauge-legend {
+      display:flex;
+      justify-content:space-between;
+      gap:6px;
+      margin-top:5px;
+      font-size:8px;
+      color:#64748b;
+    }
+
+    .tl-popup-v3 .tl-live-grid {
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 5px;
+    }
+
+    .tl-popup-v3 .tl-live-item {
+      padding: 6px 7px;
+      border-radius: 10px;
+    }
+
+    .tl-weather-strip {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:5px;
+      padding:8px 9px;
+      border-radius:12px;
+      background:#f8fafc;
+      border:1px solid #e7eef4;
+      overflow:hidden;
+    }
+
+    .tl-weather-pill {
+      min-width:0;
+      flex:1;
+      text-align:center;
+      font-size:9px;
+      color:#52697c;
+      white-space:nowrap;
+    }
+
+    .tl-weather-pill strong {
+      display:block;
+      margin-top:2px;
+      font-size:10px;
+      color:#0b2a44;
+    }
+
+    .tl-popup-v3 .tl-popup-action-grid {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+
+    .tl-popup-v3 .tl-popup-action {
+      min-height: 40px;
+      border-radius: 12px;
+    }
+
+    .tl-popup-v3 .tl-popup-action-refresh {
+      order: 0;
+      border-color: #10b981;
+      background: linear-gradient(180deg,#0ea875,#087f5b);
+      color:#fff;
+      box-shadow:0 4px 12px rgba(16,185,129,.18);
+    }
+
+    .tl-popup-v3 .tl-popup-action-google {
+      order: 1;
+      min-height: 36px;
+      background:#fff;
+      border-color:#b9d3ea;
+      color:#1a73e8;
+    }
+
+    .tl-popup-v3 .tl-popup-toggle {
+      margin-top: 2px;
+      background:#f1f6fa;
+      color:#155e9a;
+      border:1px solid #dce8f2;
+    }
+
+    .tl-popup-v3 .tl-live-card[data-tl-live="ready"] .tl-live-refresh {
+      display:none;
+    }
+
+
+    @media (max-width: 600px) {
+      .tl-popup-v3 {
+        width:min(360px,92vw);
+        max-height:65vh;
+      }
+      .tl-live-hero-value { font-size:27px; }
+      .tl-weather-pill { font-size:8px; }
+      .tl-weather-pill strong { font-size:9px; }
+    }
+
 
     @media (max-width: 600px) {
       .tl-popup-container {
@@ -3832,43 +4085,24 @@ if (cameraBtn && imageInput) {
 
       function tlRenderWeather(card, data) {
         if (!card) return;
-
         const current = data?.current || {};
         const temperature = Number(current.temperature_2m);
         const precipitation = Number(current.precipitation);
         const humidity = Number(current.relative_humidity_2m);
         const wind = Number(current.wind_speed_10m);
         const next6 = tlWeatherNext6hRain(data);
-
         const body = card.querySelector('[data-tl-weather-body]');
         const updated = card.querySelector('[data-tl-weather-updated]');
         if (!body) return;
-
         body.innerHTML = `
-          <div class="tl-weather-grid">
-            <div class="tl-weather-item">
-              <div class="tl-weather-label">🌡️ Nhiệt độ</div>
-              <div class="tl-weather-value">${tlFormatNumber(temperature, 1)} °C</div>
-            </div>
-            <div class="tl-weather-item">
-              <div class="tl-weather-label">🌧️ Mưa hiện tại</div>
-              <div class="tl-weather-value">${tlFormatNumber(precipitation, 1)} mm</div>
-            </div>
-            <div class="tl-weather-item">
-              <div class="tl-weather-label">💧 Độ ẩm</div>
-              <div class="tl-weather-value">${tlFormatNumber(humidity, 0)} %</div>
-            </div>
-            <div class="tl-weather-item">
-              <div class="tl-weather-label">💨 Gió</div>
-              <div class="tl-weather-value">${tlFormatNumber(wind, 1)} km/h</div>
-            </div>
+          <div class="tl-weather-strip">
+            <div class="tl-weather-pill">🌧️ Mưa<strong>${tlFormatNumber(precipitation,1)} mm</strong></div>
+            <div class="tl-weather-pill">🌡️ Nhiệt độ<strong>${tlFormatNumber(temperature,1)} °C</strong></div>
+            <div class="tl-weather-pill">💧 Độ ẩm<strong>${tlFormatNumber(humidity,0)} %</strong></div>
+            <div class="tl-weather-pill">💨 Gió<strong>${tlFormatNumber(wind,1)} km/h</strong></div>
           </div>
-          <div class="tl-weather-forecast">
-            ☁️ <strong>Dự báo mưa 6 giờ tới:</strong>
-            ${next6 == null ? '—' : tlFormatNumber(next6, 1) + ' mm'}
-          </div>
+          <div class="tl-weather-forecast">☁️ <strong>Dự báo 6 giờ:</strong> ${next6 == null ? '—' : tlFormatNumber(next6,1) + ' mm'}</div>
         `;
-
         if (updated) updated.textContent = 'Cập nhật ' + tlWeatherCurrentLabel();
         card.dataset.tlWeather = 'ready';
       }
@@ -3989,6 +4223,70 @@ if (cameraBtn && imageInput) {
         }
       }
 
+      function tlLiveHistoryKey(facility) {
+        return 'TL_LIVE_HISTORY_V1:' + String(facility || '').trim();
+      }
+
+      function tlTrackLiveHistory(facility, water) {
+        const value = Number(water?.value);
+        if (!String(facility || '').trim() || !Number.isFinite(value)) return [];
+        try {
+          const key = tlLiveHistoryKey(facility);
+          const old = JSON.parse(localStorage.getItem(key) || '[]');
+          const now = water?.time || new Date().toISOString();
+          const arr = Array.isArray(old) ? old.filter(x => Number.isFinite(Number(x?.v))) : [];
+          const last = arr[arr.length - 1];
+          if (!last || Math.abs(Number(last.v) - value) > 0.000001 || String(last.t) !== String(now)) {
+            arr.push({ t: now, v: value });
+          }
+          const trimmed = arr.slice(-24);
+          localStorage.setItem(key, JSON.stringify(trimmed));
+          return trimmed;
+        } catch (_) {
+          return [{ t: water?.time || new Date().toISOString(), v: value }];
+        }
+      }
+
+      function tlSparklineSvg(points) {
+        const arr = (Array.isArray(points) ? points : []).filter(x => Number.isFinite(Number(x?.v)));
+        if (arr.length < 2) return '';
+        const vals = arr.map(x => Number(x.v));
+        const min = Math.min(...vals), max = Math.max(...vals);
+        const range = Math.max(max - min, 0.001);
+        const w = 300, h = 48, pad = 3;
+        const pts = vals.map((v,i) => {
+          const x = pad + (i * (w - pad*2) / Math.max(vals.length-1,1));
+          const y = h-pad - ((v-min)/range) * (h-pad*2);
+          return [x,y];
+        });
+        const line = pts.map(p => p.join(',')).join(' ');
+        const last = pts[pts.length-1];
+        return `<svg class="tl-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Diễn biến mực nước">
+          <polyline points="${line}" fill="none" stroke="#0ea5e9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="${last[0]}" cy="${last[1]}" r="3.2" fill="#ffffff" stroke="#0284c7" stroke-width="2"/>
+        </svg>`;
+      }
+
+      function tlBuildLevelGauge(waterValue, dead, mndbt, mndgc) {
+        const h = Number(waterValue), d = Number(dead), b = Number(mndbt), c = Number(mndgc);
+        if (!Number.isFinite(h) || !Number.isFinite(c) || c <= 0) return '';
+        const low = Number.isFinite(d) ? d : 0;
+        const span = Math.max(c - low, 0.001);
+        const pct = Math.max(0, Math.min(100, (h-low)/span*100));
+        const bPct = Number.isFinite(b) ? Math.max(0, Math.min(100,(b-low)/span*100)) : null;
+        return `<div class="tl-level-gauge">
+          <div class="tl-level-gauge-track">
+            <div class="tl-level-gauge-fill" style="width:${pct.toFixed(1)}%"></div>
+            ${bPct == null ? '' : `<span class="tl-level-marker" style="left:${bPct.toFixed(1)}%" title="MNDBT"></span>`}
+          </div>
+          <div class="tl-level-gauge-legend">
+            <span>${Number.isFinite(d) ? 'MNC '+tlLiveFormatNumber(d,2)+' m' : 'MNC —'}</span>
+            <span>${Number.isFinite(b) ? 'MNDBT '+tlLiveFormatNumber(b,2)+' m' : 'MNDBT —'}</span>
+            <span>MNDGC ${tlLiveFormatNumber(c,2)} m</span>
+          </div>
+        </div>`;
+      }
+
       function tlRenderLive(card, payload) {
         if (!card) return;
         const body = card.querySelector('[data-tl-live-body]');
@@ -3998,54 +4296,61 @@ if (cameraBtn && imageInput) {
         const data = payload?.data || payload || {};
         const water = data.water_level || null;
         const rainfall = data.rainfall || null;
+        const flow = data.flow || data.discharge || data.luu_luong || null;
         const limits = data.limits || {};
         const status = data.status || {};
         const statusLevel = ['danger', 'warning', 'info'].includes(status.level) ? status.level : '';
+        const facility = card.dataset.tlLiveFacility || '';
 
         const waterLabel = water?.parameter || 'Mực nước';
         const waterTime = water?.time ? tlLiveTimeLabel(water.time) : '—';
         const rainLabel = rainfall?.parameter || 'Lượng mưa';
         const rainTime = rainfall?.time ? tlLiveTimeLabel(rainfall.time) : '—';
+        const history = tlTrackLiveHistory(facility, water);
+        const chart = tlSparklineSvg(history);
+        const previous = history.length >= 2 ? Number(history[history.length-2].v) : null;
+        const current = Number(water?.value);
+        const delta = Number.isFinite(current) && Number.isFinite(previous) ? current - previous : null;
+        const trendClass = delta == null || Math.abs(delta) < 0.001 ? 'stable' : delta > 0 ? 'up' : 'down';
+        const trendText = delta == null ? '→ Chờ xu hướng' : Math.abs(delta) < 0.001 ? '→ Ổn định' : `${delta > 0 ? '↗' : '↘'} ${delta > 0 ? '+' : ''}${delta.toFixed(2)} m`;
+
+        const heroFlow = flow && Number.isFinite(Number(flow.value));
+        const hero = heroFlow
+          ? `<div class="tl-live-hero-label">Lưu lượng hiện tại</div><div><span class="tl-live-hero-value">${tlLiveFormatNumber(flow.value,2)}</span><span class="tl-live-hero-unit">${esc(flow.unit || 'm³/s')}</span></div>`
+          : `<div class="tl-live-hero-label">${esc(waterLabel)}</div><div><span class="tl-live-hero-value">${water ? tlLiveFormatNumber(water.value,2) : '—'}</span><span class="tl-live-hero-unit">m</span></div>`;
+
+        const gauge = !heroFlow ? tlBuildLevelGauge(current, card.dataset.deadLevel, limits.MNDBT, limits.MNDGC) : '';
 
         body.innerHTML = `
           <div class="tl-live-status ${statusLevel}">
             ${status.label ? esc(status.label) : 'Đã kết nối AI_DATA'}
             ${status.message ? '<br><span style="font-weight:600;">' + esc(status.message) + '</span>' : ''}
           </div>
+          <div class="tl-live-hero">
+            <div>${hero}</div>
+            <div class="tl-live-trend ${trendClass}">${trendText}</div>
+          </div>
+          ${chart ? `<div class="tl-sparkline-wrap">${chart}<div class="tl-sparkline-axis"><span>24h</span><span>Hiện tại</span></div></div>` : ''}
+          ${gauge}
           <div class="tl-live-grid">
-            <div class="tl-live-item">
-              <div class="tl-live-label">💧 ${esc(waterLabel)}</div>
-              <div class="tl-live-value">${water ? tlLiveFormatNumber(water.value, 2) + ' m' : '—'}</div>
-            </div>
-            <div class="tl-live-item">
-              <div class="tl-live-label">🌧️ ${esc(rainLabel)}</div>
-              <div class="tl-live-value">${rainfall ? tlLiveFormatNumber(rainfall.value, 2) + ' mm' : '—'}</div>
-            </div>
-            <div class="tl-live-item">
-              <div class="tl-live-label">📏 MNDBT</div>
-              <div class="tl-live-value">${limits.MNDBT == null ? '—' : tlLiveFormatNumber(limits.MNDBT, 2) + ' m'}</div>
-            </div>
-            <div class="tl-live-item">
-              <div class="tl-live-label">📏 MNDGC</div>
-              <div class="tl-live-value">${limits.MNDGC == null ? '—' : tlLiveFormatNumber(limits.MNDGC, 2) + ' m'}</div>
-            </div>
+            <div class="tl-live-item"><div class="tl-live-label">🌧️ ${esc(rainLabel)}</div><div class="tl-live-value">${rainfall ? tlLiveFormatNumber(rainfall.value,2) + ' mm' : '—'}</div></div>
+            <div class="tl-live-item"><div class="tl-live-label">📏 MNDBT</div><div class="tl-live-value">${limits.MNDBT == null ? '—' : tlLiveFormatNumber(limits.MNDBT,2) + ' m'}</div></div>
+            <div class="tl-live-item"><div class="tl-live-label">📏 MNDGC</div><div class="tl-live-value">${limits.MNDGC == null ? '—' : tlLiveFormatNumber(limits.MNDGC,2) + ' m'}</div></div>
+            ${heroFlow ? `<div class="tl-live-item"><div class="tl-live-label">💧 ${esc(waterLabel)}</div><div class="tl-live-value">${water ? tlLiveFormatNumber(water.value,2) + ' m' : '—'}</div></div>` : ''}
           </div>
-          <div class="tl-live-note">
-            🕒 Mực nước: ${esc(waterTime)}<br>
-            🕒 Lượng mưa: ${esc(rainTime)}
-          </div>
-          <button type="button" class="tl-live-refresh">🔄 Cập nhật số liệu thực tế</button>
+          <div class="tl-live-note">🕒 ${heroFlow && flow?.time ? 'Lưu lượng: '+esc(tlLiveTimeLabel(flow.time)) : 'Mực nước: '+esc(waterTime)}<br>🕒 Lượng mưa: ${esc(rainTime)}</div>
+          <button type="button" class="tl-live-refresh">↻ Cập nhật số liệu thực tế</button>
         `;
 
-        if (updated) updated.textContent = data.updated_label ? 'AI_DATA • ' + data.updated_label : 'AI_DATA';
+        if (updated) updated.textContent = data.updated_label ? data.updated_label : 'LIVE';
+        const popupUpdated = card.closest('.tl-popup-container')?.querySelector('[data-tl-popup-updated]');
+        if (popupUpdated) popupUpdated.textContent = data.updated_label ? 'Cập nhật ' + data.updated_label : 'LIVE • đã kết nối';
         card.dataset.tlLive = 'ready';
 
         const refresh = body.querySelector('.tl-live-refresh');
-        if (refresh) {
-          refresh.addEventListener('click', function() {
-            tlLoadLiveForPopup(card, card.dataset.tlLiveFacility || '', true);
-          });
-        }
+        if (refresh) refresh.addEventListener('click', function() {
+          tlLoadLiveForPopup(card, card.dataset.tlLiveFacility || '', true);
+        });
       }
 
       function tlRenderLiveError(card, error) {
@@ -4150,16 +4455,19 @@ if (cameraBtn && imageInput) {
           p.tinh_trang || p.TinhTrang || 'Chưa cập nhật';
 
         const statusText = String(statusVal);
+        const statusLower = statusText.toLowerCase();
         const statusColor =
-          statusText.toLowerCase().includes('tốt') ||
-          statusText.toLowerCase().includes('bình thường') ||
-          statusText.toLowerCase().includes('ổn định') ||
-          statusText.toLowerCase().includes('hoạt động') ? '#10b981' :
-          statusText.toLowerCase().includes('xấu') ||
-          statusText.toLowerCase().includes('hỏng') ||
-          statusText.toLowerCase().includes('không hoạt động') ? '#ef4444' :
-          statusText.toLowerCase().includes('cảnh báo') ||
-          statusText.toLowerCase().includes('bất thường') ? '#f59e0b' : '#10b981';
+          statusLower.includes('xấu') ||
+          statusLower.includes('hỏng') ||
+          statusLower.includes('không hoạt động') ? '#ef4444' :
+          statusLower.includes('cảnh báo') ||
+          statusLower.includes('bất thường') ||
+          statusLower.includes('nguy hiểm') ||
+          statusLower.includes('cần kiểm tra') ? '#f59e0b' :
+          statusLower.includes('tốt') ||
+          statusLower.includes('bình thường') ||
+          statusLower.includes('ổn định') ||
+          statusLower.includes('hoạt động') ? '#10b981' : '#64748b';
 
         // ---------------------------------------------------------
         // Tọa độ: GIỮ NGUYÊN cách lấy tọa độ của GIS hiện hữu.
@@ -4241,6 +4549,8 @@ if (cameraBtn && imageInput) {
         // Thông tin vận hành:
         // Chỉ hiển thị các trường đã có; không thay đổi dữ liệu nguồn.
         // ---------------------------------------------------------
+        const deadLevel = p.MNC ?? p.mnc ?? p.MucNuocChet ?? p.muc_nuoc_chet ?? p.MucNuocChet;
+
         const operationCandidates = [
           ['Vận hành', p.van_hanh ?? p.VanHanh ?? p.vanHanh],
           ['Đơn vị quản lý', p.don_vi ?? p.DonVi ?? p.donVi ?? p.don_vi_quan_ly ?? p.DonViQuanLy],
@@ -4271,7 +4581,7 @@ if (cameraBtn && imageInput) {
         ` : '';
 
         let html = `
-          <div class="tl-popup-container tl-popup-v2">
+          <div class="tl-popup-container tl-popup-v2 tl-popup-v3">
 
             <!-- ① HEADER CÔNG TRÌNH -->
             <div class="tl-popup-header" style="--header-bg:${headerColor};">
@@ -4279,6 +4589,7 @@ if (cameraBtn && imageInput) {
               <div class="tl-popup-title-group">
                 <div class="tl-popup-name">${e(name)}</div>
                 <span class="tl-popup-badge">${e(label)}</span>
+                <div class="tl-popup-header-meta" data-tl-popup-updated>Theo dõi vận hành • LIVE</div>
               </div>
             </div>
 
@@ -4293,19 +4604,16 @@ if (cameraBtn && imageInput) {
                 </div>
               </div>
 
-              <!-- ③ THÔNG SỐ KỸ THUẬT CỐT LÕI -->
-              ${coreSection}
-
-              <!-- ④ QUAN TRẮC THỰC TẾ AI_DATA
+              <!-- ③ QUAN TRẮC THỰC TẾ
                    GIỮ NGUYÊN LIVE ENGINE VERCEL -->
               <div class="tl-popup-section tl-popup-live-section">
                 <div class="tl-popup-section-head">
                   <span>📊</span>
-                  <span>Quan trắc thực tế – AI_DATA</span>
+                  <span>Số liệu quan trắc thực tế</span>
                   <span class="tl-popup-source-badge">LIVE</span>
                 </div>
 
-                <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}">
+                <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}" data-dead-level="${deadLevel == null ? '' : e(deadLevel)}">
                   <div class="tl-live-head">
                     <div class="tl-live-title">📊 Số liệu hiện tại</div>
                     <div class="tl-live-updated" data-tl-live-updated>AI_DATA</div>
@@ -4315,6 +4623,9 @@ if (cameraBtn && imageInput) {
                   </div>
                 </div>
               </div>
+
+              <!-- ④ THÔNG SỐ KỸ THUẬT CỐT LÕI -->
+              ${coreSection}
 
               <!-- ⑤ THỜI TIẾT
                    GIỮ NGUYÊN WEATHER ENGINE ĐANG CHẠY ĐƯỢC -->
@@ -4392,19 +4703,7 @@ if (cameraBtn && imageInput) {
                   <button type="button" class="tl-popup-action tl-popup-action-refresh"
                           onclick="this.closest('.tl-popup-container').querySelector('.tl-live-refresh')?.click();">
                     <span class="action-icon">🔄</span>
-                    <span>Cập nhật thực tế</span>
-                  </button>
-
-                  <button type="button" class="tl-popup-action tl-popup-action-report"
-                          onclick="document.getElementById('fieldReportBtn')?.click();">
-                    <span class="action-icon">📋</span>
-                    <span>Báo cáo hiện trường</span>
-                  </button>
-
-                  <button type="button" class="tl-popup-action tl-popup-action-map"
-                          onclick="document.getElementById('mapAiBtn')?.click();">
-                    <span class="action-icon">🗺️</span>
-                    <span>Bản đồ AI</span>
+                    <span>Cập nhật số liệu</span>
                   </button>
 
                 </div>
@@ -4415,7 +4714,7 @@ if (cameraBtn && imageInput) {
                       onclick="
                         const detail=this.nextElementSibling;
                         detail.classList.toggle('open');
-                        this.textContent=detail.classList.contains('open')?'🔼 THU GỌN':'🔎 XEM CHI TIẾT';
+                        this.textContent=detail.classList.contains('open')?'🔼 THU GỌN':'Xem toàn bộ dữ liệu công trình →';
                       ">
                 🔎 XEM CHI TIẾT
               </button>
@@ -4444,8 +4743,8 @@ if (cameraBtn && imageInput) {
         // KHÔNG thay đổi cơ chế GIS hiện hữu.
         // ---------------------------------------------------------
         layer.bindPopup(html, {
-          maxWidth: 360,
-          minWidth: 220,
+          maxWidth: 400,
+          minWidth: 280,
           closeButton: true,
           autoPan: true,
           autoPanPadding: [20, 20]
