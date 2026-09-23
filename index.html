@@ -4311,138 +4311,149 @@ if (cameraBtn && imageInput) {
         }
       }
 
-      function tlWaterLevelChart(points, currentValue, mndbt) {
-        const raw = (Array.isArray(points) ? points : [])
-          .map(x => ({ t: new Date(x?.t), v: Number(x?.v) }))
-          .filter(x => Number.isFinite(x.v) && !Number.isNaN(x.t.getTime()))
-          .sort((a, b) => a.t - b.t);
+      function tlNiceTicks(min, max, targetCount = 4) {
+  const range = Math.max(max - min, 0.001);
+  const rawStep = range / targetCount;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  let step;
+  if (norm < 1.5) step = 1 * mag;
+  else if (norm < 3) step = 2 * mag;
+  else if (norm < 7) step = 5 * mag;
+  else step = 10 * mag;
+  const niceMin = Math.floor(min / step) * step;
+  const niceMax = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = niceMin; v <= niceMax + 1e-9; v += step) ticks.push(Number(v.toFixed(6)));
+  return ticks;
+}
 
-        const now = raw.length ? raw[raw.length - 1].t : new Date();
-        const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        const arr = raw.filter(x => x.t >= cutoff && x.t <= now);
-        const current = Number.isFinite(Number(currentValue)) ? Number(currentValue) : (arr.length ? arr[arr.length - 1].v : null);
-        if (current != null && (!arr.length || Math.abs(arr[arr.length - 1].v - current) > 0.000001)) {
-          arr.push({ t: now, v: current });
-        }
+function tlWaterLevelChart(points, currentValue, mndbt) {
+  const raw = (Array.isArray(points) ? points : [])
+    .map(x => ({ t: new Date(x?.t), v: Number(x?.v) }))
+    .filter(x => Number.isFinite(x.v) && !Number.isNaN(x.t.getTime()))
+    .sort((a, b) => a.t - b.t);
 
-        const vals = arr.map(x => x.v).filter(Number.isFinite);
-        const ref = Number(mndbt);
-        if (!vals.length) return '';
+  const now = raw.length ? raw[raw.length - 1].t : new Date();
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const arr = raw.filter(x => x.t >= cutoff && x.t <= now);
+  const current = Number.isFinite(Number(currentValue)) ? Number(currentValue) : (arr.length ? arr[arr.length - 1].v : null);
+  if (current != null && (!arr.length || Math.abs(arr[arr.length - 1].v - current) > 0.000001)) {
+    arr.push({ t: now, v: current });
+  }
 
-        const minData = Math.min(...vals);
-        const maxData = Math.max(...vals);
-        const minValue = Math.min(minData, Number.isFinite(ref) ? ref : minData);
-        const maxValue = Math.max(maxData, Number.isFinite(ref) ? ref : maxData);
-        const range = Math.max(maxValue - minValue, 0.05);
-        const padValue = Math.max(range * 0.12, 0.02);
-        const yMin = minValue - padValue;
-        const yMax = maxValue + padValue;
+  const vals = arr.map(x => x.v).filter(Number.isFinite);
+  const ref = Number(mndbt);
+  if (!vals.length) return '';
 
-        const w = 320, h = 112;
-        const left = 34, right = 8, top = 12, bottom = 24;
-        const plotW = w - left - right;
-        const plotH = h - top - bottom;
-        const xFor = t => left + ((t.getTime() - cutoff.getTime()) / (24 * 60 * 60 * 1000)) * plotW;
-        const yFor = v => top + (1 - ((v - yMin) / (yMax - yMin))) * plotH;
-        const pointsSvg = arr.map(x => `${xFor(x.t).toFixed(1)},${yFor(x.v).toFixed(1)}`).join(' ');
-        const last = arr[arr.length - 1];
-        const lastX = xFor(last.t), lastY = yFor(last.v);
-        const areaPoints = arr.length > 1
-          ? `${left},${(top + plotH).toFixed(1)} ${pointsSvg} ${xFor(last.t).toFixed(1)},${(top + plotH).toFixed(1)}`
-          : '';
-        const refY = Number.isFinite(ref) ? yFor(ref) : null;
-        const timeLabels = [0, 6, 12, 18, 24].map(hours => {
-          const d = new Date(now.getTime() - (24 - hours) * 60 * 60 * 1000);
-          const label = `${String(d.getHours()).padStart(2,'0')}h`;
-          return { x: left + (hours / 24) * plotW, label };
-        });
-        const minLabel = tlLiveFormatNumber(minData, 2);
-        const maxLabel = tlLiveFormatNumber(maxData, 2);
-        const dataEnough = arr.length >= 2;
-// Trạng thái thiếu dữ liệu lịch sử: hiển thị gọn thay vì vẽ chart gây hiểu lầm
-if (!dataEnough) {
-  const onlyValue = current == null ? '—' : tlLiveFormatNumber(current, 2);
-  const refText = Number.isFinite(ref) ? `Cách MNDBT: ${tlLiveFormatNumber(ref - (current||0), 2)} m` : '';
-  return `<div class="tl-water-chart-wrap" aria-label="Mực nước hiện tại — chưa đủ dữ liệu lịch sử">
-    <div class="tl-water-chart-title"><span>Diễn biến mực nước 24 giờ</span></div>
-    <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;height:112px;gap:4px;">
-      <div style="font-size:26px;font-weight:850;color:#0b2a44;">${onlyValue}<span style="font-size:13px;font-weight:650;color:#64748b;margin-left:3px;">m</span></div>
-      ${refText ? `<div style="font-size:10px;color:#dc2626;font-weight:700;">${refText}</div>` : ''}
-      <div style="font-size:9.5px;color:#94a3b8;margin-top:2px;">📡 Đang thu thập dữ liệu lịch sử — biểu đồ xu hướng sẽ hiện sau khi đủ mẫu</div>
+  const dataEnough = arr.length >= 2;
+
+  // Trạng thái thiếu dữ liệu lịch sử: hiển thị gọn thay vì vẽ chart gây hiểu lầm
+  if (!dataEnough) {
+    const onlyValue = current == null ? '—' : tlLiveFormatNumber(current, 2);
+    const refText = Number.isFinite(ref) ? `Cách MNDBT: ${tlLiveFormatNumber(ref - (current||0), 2)} m` : '';
+    return `<div class="tl-water-chart-wrap" aria-label="Mực nước hiện tại — chưa đủ dữ liệu lịch sử">
+      <div class="tl-water-chart-title"><span>Diễn biến mực nước 24 giờ</span></div>
+      <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;height:112px;gap:4px;">
+        <div style="font-size:26px;font-weight:850;color:#0b2a44;">${onlyValue}<span style="font-size:13px;font-weight:650;color:#64748b;margin-left:3px;">m</span></div>
+        ${refText ? `<div style="font-size:10px;color:#dc2626;font-weight:700;">${refText}</div>` : ''}
+        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px;">📡 Đang thu thập dữ liệu lịch sử — biểu đồ xu hướng sẽ hiện sau khi đủ mẫu</div>
+      </div>
+      <div class="tl-water-chart-foot"><span>● Mực nước</span>${Number.isFinite(ref) ? '<span>┄ MNDBT</span>' : ''}<span>1 mẫu thực tế</span></div>
+    </div>`;
+  }
+
+  const minData = Math.min(...vals);
+  const maxData = Math.max(...vals);
+  const boundMin = Math.min(minData, Number.isFinite(ref) ? ref : minData);
+  const boundMax = Math.max(maxData, Number.isFinite(ref) ? ref : maxData);
+
+  // Trục Y dùng số tròn (22-24-26-28 kiểu mockup) thay vì min/max thô
+  const ticks = tlNiceTicks(boundMin, boundMax, 3);
+  const yMin = ticks[0];
+  const yMax = ticks[ticks.length - 1];
+
+  const w = 320, h = 130;
+  const left = 30, right = 8, top = 12, bottom = 26;
+  const plotW = w - left - right;
+  const plotH = h - top - bottom;
+  const xFor = t => left + ((t.getTime() - cutoff.getTime()) / (24 * 60 * 60 * 1000)) * plotW;
+  const yFor = v => top + (1 - ((v - yMin) / (yMax - yMin))) * plotH;
+  const pointsSvg = arr.map(x => `${xFor(x.t).toFixed(1)},${yFor(x.v).toFixed(1)}`).join(' ');
+  const last = arr[arr.length - 1];
+  const lastX = xFor(last.t), lastY = yFor(last.v);
+  const areaPoints = `${left},${(top + plotH).toFixed(1)} ${pointsSvg} ${xFor(last.t).toFixed(1)},${(top + plotH).toFixed(1)}`;
+  const refY = Number.isFinite(ref) && ref >= yMin && ref <= yMax ? yFor(ref) : null;
+  const timeLabels = [0, 6, 12, 18, 24].map(hours => {
+    const d = new Date(now.getTime() - (24 - hours) * 60 * 60 * 1000);
+    const label = `${String(d.getHours()).padStart(2,'0')}h`;
+    return { x: left + (hours / 24) * plotW, label };
+  });
+
+  // Badge co giãn theo độ dài số để không vỡ khi mực nước có 3 chữ số hoặc âm.
+  const currentNumber = tlLiveFormatNumber(current, 2);
+  const currentUnit = 'm';
+  const badgeText = currentNumber + ' ' + currentUnit;
+  const badgeH = 19;
+  const badgeGap = 7;
+  const badgeW = Math.max(46, Math.round(badgeText.length * 6.1) + 20);
+  let badgeX = lastX + badgeGap;
+  let badgeY = lastY - badgeH / 2;
+  let pointerSide = 'left';
+  if (badgeX + badgeW > w - 2) {
+    badgeX = lastX - badgeGap - badgeW;
+    pointerSide = 'right';
+  }
+  if (badgeX < 2) badgeX = 2;
+  if (badgeY < 2) badgeY = Math.min(h - bottom - badgeH, lastY + 7);
+  if (badgeY + badgeH > h - 2) badgeY = Math.max(2, lastY - badgeH - 7);
+  const badgeMidY = badgeY + badgeH / 2;
+  const badgeMidX = badgeX + badgeW / 2;
+  const pointer = pointerSide === 'left'
+    ? `${lastX},${lastY} ${badgeX},${badgeMidY-4} ${badgeX},${badgeMidY+4}`
+    : `${lastX},${lastY} ${badgeX+badgeW},${badgeMidY-4} ${badgeX+badgeW},${badgeMidY+4}`;
+
+  const dataEnoughText = arr.length + ' mẫu thực tế';
+
+  return `<div class="tl-water-chart-wrap" aria-label="Diễn biến mực nước trong 24 giờ">
+    <div class="tl-water-chart-title">
+      <span>Diễn biến mực nước (m)</span>
     </div>
-    <div class="tl-water-chart-foot"><span>● Mực nước</span>${Number.isFinite(ref) ? '<span>┄ MNDBT</span>' : ''}<span>1 mẫu thực tế</span></div>
+    <svg class="tl-water-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Biểu đồ mực nước 24 giờ">
+      <defs>
+        <linearGradient id="tlWaterLineGradient" x1="${left}" y1="0" x2="${w-right}" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#1E40AF"/>
+          <stop offset="100%" stop-color="#38BDF8"/>
+        </linearGradient>
+        <linearGradient id="tlWaterAreaGradient" x1="0" y1="${top}" x2="0" y2="${top+plotH}" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#38BDF8" stop-opacity=".35"/>
+          <stop offset="100%" stop-color="#38BDF8" stop-opacity=".03"/>
+        </linearGradient>
+        <filter id="tlWaterLastShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#0f172a" flood-opacity=".22"/>
+        </filter>
+      </defs>
+      ${ticks.map(t => `<line x1="${left}" y1="${yFor(t).toFixed(1)}" x2="${w-right}" y2="${yFor(t).toFixed(1)}" stroke="#e7edf3" stroke-width="1"/><text x="${left-6}" y="${(yFor(t)+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#7b8d9b">${t}</text>`).join('')}
+      ${refY == null ? '' : `<line x1="${left}" y1="${refY.toFixed(1)}" x2="${w-right}" y2="${refY.toFixed(1)}" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="5 4"/><text x="${w-right-2}" y="${Math.max(9, refY-4).toFixed(1)}" text-anchor="end" font-size="8" font-weight="700" fill="#dc2626">MNDBT ${tlLiveFormatNumber(ref,2)} m</text>`}
+      <polygon points="${areaPoints}" fill="url(#tlWaterAreaGradient)"/>
+      <polyline points="${pointsSvg}" fill="none" stroke="url(#tlWaterLineGradient)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+      ${arr.slice(0, -1).map(x => `<circle class="tl-chart-hover-point" cx="${xFor(x.t).toFixed(1)}" cy="${yFor(x.v).toFixed(1)}" r="5" fill="#38BDF8"><title>${x.t.toLocaleString('vi-VN')} — ${tlLiveFormatNumber(x.v,2)} m</title></circle>`).join('')}
+      <circle class="tl-chart-last-halo" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="7" fill="rgba(56,189,248,.20)"/>
+      <circle class="tl-chart-last" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4.7" fill="#38BDF8" stroke="#ffffff" stroke-width="2.2">
+        <title>${last.t.toLocaleString('vi-VN')} — ${currentNumber} m</title>
+      </circle>
+      <polygon points="${pointer}" fill="#1E40AF"/>
+      <rect x="${badgeX.toFixed(1)}" y="${badgeY.toFixed(1)}" width="${badgeW}" height="${badgeH}" rx="9.5" fill="#1E40AF" class="tl-chart-last"/>
+      <text x="${badgeMidX.toFixed(1)}" y="${(badgeY + 12.2).toFixed(1)}" text-anchor="middle" font-size="9.3" font-weight="800" fill="#ffffff">${currentNumber}<tspan dx="2" font-size="6.7" font-weight="600" opacity=".9">${currentUnit}</tspan></text>
+      ${timeLabels.map(t => `<text x="${t.x.toFixed(1)}" y="${h-9}" text-anchor="middle" font-size="8" fill="#64748b">${t.label}</text>`).join('')}
+    </svg>
+    <div class="tl-water-chart-foot" style="justify-content:center;gap:16px;padding-top:5px;border-top:1px solid #edf2f6;">
+      <span style="display:inline-flex;align-items:center;gap:5px;color:#0284c7;font-weight:700;"><span style="width:14px;height:2.5px;background:#38BDF8;border-radius:2px;display:inline-block;"></span>Mực nước</span>
+      ${refY == null ? '' : `<span style="display:inline-flex;align-items:center;gap:5px;color:#dc2626;font-weight:700;"><span style="width:14px;height:0;border-top:2px dashed #ef4444;display:inline-block;"></span>MNDBT</span>`}
+      <span style="color:#94a3b8;">${dataEnoughText}</span>
+    </div>
   </div>`;
 }
-        // Last-value badge: keep it attached to the final point, but flip left/up
-        // when the current point is too close to the right/top edge.
-       // Last-value badge: keep it attached to the final point, but flip left/up
-// when the current point is too close to the right/top edge.
-// Badge co giãn theo độ dài số để không vỡ khi mực nước có 3 chữ số hoặc âm.
-const currentNumber = current == null ? '—' : tlLiveFormatNumber(current,2);
-const currentUnit = current == null ? '' : 'm';
-const badgeText = currentNumber + (currentUnit ? ' ' + currentUnit : '');
-const badgeH = 19;
-const badgeGap = 7;
-const badgeW = Math.max(46, Math.round(badgeText.length * 6.1) + 20);
-let badgeX = lastX + badgeGap;
-let badgeY = lastY - badgeH / 2;
-let pointerSide = 'left';
-if (badgeX + badgeW > w - 2) {
-  badgeX = lastX - badgeGap - badgeW;
-  pointerSide = 'right';
-}
-if (badgeX < 2) badgeX = 2; // chốt an toàn: badge không bao giờ bị cắt viền trái
-if (badgeY < 2) badgeY = Math.min(h - bottom - badgeH, lastY + 7);
-if (badgeY + badgeH > h - 2) badgeY = Math.max(2, lastY - badgeH - 7);
-const badgeMidY = badgeY + badgeH / 2;
-const badgeMidX = badgeX + badgeW / 2;
-const pointer = pointerSide === 'left'
-  ? `${lastX},${lastY} ${badgeX},${badgeMidY-4} ${badgeX},${badgeMidY+4}`
-  : `${lastX},${lastY} ${badgeX+badgeW},${badgeMidY-4} ${badgeX+badgeW},${badgeMidY+4}`;
-        const dataEnoughText = dataEnough ? arr.length + ' mẫu thực tế' : 'Chưa đủ dữ liệu lịch sử 24h';
-
-        return `<div class="tl-water-chart-wrap" aria-label="Diễn biến mực nước trong 24 giờ">
-          <div class="tl-water-chart-title">
-            <span>Diễn biến mực nước 24 giờ</span>
-          </div>
-          <svg class="tl-water-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Biểu đồ mực nước 24 giờ">
-            <defs>
-              <linearGradient id="tlWaterLineGradient" x1="${left}" y1="0" x2="${w-right}" y2="0" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#1E40AF"/>
-                <stop offset="100%" stop-color="#38BDF8"/>
-              </linearGradient>
-              <linearGradient id="tlWaterAreaGradient" x1="0" y1="${top}" x2="0" y2="${top+plotH}" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#38BDF8" stop-opacity=".38"/>
-                <stop offset="100%" stop-color="#38BDF8" stop-opacity=".03"/>
-              </linearGradient>
-              <filter id="tlWaterLastShadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#0f172a" flood-opacity=".22"/>
-              </filter>
-            </defs>
-            <line x1="${left}" y1="${top + plotH}" x2="${w-right}" y2="${top + plotH}" stroke="#dbe5ee" stroke-width="1"/>
-            <line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" stroke="#dbe5ee" stroke-width="1"/>
-            <line x1="${left}" y1="${top + plotH/2}" x2="${w-right}" y2="${top + plotH/2}" stroke="#edf2f7" stroke-width="1" stroke-dasharray="3 3"/>
-            ${refY == null ? '' : `<line x1="${left}" y1="${refY.toFixed(1)}" x2="${w-right}" y2="${refY.toFixed(1)}" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="5 4"/><text x="${w-right-2}" y="${Math.max(9, refY-4).toFixed(1)}" text-anchor="end" font-size="8" font-weight="700" fill="#dc2626">MNDBT ${tlLiveFormatNumber(ref,2)} m</text>`}
-            ${areaPoints ? `<polygon points="${areaPoints}" fill="url(#tlWaterAreaGradient)"/>` : ''}
-            ${dataEnough ? `<polyline points="${pointsSvg}" fill="none" stroke="url(#tlWaterLineGradient)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
-            ${dataEnough ? arr.slice(0, -1).map(x => `<circle class="tl-chart-hover-point" cx="${xFor(x.t).toFixed(1)}" cy="${yFor(x.v).toFixed(1)}" r="5" fill="#38BDF8"><title>${x.t.toLocaleString('vi-VN')} — ${tlLiveFormatNumber(x.v,2)} m</title></circle>`).join('') : ''}
-            <circle class="tl-chart-last-halo" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="7" fill="rgba(56,189,248,.20)"/>
-            <circle class="tl-chart-last" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4.7" fill="#38BDF8" stroke="#ffffff" stroke-width="2.2">
-              <title>${last.t.toLocaleString('vi-VN')} — ${currentNumber} m</title>
-            </circle>
-            <polygon points="${pointer}" fill="#1E40AF"/>
-            <rect x="${badgeX.toFixed(1)}" y="${badgeY.toFixed(1)}" width="${badgeW}" height="${badgeH}" rx="9.5" fill="#1E40AF" class="tl-chart-last"/>
-           <text x="${badgeMidX.toFixed(1)}" y="${(badgeY + 12.2).toFixed(1)}" text-anchor="middle" font-size="9.3" font-weight="800" fill="#ffffff">${currentNumber}<tspan dx="2" font-size="6.7" font-weight="600" opacity=".9">${currentUnit}</tspan></text>
-            <text x="${left-5}" y="${top+plotH}" text-anchor="end" font-size="8" fill="#64748b">${minLabel}</text>
-            ${timeLabels.map(t => `<text x="${t.x.toFixed(1)}" y="${h-7}" text-anchor="middle" font-size="8" fill="#64748b">${t.label}</text>`).join('')}
-          </svg>
-          <div class="tl-water-chart-foot">
-            <span>● Mực nước</span>
-            ${refY == null ? '' : '<span>┄ MNDBT</span>'}
-            <span>${dataEnoughText}</span>
-          </div>
-        </div>`;
-      }
 
       function tlBuildLevelGauge(waterValue, dead, mndbt, mndgc) {
         const h = Number(waterValue), d = Number(dead), b = Number(mndbt), c = Number(mndgc);
