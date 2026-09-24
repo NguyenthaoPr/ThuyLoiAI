@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=VpQTm-rZGrPsBsqWgbgF-Zd77Zx76ExjICri3N_dKTbMVFBq5QWUvq30kgRNGq8fLGDzP1guxE5s8TI1Qkr5S19fWz9g9NNpiw0soW672yHCK8bAGMqy0KWU0HYDY1xDsJF2WZZOyz4daNLvRG-GUGzBNYy3btyxgkfQT0YQEbQSqBgpXJ-mPZQ1PtfQBh7WOZj4TUdOSjsvZNpFl3y-nppBz2piST3N_eq04kCiptLE63_JmlWXh6nYBYcx9y70Ai3kdWDT2qw3-DmP-yhViAHfTu6n7mbG0DifQKKs7gZ81Lx-Td1VLITpFmL9vQspxjRuyCpjJH0aStvn4uh62g" charset="UTF-8"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=B3pcovcXBbhq95Nt-eesIg-BBg-0Rlz6Eh7c_Uii9rPNLXTQEvBswo1jiOXaQwb30C_kqoH4jcIsBXK6Xo6VaQS2E6XuNW3n6deqmuELE4ZuevMnWYmlImhWxIg5zpcYEYxkwaoTMqVv_sVbrNfNOIiWb2Kbh4rG4Wya0YUkQTH822zaf8mPqZMjceefwIGxPdLRh9W_b4TGjM-ISwlusdHAB9Y_PkgzPJcsnq63CqvwezbRtpKi73cN2ox7TPbM90oynjK-Ficd9cYsrTxMRoBmxeVRMm-iovHTP5-vh8cEh9iippN5HLjbeRgnoA8KZQqzULjFqKwmGKqqjNLdbg" charset="UTF-8"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -4814,11 +4814,23 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
     tlFetchChartHistory(facility, card.dataset.facilityCode || '').catch(() => [])
   ]);
   tlRenderLive(card, data, chartPoints);
+
+  // Z–F–V–Q là lớp bổ sung. KHÔNG chạy đồng thời với LIVE trên mobile.
+  // Đợi Popup ổn định rồi mới tính, tránh tạo 2 request Engine ngay lúc mở Popup.
   if (card.dataset.facilityType === 'ho') {
-    // Z–F–V–Q là lớp bổ sung; lỗi của Engine hồ không làm hỏng LIVE hiện tại.
-    tlLoadReservoirForPopup(card, facility, data, force).catch(function(error) {
-      console.warn('🏞️ Reservoir popup load error:', error);
-    });
+    const delay = window.matchMedia && window.matchMedia('(max-width: 600px)').matches ? 1400 : 700;
+    const runReservoir = function() {
+      const popup = card.closest('.tl-popup-container');
+      if (!popup || !document.body.contains(popup)) return;
+      tlLoadReservoirForPopup(card, facility, data, force).catch(function(error) {
+        console.warn('🏞️ Reservoir popup load error:', error);
+      });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(runReservoir, { timeout: delay + 1200 });
+    } else {
+      window.setTimeout(runReservoir, delay);
+    }
   }
 } catch (error) {
   tlRenderLiveError(card, error);
@@ -4990,41 +5002,68 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
         `;
       }
 
+      const TL_RESERVOIR_CACHE = new Map();
+      const TL_RESERVOIR_CACHE_TTL = 60 * 1000;
+
       async function tlFetchReservoirMetrics(facility, waterLevel, force = false) {
+        const facilityKey = String(facility || '').trim();
+        const zKey = Number.isFinite(Number(waterLevel)) ? Number(waterLevel).toFixed(2) : 'na';
+        const cacheKey = facilityKey + '|' + zKey;
+        const now = Date.now();
+
+        if (!force) {
+          const cached = TL_RESERVOIR_CACHE.get(cacheKey);
+          if (cached && (now - cached.time) < TL_RESERVOIR_CACHE_TTL) return cached.metrics;
+        }
+
         const qs = new URLSearchParams();
-        qs.set('facility', String(facility || ''));
+        qs.set('facility', facilityKey);
         qs.set('waterLevel', String(waterLevel));
         if (force) qs.set('fresh', '1');
-        const cacheBust = force ? '&ts=' + Date.now() : '';
 
-        const stateUrl = TL_TECHNICAL_API_BASE + '/api/reservoir-state?' + qs.toString() + cacheBust;
-        const qUrl = TL_TECHNICAL_API_BASE + '/api/reservoir-q?' + qs.toString() + cacheBust;
+        const requestJson = async (path) => {
+          const controller = new AbortController();
+          const timer = window.setTimeout(() => controller.abort(), 5500);
+          try {
+            const response = await fetch(TL_TECHNICAL_API_BASE + path + '?' + qs.toString(), {
+              method: 'GET',
+              cache: force ? 'no-store' : 'default',
+              mode: 'cors',
+              headers: { 'Accept': 'application/json' },
+              signal: controller.signal
+            });
+            if (!response.ok) return { ok: false, payload: {} };
+            return { ok: true, payload: await response.json() };
+          } finally {
+            window.clearTimeout(timer);
+          }
+        };
 
-        const [stateResponse, qResponse] = await Promise.all([
-          fetch(stateUrl, {
-            method: 'GET',
-            cache: 'no-store',
-            mode: 'cors',
-            headers: { 'Accept': 'application/json' }
-          }),
-          fetch(qUrl, {
-            method: 'GET',
-            cache: 'no-store',
-            mode: 'cors',
-            headers: { 'Accept': 'application/json' }
-          })
-        ]);
+        // Chỉ gọi Q riêng khi state chưa cung cấp Q.
+        // Như vậy lần mở Popup bình thường thường chỉ có 1 request Engine.
+        let stateResult = await requestJson('/api/reservoir-state');
+        let statePayload = stateResult.payload || {};
+        let state = tlReservoirUnwrap(statePayload);
+        let qPayload = state;
+        let qResult = { ok: false };
 
-        const statePayload = stateResponse.ok ? await stateResponse.json() : {};
-        const qPayload = qResponse.ok ? await qResponse.json() : {};
+        const hasQ = tlReservoirPick(state, ['q_m3s', 'Q_m3s', 'spillway_q_m3s', 'spillwayQ_m3s', 'Q', 'q']) != null
+          || tlReservoirPick(state?.spillway_q || state?.spillwayQ || {}, ['q_m3s', 'value', 'Q']) != null;
 
-        if (!stateResponse.ok && !qResponse.ok) {
+        if (!hasQ) {
+          qResult = await requestJson('/api/reservoir-q');
+          qPayload = qResult.payload || {};
+        }
+
+        if (!stateResult.ok && !qResult.ok) {
           const err = new Error('Reservoir Engine không trả dữ liệu.');
-          err.status = stateResponse.status || qResponse.status;
+          err.status = 0;
           throw err;
         }
 
-        return tlReservoirNormalize(statePayload, qPayload, waterLevel);
+        const metrics = tlReservoirNormalize(statePayload, qPayload, waterLevel);
+        TL_RESERVOIR_CACHE.set(cacheKey, { time: Date.now(), metrics });
+        return metrics;
       }
 
       async function tlLoadReservoirForPopup(card, facility, livePayload, force = false) {
@@ -5061,10 +5100,10 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
             body.innerHTML = `
               <div class="tl-reservoir-error">
                 ⚠️ Chưa lấy được dữ liệu Z–F–V–Q.
-                <button type="button" class="tl-live-refresh" style="margin-top:6px;">↻ Thử lại</button>
+                <button type="button" class="tl-reservoir-retry" style="margin-top:6px;">↻ Thử lại</button>
               </div>
             `;
-            body.querySelector('.tl-live-refresh')?.addEventListener('click', function() {
+            body.querySelector('.tl-reservoir-retry')?.addEventListener('click', function() {
               tlLoadReservoirForPopup(card, facility, livePayload, true);
             });
           }
