@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=VpQTm-rZGrPsBsqWgbgF-Zd77Zx76ExjICri3N_dKTbMVFBq5QWUvq30kgRNGq8fLGDzP1guxE5s8TI1Qkr5S19fWz9g9NNpiw0soW672yHCK8bAGMqy0KWU0HYDY1xDsJF2WZZOyz4daNLvRG-GUGzBNYy3btyxgkfQT0YQEbQSqBgpXJ-mPZQ1PtfQBh7WOZj4TUdOSjsvZNpFl3y-nppBz2piST3N_eq04kCiptLE63_JmlWXh6nYBYcx9y70Ai3kdWDT2qw3-DmP-yhViAHfTu6n7mbG0DifQKKs7gZ81Lx-Td1VLITpFmL9vQspxjRuyCpjJH0aStvn4uh62g" charset="UTF-8"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -2810,7 +2810,204 @@
         display: none !important;
       }
     }
-  </style>
+  
+    /* =========================================================
+       POPUP SAFE PATCH – HỒ CHỨA Z–F–V–Q
+       CHỈ BỔ SUNG PRESENTATION/RESPONSIVE, KHÔNG ĐỔI DATA ENGINE
+       ========================================================= */
+    .tl-reservoir-section {
+      margin: 0 0 10px;
+    }
+
+    .tl-reservoir-card {
+      padding: 9px;
+      border: 1px solid #dce8f2;
+      border-radius: 14px;
+      background: #fbfdff;
+      box-shadow: 0 3px 12px rgba(15,39,66,.04);
+    }
+
+    .tl-reservoir-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .tl-reservoir-item {
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid #e7eef4;
+      border-radius: 11px;
+      background: #fff;
+    }
+
+    .tl-reservoir-label {
+      font-size: 8px;
+      line-height: 1.2;
+      color: #78909c;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .25px;
+    }
+
+    .tl-reservoir-value {
+      margin-top: 3px;
+      font-size: 16px;
+      line-height: 1.05;
+      color: #0b2a44;
+      font-weight: 850;
+      letter-spacing: -.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tl-reservoir-unit {
+      margin-left: 3px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748b;
+      letter-spacing: 0;
+    }
+
+    .tl-reservoir-note {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px 8px;
+      margin-top: 7px;
+      padding-top: 7px;
+      border-top: 1px solid #edf2f6;
+      color: #64748b;
+      font-size: 8px;
+      line-height: 1.4;
+    }
+
+    .tl-reservoir-note strong {
+      color: #52697c;
+    }
+
+    .tl-reservoir-loading,
+    .tl-reservoir-error {
+      padding: 8px 9px;
+      border-radius: 10px;
+      font-size: 9px;
+      line-height: 1.4;
+    }
+
+    .tl-reservoir-loading {
+      color: #52697c;
+      background: #f4f7fa;
+    }
+
+    .tl-reservoir-error {
+      color: #9a3412;
+      background: #fff7ed;
+    }
+
+    .tl-reservoir-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 8px;
+      font-weight: 800;
+    }
+
+    .tl-reservoir-status.live {
+      background: #ecfdf5;
+      color: #047857;
+    }
+
+    .tl-reservoir-status.warn {
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    /* Không để Leaflet ép Popup thành quá cao trên điện thoại.
+       Nội dung vẫn đầy đủ và cuộn ở .tl-popup-body. */
+    .leaflet-popup-content-wrapper {
+      max-height: min(70vh, 680px);
+    }
+
+    .leaflet-popup-content {
+      max-height: min(70vh, 680px);
+      overflow: hidden !important;
+    }
+
+    .tl-popup-v3 {
+      width: min(390px, 92vw);
+      max-width: 390px;
+      max-height: min(70vh, 680px);
+    }
+
+    .tl-popup-v3 .tl-popup-body {
+      min-height: 0;
+      max-height: calc(min(70vh, 680px) - 72px);
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+
+    @media (max-width: 600px) {
+      .leaflet-popup-content-wrapper,
+      .leaflet-popup-content {
+        max-height: 68vh;
+      }
+
+      .tl-popup-v3 {
+        width: min(360px, 92vw);
+        max-width: 92vw;
+        max-height: 68vh;
+      }
+
+      .tl-popup-v3 .tl-popup-body {
+        max-height: calc(68vh - 68px);
+        padding: 9px 10px 11px;
+      }
+
+      .tl-reservoir-card {
+        padding: 8px;
+        border-radius: 13px;
+      }
+
+      .tl-reservoir-item {
+        padding: 7px 8px;
+      }
+
+      .tl-reservoir-value {
+        font-size: 15px;
+      }
+
+      .tl-reservoir-unit {
+        font-size: 8px;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .tl-popup-v3 {
+        width: 92vw;
+        max-width: 92vw;
+      }
+
+      .tl-popup-v3 .tl-popup-body {
+        max-height: calc(66vh - 64px);
+      }
+
+      .tl-reservoir-grid {
+        gap: 5px;
+      }
+
+      .tl-reservoir-value {
+        font-size: 14px;
+      }
+    }
+
+</style>
   <meta name="viewport"
       content="width=device-width,
                initial-scale=1,
@@ -4617,6 +4814,12 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
     tlFetchChartHistory(facility, card.dataset.facilityCode || '').catch(() => [])
   ]);
   tlRenderLive(card, data, chartPoints);
+  if (card.dataset.facilityType === 'ho') {
+    // Z–F–V–Q là lớp bổ sung; lỗi của Engine hồ không làm hỏng LIVE hiện tại.
+    tlLoadReservoirForPopup(card, facility, data, force).catch(function(error) {
+      console.warn('🏞️ Reservoir popup load error:', error);
+    });
+  }
 } catch (error) {
   tlRenderLiveError(card, error);
 }
@@ -4639,6 +4842,236 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
       // GIỮ NGUYÊN GIS / SEARCH / WEATHER ENGINE / LIVE ENGINE
       // Chỉ nâng cấp lớp trình bày Popup và bổ sung các điểm truy cập chức năng.
       // =========================================================
+
+      // =========================================================
+      // RESERVOIR ENGINE – Z–F–V–Q
+      // BỔ SUNG ĐỘC LẬP, KHÔNG THAY ĐỔI LIVE ENGINE HIỆN CÓ.
+      // Ưu tiên object reservoir nếu /api/live đã trả về;
+      // nếu chưa có thì gọi các endpoint Engine hồ chứa hiện hữu.
+      // =========================================================
+      function tlReservoirNumber(value, digits = 2) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toFixed(digits) : '—';
+      }
+
+      function tlReservoirUnwrap(payload) {
+        return payload?.data || payload?.result || payload || {};
+      }
+
+      function tlReservoirPick(obj, keys) {
+        for (const key of keys) {
+          const value = obj?.[key];
+          if (value !== undefined && value !== null && value !== '') return value;
+        }
+        return null;
+      }
+
+      function tlReservoirNormalize(statePayload, qPayload, waterLevel) {
+        const state = tlReservoirUnwrap(statePayload);
+        const qRoot = tlReservoirUnwrap(qPayload);
+
+        const areaObj = state.area || state.F || {};
+        const volumeObj = state.volume || state.V || {};
+        const qObj = state.spillway_q || state.spillwayQ || state.Q || qRoot.spillway_q || qRoot.Q || qRoot;
+
+        const z = tlReservoirPick(state, [
+          'water_level_m', 'waterLevel', 'water_level', 'Z', 'z', 'H', 'h'
+        ]) ?? waterLevel;
+
+        const fRaw = tlReservoirPick(state, [
+          'area_km2', 'area_ha', 'area_m2', 'F', 'f'
+        ]) ?? tlReservoirPick(areaObj, ['km2', 'ha', 'm2', 'value']);
+
+        const vRaw = tlReservoirPick(state, [
+          'volume_million_m3', 'volume_m3', 'V', 'v'
+        ]) ?? tlReservoirPick(volumeObj, ['million_m3', 'm3', 'value']);
+
+        const qRaw = tlReservoirPick(qRoot, [
+          'q_m3s', 'Q_m3s', 'spillway_q_m3s', 'spillwayQ_m3s', 'Q', 'q'
+        ]) ?? tlReservoirPick(qObj, ['q_m3s', 'value', 'Q']);
+
+        let fValue = fRaw;
+        let fUnit = 'km²';
+        if (fRaw != null) {
+          if (state.area_km2 != null || areaObj.km2 != null) {
+            fValue = state.area_km2 ?? areaObj.km2;
+            fUnit = 'km²';
+          } else if (state.area_ha != null || areaObj.ha != null) {
+            fValue = state.area_ha ?? areaObj.ha;
+            fUnit = 'ha';
+          } else if (state.area_m2 != null || areaObj.m2 != null) {
+            fValue = Number(state.area_m2 ?? areaObj.m2) / 1e6;
+            fUnit = 'km²';
+          } else if (typeof fRaw === 'number' && fRaw > 10000) {
+            fValue = Number(fRaw) / 1e6;
+            fUnit = 'km²';
+          }
+        }
+
+        let vValue = vRaw;
+        let vUnit = 'triệu m³';
+        if (vRaw != null) {
+          if (state.volume_million_m3 != null || volumeObj.million_m3 != null) {
+            vValue = state.volume_million_m3 ?? volumeObj.million_m3;
+          } else if (state.volume_m3 != null || volumeObj.m3 != null) {
+            vValue = Number(state.volume_m3 ?? volumeObj.m3) / 1e6;
+          } else if (typeof vRaw === 'number' && vRaw > 100000) {
+            vValue = Number(vRaw) / 1e6;
+          }
+        }
+
+        return {
+          id: state.reservoir_id || state.id || state.code || '',
+          name: state.reservoir || state.name || '',
+          Z: z,
+          F: fValue,
+          FUnit: fUnit,
+          V: vValue,
+          VUnit: vUnit,
+          Q: qRaw,
+          qMode: qRoot.mode || qRoot.algorithm || state.q_mode || '',
+          source: qRoot.source_module || state.source_module || state.source || '',
+          curveRange: qRoot.curve_range || state.curve_range || ''
+        };
+      }
+
+      function tlRenderReservoirMetrics(card, metrics, loading = false) {
+        if (!card) return;
+        const body = card.querySelector('[data-tl-reservoir-body]');
+        if (!body) return;
+
+        if (loading) {
+          body.innerHTML = '<div class="tl-reservoir-loading">⏳ Đang tính Z–F–V–Q từ Engine hồ chứa…</div>';
+          return;
+        }
+
+        const m = metrics || {};
+        const hasAny = [m.Z, m.F, m.V, m.Q].some(v => Number.isFinite(Number(v)));
+        if (!hasAny) {
+          body.innerHTML = `
+            <div class="tl-reservoir-error">
+              ℹ️ Chưa có kết quả Z–F–V–Q cho hồ này.
+            </div>
+          `;
+          return;
+        }
+
+        const qFinite = Number.isFinite(Number(m.Q));
+        const qStatus = qFinite
+          ? `<span class="tl-reservoir-status live">● Q tràn đã tính</span>`
+          : `<span class="tl-reservoir-status warn">• Chưa có Q</span>`;
+
+        body.innerHTML = `
+          <div class="tl-reservoir-grid">
+            <div class="tl-reservoir-item">
+              <div class="tl-reservoir-label">Z • Mực nước</div>
+              <div class="tl-reservoir-value">${tlReservoirNumber(m.Z,2)}<span class="tl-reservoir-unit">m</span></div>
+            </div>
+            <div class="tl-reservoir-item">
+              <div class="tl-reservoir-label">F • Diện tích</div>
+              <div class="tl-reservoir-value">${tlReservoirNumber(m.F,2)}<span class="tl-reservoir-unit">${esc(m.FUnit || 'km²')}</span></div>
+            </div>
+            <div class="tl-reservoir-item">
+              <div class="tl-reservoir-label">V • Dung tích</div>
+              <div class="tl-reservoir-value">${tlReservoirNumber(m.V,2)}<span class="tl-reservoir-unit">triệu m³</span></div>
+            </div>
+            <div class="tl-reservoir-item">
+              <div class="tl-reservoir-label">Q • Qua tràn</div>
+              <div class="tl-reservoir-value">${tlReservoirNumber(m.Q,2)}<span class="tl-reservoir-unit">m³/s</span></div>
+            </div>
+          </div>
+          <div class="tl-reservoir-note">
+            ${m.id ? `<span><strong>Hồ:</strong> ${esc(m.name || m.id)}</span>` : ''}
+            ${m.source ? `<span><strong>Nguồn Q:</strong> ${esc(m.source)}</span>` : ''}
+            ${m.qMode ? `<span><strong>Thuật toán:</strong> ${esc(m.qMode)}</span>` : ''}
+            ${m.curveRange ? `<span><strong>Khoảng Z:</strong> ${esc(m.curveRange)}</span>` : ''}
+            ${qStatus}
+          </div>
+        `;
+      }
+
+      async function tlFetchReservoirMetrics(facility, waterLevel, force = false) {
+        const qs = new URLSearchParams();
+        qs.set('facility', String(facility || ''));
+        qs.set('waterLevel', String(waterLevel));
+        if (force) qs.set('fresh', '1');
+        const cacheBust = force ? '&ts=' + Date.now() : '';
+
+        const stateUrl = TL_TECHNICAL_API_BASE + '/api/reservoir-state?' + qs.toString() + cacheBust;
+        const qUrl = TL_TECHNICAL_API_BASE + '/api/reservoir-q?' + qs.toString() + cacheBust;
+
+        const [stateResponse, qResponse] = await Promise.all([
+          fetch(stateUrl, {
+            method: 'GET',
+            cache: 'no-store',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' }
+          }),
+          fetch(qUrl, {
+            method: 'GET',
+            cache: 'no-store',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' }
+          })
+        ]);
+
+        const statePayload = stateResponse.ok ? await stateResponse.json() : {};
+        const qPayload = qResponse.ok ? await qResponse.json() : {};
+
+        if (!stateResponse.ok && !qResponse.ok) {
+          const err = new Error('Reservoir Engine không trả dữ liệu.');
+          err.status = stateResponse.status || qResponse.status;
+          throw err;
+        }
+
+        return tlReservoirNormalize(statePayload, qPayload, waterLevel);
+      }
+
+      async function tlLoadReservoirForPopup(card, facility, livePayload, force = false) {
+        if (!card || card.dataset.facilityType !== 'ho') return;
+
+        const reservoirCard = card.closest('.tl-popup-container')?.querySelector('.tl-reservoir-card');
+        if (!reservoirCard) return;
+
+        const liveData = tlReservoirUnwrap(livePayload);
+        const direct = liveData.reservoir || liveData.reservoir_state || null;
+        const water = liveData.water_level || {};
+        const waterLevel = Number(water.value ?? liveData.water_level_m ?? direct?.Z ?? direct?.water_level_m);
+
+        tlRenderReservoirMetrics(reservoirCard, null, true);
+
+        try {
+          let metrics;
+
+          if (direct) {
+            metrics = tlReservoirNormalize(direct, direct, waterLevel);
+          } else {
+            if (!Number.isFinite(waterLevel)) {
+              throw new Error('Chưa có mực nước H/Z để tính Z–F–V–Q.');
+            }
+            metrics = await tlFetchReservoirMetrics(facility, waterLevel, force);
+          }
+
+          tlRenderReservoirMetrics(reservoirCard, metrics, false);
+          reservoirCard.dataset.tlReservoir = 'ready';
+        } catch (error) {
+          reservoirCard.dataset.tlReservoir = 'error';
+          const body = reservoirCard.querySelector('[data-tl-reservoir-body]');
+          if (body) {
+            body.innerHTML = `
+              <div class="tl-reservoir-error">
+                ⚠️ Chưa lấy được dữ liệu Z–F–V–Q.
+                <button type="button" class="tl-live-refresh" style="margin-top:6px;">↻ Thử lại</button>
+              </div>
+            `;
+            body.querySelector('.tl-live-refresh')?.addEventListener('click', function() {
+              tlLoadReservoirForPopup(card, facility, livePayload, true);
+            });
+          }
+          console.warn('🏞️ Reservoir Z–F–V–Q error:', error);
+        }
+      }
+
       function buildModernPopup(feature, layer) {
         const p = feature.properties || {};
         const type = getCongTrinhType(p, feature.geometry);
@@ -4839,7 +5272,7 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
                   <span class="tl-popup-source-badge">LIVE</span>
                 </div>
 
-               <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}" data-facility-code="${e(code)}" data-dead-level="${deadLevel == null ? '' : e(deadLevel)}">
+               <div class="tl-live-card" data-tl-live="pending" data-tl-live-facility="${e(name)}" data-facility-code="${e(code)}" data-facility-type="${e(type)}" data-dead-level="${deadLevel == null ? '' : e(deadLevel)}">
                   <div class="tl-live-head">
                     <div class="tl-live-title">📊 Số liệu hiện tại</div>
                     <div class="tl-live-updated" data-tl-live-updated>AI_DATA</div>
@@ -4850,10 +5283,27 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
                 </div>
               </div>
 
-              <!-- ④ THÔNG SỐ KỸ THUẬT CỐT LÕI -->
+              <!-- ④ DỮ LIỆU BỔ SUNG HỒ CHỨA: Z–F–V–Q
+                   Chỉ xuất hiện với hồ; không thay đổi nội dung hiện có. -->
+              ${type === 'ho' ? `
+                <div class="tl-popup-section tl-reservoir-section">
+                  <div class="tl-popup-section-head">
+                    <span>🏞️</span>
+                    <span>Thông số hồ chứa • Z–F–V–Q</span>
+                    <span class="tl-popup-source-badge">ENGINE</span>
+                  </div>
+                  <div class="tl-reservoir-card" data-tl-reservoir="pending">
+                    <div data-tl-reservoir-body>
+                      <div class="tl-reservoir-loading">⏳ Đang chờ mực nước thực tế để tính Z–F–V–Q…</div>
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- ⑤ THÔNG SỐ KỸ THUẬT CỐT LÕI -->
               ${coreSection}
 
-              <!-- ⑤ THỜI TIẾT
+              <!-- ⑥ THỜI TIẾT
                    GIỮ NGUYÊN WEATHER ENGINE ĐANG CHẠY ĐƯỢC -->
               ${hasPosition ? `
                 <div class="tl-popup-section tl-popup-weather-section">
@@ -4875,10 +5325,10 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
                 </div>
               ` : ''}
 
-              <!-- ⑥ THÔNG TIN VẬN HÀNH -->
+              <!-- ⑦ THÔNG TIN VẬN HÀNH -->
               ${operationSection}
 
-              <!-- ⑦ THÔNG TIN NHẬN DIỆN -->
+              <!-- ⑧ THÔNG TIN NHẬN DIỆN -->
               <div class="tl-popup-section">
                 <div class="tl-popup-section-head">
                   <span>📍</span>
@@ -4909,7 +5359,7 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
                 </div>
               </div>
 
-              <!-- ⑧ CÁC CHỨC NĂNG -->
+              <!-- ⑨ CÁC CHỨC NĂNG -->
               <div class="tl-popup-section tl-popup-actions-section">
                 <div class="tl-popup-section-head">
                   <span>⚡</span>
@@ -4935,7 +5385,7 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
                 </div>
               </div>
 
-              <!-- ⑨ CHI TIẾT -->
+              <!-- ⑩ CHI TIẾT -->
               <button class="tl-popup-toggle" type="button"
                       onclick="
                         const detail=this.nextElementSibling;
