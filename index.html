@@ -7479,6 +7479,28 @@ closeMapAi.addEventListener('click', function() {
   #mapAiPanel #closeMapAi{width:40px!important;padding:0!important;justify-content:center!important}
 }
 
+
+
+/* =========================================================
+   MAP CLEAN UI V2 — ẨN HUD THỐNG KÊ TRÊN MOBILE + DESKTOP
+   Đối tượng GIS / Công trình / Khu tưới
+   Chỉ thay đổi presentation, không xóa DOM và không đụng JS/data.
+   ========================================================= */
+#mapAiPanel .map-hud {
+  display: none !important;
+}
+#mapAiPanel .map-hud-card {
+  display: none !important;
+}
+
+@media (max-width: 600px) {
+  #mapAiPanel .map-hud {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+
 </style>
 
 <script>
