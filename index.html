@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08233d">
   <title>THỦY LỢI AI</title>
-  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=B3pcovcXBbhq95Nt-eesIg-BBg-0Rlz6Eh7c_Uii9rPNLXTQEvBswo1jiOXaQwb30C_kqoH4jcIsBXK6Xo6VaQS2E6XuNW3n6deqmuELE4ZuevMnWYmlImhWxIg5zpcYEYxkwaoTMqVv_sVbrNfNOIiWb2Kbh4rG4Wya0YUkQTH822zaf8mPqZMjceefwIGxPdLRh9W_b4TGjM-ISwlusdHAB9Y_PkgzPJcsnq63CqvwezbRtpKi73cN2ox7TPbM90oynjK-Ficd9cYsrTxMRoBmxeVRMm-iovHTP5-vh8cEh9iippN5HLjbeRgnoA8KZQqzULjFqKwmGKqqjNLdbg" charset="UTF-8"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -5959,6 +5959,35 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
       // =========================================================
       // 12. KHỞI TẠO BẢN ĐỒ AI (SỬA LỖI + INDEX)
       // =========================================================
+      // =========================================================
+      // MOBILE PERFORMANCE GUARD V6
+      // Không thay đổi dữ liệu/API/GIS; chỉ chia nhỏ việc render để
+      // điện thoại không bị khóa main-thread khi GeoJSON lớn.
+      // =========================================================
+      const TL_IS_MOBILE = window.matchMedia && window.matchMedia('\(max-width: 700px\)').matches;
+      const TL_MOBILE_POINT_BATCH = 60;
+      const TL_DESKTOP_POINT_BATCH = 180;
+      const TL_MOBILE_NONPOINT_BATCH = 80;
+      const TL_DESKTOP_NONPOINT_BATCH = 300;
+      const TL_MOBILE_SEARCH_DELAY = 3500;
+      const TL_DESKTOP_SEARCH_DELAY = 700;
+
+      function tlYieldToBrowser(callback) {
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(function() { setTimeout(callback, 0); });
+        } else {
+          setTimeout(callback, 16);
+        }
+      }
+
+      function tlRunWhenIdle(callback, timeout) {
+        if ('requestIdleCallback' in window) {
+          window.requestIdleCallback(callback, { timeout: timeout || 2000 });
+        } else {
+          setTimeout(callback, Math.min(timeout || 1200, 1200));
+        }
+      }
+
       async function initAiMap() {
         if (aiMap) {
           setTimeout(function() { aiMap.invalidateSize(); }, 200);
@@ -6143,10 +6172,10 @@ function tlWaterLevelChart(points, currentValue, mndbt) {
           markerCluster = L.markerClusterGroup({
             // Chunking ở chính cluster giúp tránh khóa UI khi có hàng nghìn marker.
             chunkedLoading: true,
-            chunkInterval: 50,
-            chunkDelay: 20,
+            chunkInterval: TL_IS_MOBILE ? 20 : 50,
+            chunkDelay: TL_IS_MOBILE ? 35 : 20,
             maxClusterRadius: 60,
-            spiderfyOnMaxZoom: true,
+            spiderfyOnMaxZoom: !TL_IS_MOBILE,
             disableClusteringAtZoom: 14,
             zoomToBoundsOnClick: true,
             animateAddingMarkers: false,
@@ -6758,26 +6787,53 @@ if (description) {
           if (statFacilities) statFacilities.textContent = result.cong_trinh != null ? Number(result.cong_trinh).toLocaleString('vi-VN') : pointFeatures.length.toLocaleString('vi-VN');
           if (statAreas) statAreas.textContent = result.khu_tuoi != null ? Number(result.khu_tuoi).toLocaleString('vi-VN') : '—';
 
-          // ĐƯỜNG + VÙNG: đưa lên bản đồ trước.
-          // addData(mảng) nhanh hơn rất nhiều so với addData từng feature.
-          if (nonPointFeatures.length) {
-            nonPointLayer.addData(nonPointFeatures);
-          }
-          // Áp dụng ngay chế độ clutter theo zoom hiện tại sau khi layer đã có dữ liệu.
-          updateGISZoomStyle();
-
-          // Đưa layer tuyến/vùng lên bản đồ NGAY.
+          // ĐƯỜNG + VÙNG: đưa layer rỗng lên bản đồ trước.
+          // Trên mobile KHÔNG addData toàn bộ GeoJSON trong một lượt vì
+          // một vòng render lớn có thể khóa main-thread và làm iPhone đứng.
           aiMapLayer.addLayer(nonPointLayer);
           aiMapLayer.addLayer(markerCluster);
           aiMapLoaded = true;
           aiMap.invalidateSize({ pan: false });
 
-          mapAiStatus.textContent =
-            '🗺️ Tuyến/khu tưới đã hiển thị — đang tải công trình...';
+          mapAiStatus.textContent = TL_IS_MOBILE
+            ? '🗺️ Bản đồ nền đã sẵn sàng — đang tải dữ liệu theo từng phần...'
+            : '🗺️ Tuyến/khu tưới đang hiển thị — đang tải công trình...';
+
+          let nonPointCursor = 0;
+          const NONPOINT_BATCH = TL_IS_MOBILE ? TL_MOBILE_NONPOINT_BATCH : TL_DESKTOP_NONPOINT_BATCH;
+
+          function processNonPointBatch() {
+            const end = Math.min(nonPointCursor + NONPOINT_BATCH, nonPointFeatures.length);
+            if (end > nonPointCursor) {
+              try {
+                nonPointLayer.addData(nonPointFeatures.slice(nonPointCursor, end));
+              } catch (e) {
+                console.warn('GIS non-point batch error:', e);
+              }
+              nonPointCursor = end;
+            }
+
+            if (nonPointCursor < nonPointFeatures.length) {
+              mapAiStatus.textContent =
+                '🗺️ Đang tải tuyến/khu tưới ' + nonPointCursor.toLocaleString('vi-VN') +
+                '/' + nonPointFeatures.length.toLocaleString('vi-VN') + '...';
+              tlYieldToBrowser(processNonPointBatch);
+              return;
+            }
+
+            // Chỉ chạy vòng duyệt style/label sau khi các lớp đã được nạp.
+            tlYieldToBrowser(function() {
+              updateGISZoomStyle();
+            });
+          }
+
+          if (nonPointFeatures.length) {
+            tlYieldToBrowser(processNonPointBatch);
+          }
 
           // Tạo marker nhẹ; popup chỉ tạo khi người dùng chạm vào marker.
           let pointCursor = 0;
-          const POINT_BATCH = 250;
+          const POINT_BATCH = TL_IS_MOBILE ? TL_MOBILE_POINT_BATCH : TL_DESKTOP_POINT_BATCH;
 
           function processPointBatch() {
             const batch = [];
@@ -6793,7 +6849,7 @@ if (description) {
                 {
                   icon: getCongTrinhIcon(getCongTrinhType(feature.properties, feature.geometry)),
                   zIndexOffset: 1000,
-                  riseOnHover: true
+                  riseOnHover: !TL_IS_MOBILE
                 }
               );
 
@@ -6825,28 +6881,31 @@ if (description) {
               mapAiStatus.textContent =
                 '📍 Đang tải công trình ' + pointCursor.toLocaleString('vi-VN') +
                 '/' + pointFeatures.length.toLocaleString('vi-VN') + '...';
-              setTimeout(processPointBatch, 0);
+              tlYieldToBrowser(processPointBatch);
             } else {
               mapAiStatus.textContent =
                 '✅ Bản đồ đã hiển thị ' + features.length.toLocaleString('vi-VN') +
                 ' đối tượng.';
 
-              // Search Index chạy sau cùng, không chặn bản đồ.
-              setTimeout(function() {
-                buildSearchIndexDeferred();
-                mapAiStatus.textContent =
-                  '✅ Bản đồ sẵn sàng — Search Index: ' +
-                  searchIndex.length.toLocaleString('vi-VN') + ' bản ghi.';
-              }, 100);
+              // Search Index tuyệt đối không được tranh CPU với lần render đầu.
+              // Mobile chờ lâu hơn; dữ liệu bản đồ vẫn dùng được trong thời gian này.
+              window.setTimeout(function() {
+                tlRunWhenIdle(function() {
+                  buildSearchIndexDeferred();
+                  mapAiStatus.textContent =
+                    '✅ Bản đồ sẵn sàng — Search Index: ' +
+                    searchIndex.length.toLocaleString('vi-VN') + ' bản ghi.';
+                }, TL_IS_MOBILE ? 2500 : 1200);
+              }, TL_IS_MOBILE ? TL_MOBILE_SEARCH_DELAY : TL_DESKTOP_SEARCH_DELAY);
             }
           }
 
-          // Bắt đầu sau khi tuyến/vùng đã có cơ hội được paint lên màn hình.
-          setTimeout(processPointBatch, 0);
+          // Bắt đầu sau khi bản đồ nền đã có cơ hội paint.
+          tlYieldToBrowser(processPointBatch);
 
           setTimeout(function() {
             try { aiMap.invalidateSize({ pan: false }); } catch (e) {}
-          }, 300);
+          }, TL_IS_MOBILE ? 900 : 300);
 
         } catch (error) {
           console.error('AI MAP ERROR:', error);
