@@ -7586,4 +7586,53 @@ closeMapAi.addEventListener('click', function() {
 })();
 </script>
 </body>
+
+
+<!-- =========================================================
+     THỦY LỢI AI — MAP CLEAN UI V1
+     CHỈ THAY ĐỔI HIỂN THỊ UI; KHÔNG ĐỤNG DATA / GIS / JS
+     - Ẩn các chip tìm nhanh: Trạm bơm / Hồ / Kênh / Cống / Đập
+     - Ẩn các thẻ thống kê: Đối tượng GIS / Công trình / Khu tưới
+     - Ẩn thanh trạng thái tải bản đồ / Search Index
+     - Ẩn chú giải nổi để bản đồ trở thành vùng hiển thị chính
+     - Giữ nguyên HTML, dữ liệu, API, search engine, marker, popup, layer logic
+     ========================================================= -->
+<style id="map-clean-ui-v1">
+  /* Các thành phần chỉ là lớp trình bày, không xóa DOM để không ảnh hưởng JS */
+  #mapAiPanel .map-quick-chips,
+  #mapAiPanel #mapHud,
+  #mapAiPanel #mapLegend,
+  #mapAiPanel #mapAiStatus {
+    display: none !important;
+  }
+
+  /* Khi bỏ chip, đưa cụm điều khiển nổi lên gần thanh tìm kiếm */
+  #mapAiPanel #mapLayerBtn { top: 86px !important; }
+  #mapAiPanel #mapGpsBtn   { top: 140px !important; }
+  #mapAiPanel #mapHomeBtn  { top: 194px !important; }
+
+  /* Không tạo khoảng trống ảo do các lớp UI đã ẩn */
+  #mapAiPanel .map-container {
+    margin: 0 !important;
+  }
+
+  /* Search result vẫn hoạt động, nằm ngay dưới ô tìm kiếm */
+  #mapAiPanel #searchResults {
+    top: 148px !important;
+  }
+
+  @media (max-width: 700px) {
+    #mapAiPanel #mapLayerBtn { top: 64px !important; }
+    #mapAiPanel #mapGpsBtn   { top: 116px !important; }
+    #mapAiPanel #mapHomeBtn  { top: 168px !important; }
+
+    #mapAiPanel #searchResults {
+      top: 62px !important;
+      left: 64px !important;
+      right: 10px !important;
+      max-height: 42vh !important;
+    }
+  }
+</style>
+
 </html>
