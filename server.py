@@ -49,6 +49,10 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
+# ===== HỆ THỐNG BẢN ĐỒ KÊNH MƯƠNG KML/KMZ =====
+
+KML_DATA_DIR = BASE_DIR / "kml_data"
+KML_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # ===== GIS MASTER DATA - BỔ SUNG, KHÔNG THAY ĐỔI HỆ THỐNG CŨ =====
 GIS_MASTER_DIR = BASE_DIR / "gis_master"
 GIS_MASTER_DIR.mkdir(parents=True, exist_ok=True)
@@ -57,6 +61,7 @@ GIS_MASTER_KMZ = GIS_MASTER_DIR / "master.kmz"
 print(f"[GIS MASTER] BASE_DIR = {BASE_DIR}")
 print(f"[GIS MASTER] GIS_MASTER_DIR = {GIS_MASTER_DIR}")
 print(f"[GIS MASTER] GIS_MASTER_KMZ = {GIS_MASTER_KMZ}, EXISTS = {GIS_MASTER_KMZ.exists()}")
+GIS_MASTER_INDEX = GIS_MASTER_DIR / "gis_index.json"
 
 
 def parse_kml_coordinates(text):
@@ -625,7 +630,8 @@ def parse_kml_kmz(file_path):
 
         return []  
 # ============================================================
-# 4. GIS SUPPORT - GIS MASTER DÙNG CHO BÁO CÁO HIỆN TRƯỜNG
+# GIS MASTER DATA - ĐỌC KMZ DÙNG CHUNG
+# BỔ SUNG MỚI - KHÔNG THAY ĐỔI HỆ THỐNG CŨ
 # ============================================================
 
 def load_gis_master():
@@ -667,6 +673,7 @@ def load_gis_master():
 
 # Bộ nhớ GIS Master trong phiên chạy hiện tại
 GIS_MASTER_CACHE = None
+GIS_GEOJSON_CACHE = None
 
 
 def get_gis_master():
@@ -690,6 +697,164 @@ def get_gis_master():
 # ============================================================
 
 
+def kml_items_to_geojson(items):
+    """
+    KML/KMZ -> GeoJSON
+
+    Giữ nguyên:
+    - tên
+    - mô tả
+    - loại hình học
+    - màu KML
+    - độ dày KML
+    - opacity KML
+    - style ID
+    """
+
+    features = []
+
+    geometry_map = {
+        "Point": "Point",
+        "LineString": "LineString",
+        "Polygon": "Polygon",
+    }
+
+    for index, item in enumerate(items or []):
+
+        geometry_type = item.get(
+            "geometry_type"
+        )
+
+        coordinates = item.get(
+            "coordinates"
+        ) or []
+
+        if geometry_type not in geometry_map:
+            continue
+
+        if not coordinates:
+            continue
+
+        # ====================================================
+        # POINT
+        # ====================================================
+        if geometry_type == "Point":
+
+            geometry_coordinates = [
+                coordinates[0]["lng"],
+                coordinates[0]["lat"],
+            ]
+
+        # ====================================================
+        # LINE
+        # ====================================================
+        elif geometry_type == "LineString":
+
+            geometry_coordinates = [
+                [
+                    point["lng"],
+                    point["lat"]
+                ]
+                for point in coordinates
+            ]
+
+        # ====================================================
+        # POLYGON
+        # ====================================================
+        elif geometry_type == "Polygon":
+
+            ring = [
+                [
+                    point["lng"],
+                    point["lat"]
+                ]
+                for point in coordinates
+            ]
+
+            if ring and ring[0] != ring[-1]:
+                ring.append(ring[0])
+
+            geometry_coordinates = [ring]
+
+        else:
+            continue
+
+        # ====================================================
+        # GEOJSON FEATURE
+        # ====================================================
+        features.append({
+
+            "type": "Feature",
+
+            "id": index,
+
+            "properties": {
+
+                "name": item.get(
+                    "name",
+                    ""
+                ),
+
+                "description": item.get(
+                    "description",
+                    ""
+                ),
+
+                "geometry_type": geometry_type,
+
+                "gis_class": item.get(
+                    "gis_class",
+                    "CONG_TRINH"
+                ),
+
+                # ==========================================
+                # KML STYLE
+                # ==========================================
+                "kmlColor": item.get(
+                    "kml_color"
+                ),
+
+                "kmlWidth": item.get(
+                    "kml_width"
+                ),
+
+                "kmlLineOpacity": item.get(
+                    "kml_line_opacity"
+                ),
+
+                "kmlPolyColor": item.get(
+                    "kml_poly_color"
+                ),
+
+                "kmlPolyOpacity": item.get(
+                    "kml_poly_opacity"
+                ),
+
+                "kmlStyleId": item.get(
+                    "kml_style_id"
+                ),
+
+            },
+
+            "geometry": {
+
+                "type": geometry_map[
+                    geometry_type
+                ],
+
+                "coordinates": geometry_coordinates,
+
+            },
+
+        })
+
+    return {
+
+        "type": "FeatureCollection",
+
+        "features": features,
+
+    }
 # ============================================================
 # GIS CLASSIFICATION - BƯỚC 1
 # TÁCH KHU TƯỚI KHỎI CÔNG TRÌNH
@@ -900,6 +1065,35 @@ def classify_construction_type(item):
     # 7. CHƯA XÁC ĐỊNH
     # ========================================================
     return "KHAC"
+def get_active_kml_file():
+    """
+    Tìm file KML/KMZ đang có trong thư mục kml_data.
+
+    Ưu tiên file KMZ mới nhất.
+    Không tạo cơ chế nạp dữ liệu mới.
+    """
+    if not KML_DATA_DIR.exists():
+        return None
+
+    files = [
+        path
+        for path in KML_DATA_DIR.iterdir()
+        if path.is_file()
+        and path.suffix.lower() in {".kml", ".kmz"}
+    ]
+
+    if not files:
+        return None
+
+    kmz_files = [
+        path for path in files
+        if path.suffix.lower() == ".kmz"
+    ]
+
+    if kmz_files:
+        return max(kmz_files, key=lambda path: path.stat().st_mtime)
+
+    return max(files, key=lambda path: path.stat().st_mtime)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
@@ -1379,6 +1573,7 @@ def detect_operational_datetime(
         )
 
     return ngay, gio
+
 
 
 def detect_operational_construction(
@@ -1924,6 +2119,71 @@ app.add_middleware(
 # GIS DATA API - BƯỚC 1
 # ============================================================
 
+@app.get("/gis/data")
+async def gis_data():
+    """
+    Trả dữ liệu GIS dưới dạng GeoJSON.
+
+    Tối ưu tốc độ:
+    - Parse KMZ/KML chỉ một lần trong RAM.
+    - Chuyển sang GeoJSON chỉ một lần trong RAM.
+    - Các request sau trả thẳng GeoJSON đã cache.
+    - Cho phép CDN/proxy cache response trong thời gian ngắn.
+    """
+    global GIS_GEOJSON_CACHE
+
+    try:
+        active_file = GIS_MASTER_KMZ
+
+        if active_file is None or not active_file.exists():
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
+                    "geojson": {"type": "FeatureCollection", "features": []},
+                },
+                headers={"Cache-Control": "no-store"}
+            )
+
+        # Cache GeoJSON đã xử lý trong RAM.
+        # Khi upload Master mới, cache này được xóa ở endpoint upload.
+        cache_hit = GIS_GEOJSON_CACHE is not None
+        if GIS_GEOJSON_CACHE is None:
+            items = get_gis_master().get("data", [])
+            cong_trinh_items, khu_tuoi_items = split_gis_items(items)
+            converted = kml_items_to_geojson(cong_trinh_items + khu_tuoi_items)
+            GIS_GEOJSON_CACHE = {
+                "success": True,
+                "filename": active_file.name,
+                "objects": len(items),
+                "cong_trinh": len(cong_trinh_items),
+                "khu_tuoi": len(khu_tuoi_items),
+                "features": len(converted["features"]),
+                "geojson": converted,
+            }
+
+        return JSONResponse(
+            content=GIS_GEOJSON_CACHE,
+            headers={
+                # Trình duyệt/CDN có thể dùng bản cache trong 5 phút;
+                # sau đó vẫn có thể phục vụ bản cũ trong lúc revalidate.
+                "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+                "X-GIS-Cache": "HIT" if cache_hit else "MISS",
+            }
+        )
+
+    except Exception as e:
+        print("[GIS DATA ERROR]", repr(e))
+
+        return JSONResponse(
+            content={
+                "success": False,
+                "message": "Không thể đọc dữ liệu GIS.",
+                "error": str(e),
+                "geojson": {"type": "FeatureCollection", "features": []},
+            },
+            headers={"Cache-Control": "no-store"}
+        )
 
 # ============================================================
 # MODELS
@@ -1950,12 +2210,254 @@ def normalize_question(text: str) -> str:
     return value
 
 # ============================================================
+# CHATBOT QUERY ROUTER - DOCUMENT FIRST
+# ============================================================
+#
+# Mục tiêu:
+# - Không để Data Engine chặn câu hỏi liên quan hồ sơ/tài liệu.
+# - Ưu tiên Gemini File Search khi câu hỏi có khả năng là câu hỏi
+#   về văn bản, quy định, hồ sơ, nhân sự, thông số tĩnh hoặc kiến thức.
+# - Chỉ đưa câu hỏi vào Data Engine khi có dấu hiệu rõ ràng là
+#   số liệu vận hành hiện thời.
+# - Khi vừa có yếu tố tài liệu vừa có yếu tố vận hành: HYBRID.
+#
+# Nguyên tắc an toàn: nếu không chắc, ưu tiên DOCUMENT.
+# ============================================================
+
+DOCUMENT_STRONG_TERMS = (
+    "quy dinh",
+    "quy pham",
+    "van ban",
+    "quyet dinh",
+    "nghi dinh",
+    "thong tu",
+    "luat",
+    "qcvn",
+    "tcvn",
+    "tieu chuan",
+    "quy trinh",
+    "quy che",
+    "dieu ",
+    "khoan ",
+    "diem ",
+    "pham vi bao ve",
+    "hanh lang bao ve",
+    "vung phu can",
+    "cam moc",
+    "chi gioi",
+    "ho so",
+    "tai lieu",
+    "theo quy dinh",
+    "theo van ban",
+    "theo ho so",
+    "theo quyet dinh",
+    "theo nghi dinh",
+    "theo thong tu",
+    "can cu",
+    "hieu luc",
+)
+
+DOCUMENT_KNOWLEDGE_TERMS = (
+    "danh sach",
+    "nguoi lao dong",
+    "nhan su",
+    "nhan vien",
+    "can bo",
+    "chuc vu",
+    "phong ban",
+    "chi nhanh",
+    "cum",
+    "cong trinh",
+    "nhiem vu",
+    "chuc nang",
+    "quy mo",
+    "thiet ke",
+    "thong so ky thuat",
+    "dung tich",
+    "dien tich",
+    "cao trinh",
+    "kich thuoc",
+    "ket cau",
+    "so may",
+    "may bom",
+    "ai phu trach",
+    "ai quan ly",
+    "bao nhieu nguoi",
+    "co bao nhieu",
+)
+
+OPERATIONAL_CURRENT_TERMS = (
+    "hom nay",
+    "hien tai",
+    "hien nay",
+    "luc nay",
+    "dang",
+    "vua cap nhat",
+    "moi nhat",
+    "thuc te",
+    "truc tiep",
+    "gio nay",
+    "luc ",
+    "ngay ",
+    "van hanh",
+    "dang chay",
+    "dang bom",
+    "dang xa",
+    "mo may",
+    "dong may",
+    "dung may",
+    "bat may",
+    "so may dang",
+    "chay",
+    "dang chay",
+)
+
+OPERATIONAL_PARAMETER_TERMS = (
+    "muc nuoc",
+    "luu luong",
+    "do man",
+    "luong mua",
+    "do mo",
+    "mua",
+    "htl",
+    "q ve",
+    "q ra",
+    "q vao",
+    "xa nuoc",
+    "bom",
+    "may",
+)
+
+
+def _normalize_router_text(text: str) -> str:
+    import unicodedata
+
+    value = str(text or "").strip().lower()
+    value = value.replace("đ", "d")
+    value = unicodedata.normalize("NFD", value)
+    value = "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
+    value = re.sub(r"\s+", " ", value)
+    return value
+
+
+def classify_query_route(question: str) -> dict:
+    """
+    Phân loại câu hỏi trước khi gọi Data Engine.
+
+    DOCUMENT  : câu hỏi về hồ sơ, quy định, văn bản, nhân sự,
+                thông số tĩnh và kiến thức chuyên ngành.
+    OPERATIONAL: câu hỏi có dấu hiệu rõ về số liệu vận hành hiện thời.
+    HYBRID     : vừa cần hồ sơ vừa cần số liệu vận hành.
+
+    Nếu không đủ căn cứ để xác định, mặc định DOCUMENT để tránh
+    bỏ sót câu hỏi nằm trong kho Gemini File Search.
+    """
+    text = _normalize_router_text(question)
+
+    document_hits = []
+    operational_hits = []
+
+    for term in DOCUMENT_STRONG_TERMS + DOCUMENT_KNOWLEDGE_TERMS:
+        if term in text:
+            document_hits.append(term)
+
+    for term in OPERATIONAL_CURRENT_TERMS:
+        if term in text:
+            operational_hits.append(term)
+
+    parameter_hits = [
+        term for term in OPERATIONAL_PARAMETER_TERMS
+        if term in text
+    ]
+
+    document_score = len(set(document_hits))
+    operational_score = len(set(operational_hits))
+
+    # Có tham số vận hành nhưng không có mốc hiện thời vẫn chưa đủ
+    # để kết luận đây là Data Engine; rất nhiều câu hỏi về thông số
+    # tĩnh nằm trong hồ sơ.
+    if operational_score and parameter_hits:
+        operational_score += 1
+
+    has_strong_document = any(
+        term in text for term in DOCUMENT_STRONG_TERMS
+    )
+    has_knowledge_document = any(
+        term in text for term in DOCUMENT_KNOWLEDGE_TERMS
+    )
+    has_current_operation = bool(operational_hits)
+    has_operation_parameter = bool(parameter_hits)
+
+    # HYBRID: người dùng vừa hỏi căn cứ/hồ sơ vừa hỏi tình trạng,
+    # số liệu hiện thời.
+    if has_strong_document and has_current_operation and has_operation_parameter:
+        route = "hybrid"
+    elif has_strong_document or has_knowledge_document:
+        route = "document"
+    elif has_current_operation and has_operation_parameter:
+        route = "operational"
+    else:
+        # Fail-open về tài liệu/kiến thức.
+        route = "document"
+
+    return {
+        "route": route,
+        "document_score": document_score,
+        "operational_score": operational_score,
+        "document_hits": document_hits,
+        "operational_hits": operational_hits,
+        "parameter_hits": parameter_hits,
+    }
+
+
+def build_document_prompt(question: str, attempt: int = 1) -> str:
+    """Tạo chỉ dẫn mạnh cho câu hỏi cần File Search."""
+    if attempt <= 1:
+        instruction = (
+            "ĐÂY LÀ CÂU HỎI ƯU TIÊN TÀI LIỆU. "
+            "BẮT BUỘC sử dụng Gemini File Search để tìm trong kho "
+            "THỦY LỢI AI trước khi trả lời. Chỉ sử dụng nội dung có "
+            "căn cứ từ kết quả tìm kiếm. Nếu có tài liệu phù hợp, "
+            "nêu tên tài liệu và điều/khoản/trang nếu có."
+        )
+    else:
+        instruction = (
+            "ĐÂY LÀ LẦN TÌM KIẾM LẠI CÂU HỎI TÀI LIỆU. "
+            "BẮT BUỘC sử dụng Gemini File Search và tìm rộng hơn theo "
+            "từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn đạt "
+            "khác nhau. Không được trả lời theo trí nhớ nếu chưa có "
+            "căn cứ trong kho THỦY LỢI AI. Nếu không tìm thấy, nói rõ "
+            "chưa tìm thấy đủ căn cứ trong kho hồ sơ."
+        )
+    return f"{instruction}\n\nCÂU HỎI NGƯỜI DÙNG:\n{question}"
+
+
+class DocumentRetrievalRequiredError(RuntimeError):
+    """File Search không được gọi hoặc không trả về nguồn cho câu hỏi tài liệu."""
+
+
+def file_search_was_used(result) -> bool:
+    """Kiểm tra interaction steps để xác nhận File Search thực sự được gọi."""
+    try:
+        for step in getattr(result, "steps", []) or []:
+            step_type = str(getattr(step, "type", "") or "").lower()
+            if step_type in {"file_search_call", "file_search_result"}:
+                return True
+            # Một số SDK có thể biểu diễn step/tool theo tên khác.
+            if "file_search" in step_type:
+                return True
+    except Exception as e:
+        print("FILE SEARCH STEP CHECK ERROR:", repr(e))
+    return False
+
+
+# ============================================================
 # CACHE
 # ============================================================
-async def get_cached_answer(question: str):
+async def get_cached_answer(question: str, route: str = "default"):
     if not CACHE_ENABLED:
         return None
-    key = normalize_question(question)
+    key = f"{route}:{normalize_question(question)}"
     async with _cache_lock:
         item = _answer_cache.get(key)
         if not item:
@@ -1972,11 +2474,12 @@ async def get_cached_answer(question: str):
             "age_seconds": round(age, 1),
         }
 
-async def set_cached_answer(question: str, answer: str, sources=None):
+async def set_cached_answer(question: str, answer: str, sources=None, route: str = "default"):
     if not CACHE_ENABLED:
         return
-    key = normalize_question(question)
-    if not key or not answer:
+    normalized = normalize_question(question)
+    key = f"{route}:{normalized}"
+    if not normalized or not answer:
         return
     async with _cache_lock:
         _answer_cache[key] = {
@@ -2031,6 +2534,22 @@ async def home():
 # TEST GOOGLE DATA ENGINE
 # ============================================================
 
+@app.get("/data-test")
+async def data_test(
+    congTrinh: str = "",
+    thongSo: str = "HTL",
+    ngay: str = "",
+    gio: str = "",
+):
+
+    result = await query_google_data(
+        cong_trinh=congTrinh,
+        thong_so=thongSo,
+        ngay=ngay,
+        gio=gio,
+    )
+
+    return result
 @app.get("/health")
 async def health():
     return {
@@ -2105,6 +2624,7 @@ async def api_info():
             "pdf_documents": "/documents/pdf",
             "delete_pdf": "/documents/pdf",
             "upload": "/upload",
+            "image_upload": "/image-upload",
             "image_analyze": "/image-analyze",
             "field_report": "/field-report",
             "field_report_pdf": "/field-report-pdf",
@@ -2142,17 +2662,34 @@ def is_retryable_error(error: Exception) -> bool:
     retryable = ["408", "409", "429", "500", "502", "503", "504", "rate limit", "resource exhausted", "unavailable", "timeout", "deadline", "temporarily", "internal", "connection", "reset", "server error"]
     return any(x in text for x in retryable)
 
-def call_gemini(question: str):
+def call_gemini(question: str, route: str = "document", attempt: int = 1):
     require_gemini()
+
+    if route in {"document", "hybrid"}:
+        prompt = build_document_prompt(question, attempt=attempt)
+        system_instruction = (
+            SYSTEM_PROMPT
+            + "\n\n==================================================\n"
+            + "DOCUMENT-FIRST RETRIEVAL MODE\n"
+            + "==================================================\n"
+            + "Câu hỏi này được định tuyến tới kho hồ sơ. "
+            + "Phải tìm kiếm File Search trước khi kết luận. "
+            + "Không được trả lời 'không có dữ liệu vận hành' thay cho việc tìm hồ sơ."
+        )
+    else:
+        prompt = question
+        system_instruction = SYSTEM_PROMPT
+
     return gemini_client.interactions.create(
         model=GEMINI_MODEL,
-        system_instruction=SYSTEM_PROMPT,
-        input=question,
+        system_instruction=system_instruction,
+        input=prompt,
         tools=[{
             "type": "file_search",
             "file_search_store_names": [store_name()],
         }],
     )
+
 
 def extract_answer_and_sources(result):
     answer = (getattr(result, "output_text", None) or "").strip()
@@ -2206,45 +2743,100 @@ def extract_answer_and_sources(result):
         raise RuntimeError("Gemini không trả về nội dung.")
     return answer, sources
 
-async def _gemini_once(question: str):
+
+async def _gemini_once(question: str, route: str = "document", attempt: int = 1):
     try:
         await asyncio.wait_for(request_semaphore.acquire(), timeout=QUEUE_TIMEOUT)
     except asyncio.TimeoutError:
         raise TimeoutError("Hệ thống đang có nhiều yêu cầu. Hàng đợi đã quá thời gian chờ.")
     try:
-        result = await asyncio.wait_for(asyncio.to_thread(call_gemini, question), timeout=REQUEST_TIMEOUT)
-        return extract_answer_and_sources(result)
+        result = await asyncio.wait_for(
+            asyncio.to_thread(call_gemini, question, route, attempt),
+            timeout=REQUEST_TIMEOUT,
+        )
+        answer, sources = extract_answer_and_sources(result)
+
+        # Với DOCUMENT/HYBRID, không chấp nhận câu trả lời nếu Gemini
+        # không thực sự gọi File Search. Đây là lớp bảo vệ chống routing
+        # sai và chống trả lời theo trí nhớ.
+        if route in {"document", "hybrid"}:
+            used = file_search_was_used(result)
+            print(
+                "DOCUMENT RETRIEVAL CHECK:",
+                {"route": route, "file_search_used": used, "sources": len(sources)},
+            )
+            if not used:
+                raise DocumentRetrievalRequiredError(
+                    "Gemini chưa thực hiện File Search cho câu hỏi tài liệu."
+                )
+
+        return answer, sources
     finally:
         request_semaphore.release()
 
-async def ask_gemini_with_retry(question: str):
+
+async def ask_gemini_with_retry(question: str, route: str = "document"):
     last_error = None
     for attempt in range(MAX_RETRIES):
         started = time.monotonic()
         try:
-            answer, sources = await _gemini_once(question)
+            answer, sources = await _gemini_once(
+                question,
+                route=route,
+                attempt=attempt + 1,
+            )
+
+            # Câu hỏi tài liệu cần có nguồn/citation khi File Search đã
+            # được gọi. Nếu không có citation thì thử lại một lần trong
+            # giới hạn MAX_RETRIES; sau đó trả lời an toàn.
+            if route in {"document", "hybrid"} and not sources:
+                raise DocumentRetrievalRequiredError(
+                    "File Search đã được gọi nhưng chưa có nguồn/citation."
+                )
+
             elapsed = time.monotonic() - started
-            print(f"GEMINI SUCCESS attempt={attempt + 1}/{MAX_RETRIES} time={elapsed:.1f}s")
+            print(
+                f"GEMINI SUCCESS attempt={attempt + 1}/{MAX_RETRIES} "
+                f"route={route} time={elapsed:.1f}s"
+            )
             return answer, sources
+
         except Exception as e:
             last_error = e
             elapsed = time.monotonic() - started
-            print(f"GEMINI ERROR attempt={attempt + 1}/{MAX_RETRIES} time={elapsed:.1f}s error={repr(e)}")
-            retryable = is_retryable_error(e)
+            print(
+                f"GEMINI ERROR attempt={attempt + 1}/{MAX_RETRIES} "
+                f"route={route} time={elapsed:.1f}s error={repr(e)}"
+            )
+
+            # Lỗi bắt buộc retrieval là lỗi logic cần thử lại với prompt
+            # tìm kiếm rộng hơn; không xem đây là lỗi API.
+            if isinstance(e, DocumentRetrievalRequiredError):
+                retryable = True
+            else:
+                retryable = is_retryable_error(e)
+
             print("RETRYABLE:", retryable)
             if not retryable or attempt >= MAX_RETRIES - 1:
                 break
+
             delay = min(6, 2 ** attempt) + random.uniform(0.2, 0.8)
-            print(f"THỬ LẠI LẦN {attempt + 2}/{MAX_RETRIES} SAU {delay:.1f} GIÂY...")
+            print(
+                f"THỬ LẠI LẦN {attempt + 2}/{MAX_RETRIES} "
+                f"SAU {delay:.1f} GIÂY..."
+            )
             await asyncio.sleep(delay)
+
     raise last_error or RuntimeError("Gemini không thể xử lý câu hỏi.")
 
-async def ask_with_singleflight(question: str):
-    key = normalize_question(question)
-    cached = await get_cached_answer(question)
+
+async def ask_with_singleflight(question: str, route: str = "document"):
+    key = f"{route}:{normalize_question(question)}"
+    cached = await get_cached_answer(question, route=route)
     if cached:
-        print("CACHE HIT -", f"age={cached['age_seconds']}s")
+        print("CACHE HIT -", f"age={cached['age_seconds']}s", f"route={route}")
         return cached["answer"], cached["sources"], True
+
     async with _inflight_lock:
         future = _inflight.get(key)
         if future is None:
@@ -2254,20 +2846,36 @@ async def ask_with_singleflight(question: str):
             is_owner = True
         else:
             is_owner = False
+
     if not is_owner:
         print("CACHE STAMPEDE PROTECTION - CHỜ REQUEST ĐANG XỬ LÝ")
         try:
-            answer, sources = await asyncio.wait_for(asyncio.shield(future), timeout=REQUEST_TIMEOUT + QUEUE_TIMEOUT + 15)
+            answer, sources = await asyncio.wait_for(
+                asyncio.shield(future),
+                timeout=REQUEST_TIMEOUT + QUEUE_TIMEOUT + 15,
+            )
             return answer, sources, False
         except Exception:
             async with _inflight_lock:
                 if _inflight.get(key) is future:
                     _inflight.pop(key, None)
-            return await ask_with_singleflight(question)
+            return await ask_with_singleflight(question, route=route)
+
     try:
-        print("CACHE MISS - ĐANG GỬI CÂU HỎI GEMINI...")
-        answer, sources = await ask_gemini_with_retry(question)
-        await set_cached_answer(question, answer, sources)
+        print(
+            "CACHE MISS - ĐANG GỬI CÂU HỎI GEMINI...",
+            f"route={route}",
+        )
+        answer, sources = await ask_gemini_with_retry(
+            question,
+            route=route,
+        )
+        await set_cached_answer(
+            question,
+            answer,
+            sources,
+            route=route,
+        )
         if not future.done():
             future.set_result((answer, sources))
         print("CACHE SAVED - CÂU TRẢ LỜI ĐÃ ĐƯỢC LƯU")
@@ -2280,6 +2888,7 @@ async def ask_with_singleflight(question: str):
         async with _inflight_lock:
             if _inflight.get(key) is future:
                 _inflight.pop(key, None)
+
 # ============================================================
 # OPERATIONAL ANSWER FORMATTER
 # ============================================================
@@ -2308,9 +2917,6 @@ def get_parameter_label(
     )
 
 
-# ============================================================
-# ASK
-# ============================================================
 def build_operational_direct_answer(
     operational_rows: list,
 ) -> str:
@@ -2376,7 +2982,9 @@ def build_operational_direct_answer(
         answers.append(answer)
 
     return "\n".join(answers)
-
+# ============================================================
+# ASK
+# ============================================================
 @app.post("/ask")
 async def ask(data: Question):
 
@@ -2407,21 +3015,195 @@ async def ask(data: Question):
         }
 
     # ========================================================
-    # 1. GOOGLE DATA ENGINE - SỐ LIỆU VẬN HÀNH
+    # 1. QUERY ROUTER - DOCUMENT FIRST
     # ========================================================
 
-    operational_data = await get_operational_data(
-        question
-    )
+    route_info = classify_query_route(question)
+    route = route_info["route"]
+
+    print("QUERY ROUTE:", route_info)
+
+    # ========================================================
+    # 2. DOCUMENT / KNOWLEDGE QUERY
+    # ========================================================
+    #
+    # Đây là nhánh ưu tiên cho câu hỏi về văn bản, quy định,
+    # hồ sơ, nhân sự, thông số tĩnh và kiến thức chuyên ngành.
+    # Không gọi Data Engine trước.
+    # ========================================================
+
+    if route == "document":
+
+        if not GEMINI_API_KEY:
+            return {
+                "status": "error",
+                "answer": "THỦY LỢI AI chưa được cấu hình Gemini API."
+            }
+
+        if gemini_client is None:
+            return {
+                "status": "error",
+                "answer": (
+                    "THỦY LỢI AI chưa kết nối được Gemini API. "
+                    "Vui lòng thử lại sau."
+                )
+            }
+
+        if not GEMINI_FILE_SEARCH_STORE:
+            return {
+                "status": "error",
+                "answer": "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."
+            }
+
+        try:
+            answer, sources, was_cache = await ask_with_singleflight(
+                question,
+                route="document",
+            )
+
+            response = {
+                "status": "ok",
+                "answer": answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": was_cache,
+                "query_route": "document",
+            }
+
+            if sources:
+                response["sources"] = sources
+
+            return response
+
+        except DocumentRetrievalRequiredError:
+            # Không có căn cứ tài liệu: tuyệt đối không chuyển sang
+            # Data Engine và không tự bịa câu trả lời.
+            return {
+                "status": "ok",
+                "answer": (
+                    "Chưa tìm thấy đủ căn cứ trong kho hồ sơ "
+                    "THỦY LỢI AI để trả lời chính xác câu hỏi này."
+                ),
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "document",
+                "sources": [],
+            }
+        except Exception as e:
+            print("DOCUMENT QUERY ERROR:", repr(e))
+            return {
+                "status": "error",
+                "answer": (
+                    "THỦY LỢI AI tạm thời chưa lấy được câu trả lời "
+                    "từ kho dữ liệu Gemini. Hệ thống đã tự kiểm tra "
+                    "và thử lại. Vui lòng thử lại sau ít giây."
+                ),
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "document",
+            }
+
+    # ========================================================
+    # 3. HYBRID QUERY
+    # ========================================================
+    #
+    # HYBRID vẫn phải tìm hồ sơ trước/đồng thời với Data Engine.
+    # Không để Data Engine chặn phần căn cứ tài liệu.
+    # ========================================================
+
+    if route == "hybrid":
+
+        operational_data = await get_operational_data(question)
+        print("HYBRID OPERATIONAL DATA:", operational_data)
+
+        document_answer = None
+        document_sources = []
+
+        if GEMINI_API_KEY and gemini_client is not None and GEMINI_FILE_SEARCH_STORE:
+            try:
+                document_answer, document_sources, _ = await ask_with_singleflight(
+                    question,
+                    route="hybrid",
+                )
+            except Exception as e:
+                print("HYBRID DOCUMENT ERROR:", repr(e))
+
+        parsed = operational_data.get("parsed", {})
+        is_operational = parsed.get("is_operational", False)
+
+        if document_answer and operational_data.get("found"):
+            operational_rows = operational_data.get("data", [])
+            operational_answer = build_operational_direct_answer(operational_rows)
+            combined = (
+                "### Căn cứ hồ sơ\n"
+                f"{document_answer}\n\n"
+                "### Số liệu vận hành\n"
+                f"{operational_answer}"
+            )
+            response = {
+                "status": "ok",
+                "answer": combined,
+                "engine": "Gemini File Search + Google Data Engine",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "hybrid",
+                "data": operational_rows,
+            }
+            if document_sources:
+                response["sources"] = document_sources
+            return response
+
+        if document_answer:
+            response = {
+                "status": "ok",
+                "answer": document_answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "hybrid",
+            }
+            if document_sources:
+                response["sources"] = document_sources
+            return response
+
+        if is_operational and operational_data.get("found"):
+            operational_rows = operational_data.get("data", [])
+            return {
+                "status": "ok",
+                "answer": build_operational_direct_answer(operational_rows),
+                "engine": "Google Data Engine",
+                "model": "AI_DATA",
+                "cache": False,
+                "query_route": "hybrid",
+                "data_source": "File trực 2026 GG.xlsx",
+                "data": operational_rows,
+            }
+
+        return {
+            "status": "ok",
+            "answer": (
+                "Chưa tìm thấy đủ căn cứ trong kho hồ sơ THỦY LỢI AI "
+                "và chưa tìm thấy số liệu vận hành phù hợp."
+            ),
+            "engine": "Hybrid",
+            "model": GEMINI_MODEL,
+            "cache": False,
+            "query_route": "hybrid",
+            "data": [],
+        }
+
+    # ========================================================
+    # 4. OPERATIONAL QUERY - GOOGLE DATA ENGINE
+    # ========================================================
+
+    operational_data = await get_operational_data(question)
 
     print(
         "OPERATIONAL DATA:",
         operational_data
     )
-
-    # ========================================================
-    # 2. NẾU LÀ CÂU HỎI SỐ LIỆU VẬN HÀNH
-    # ========================================================
 
     parsed = operational_data.get(
         "parsed",
@@ -2433,284 +3215,96 @@ async def ask(data: Question):
         False
     )
 
-    if is_operational:
+    if is_operational and operational_data.get("found"):
 
-        # ----------------------------------------------------
-        # 2.1. CÓ DỮ LIỆU
-        # ----------------------------------------------------
-
-        if operational_data.get("found"):
-
-            operational_rows = operational_data.get(
-                "data",
-                []
-            )
-            print(
-                "OPERATIONAL ROWS DETAIL:",
-                [
-                    {
-                        "ngay": item.get("ngay"),
-                        "gio": item.get("gio"),
-                        "thong_so": item.get("thong_so"),
-                        "gia_tri": item.get("gia_tri"),
-                        "don_vi_do": item.get("don_vi_do"),
-                    }
-                    for item in operational_rows
-                ]
-            )
-
-            print(
-                "OPERATIONAL DATA FOUND:",
-                len(operational_rows)
-            )
-
-            # ------------------------------------------------
-            # Trường hợp có nhiều kết quả
-            # ------------------------------------------------
-
-            if operational_rows:
-
-                answers = []
-
-                for item in operational_rows:
-
-                    cong_trinh = str(
-                        item.get(
-                            "cong_trinh",
-                            ""
-                        )
-                    ).strip()
-
-                    thong_so = str(
-                        item.get(
-                            "thong_so",
-                            ""
-                        )
-                    ).strip()
-
-                    gia_tri = str(
-                        item.get(
-                            "gia_tri",
-                            ""
-                        )
-                    ).strip()
-
-                    don_vi = str(
-                        item.get(
-                            "don_vi_do",
-                            ""
-                        )
-                    ).strip()
-
-                    ngay = str(
-                        item.get(
-                            "ngay",
-                            ""
-                        )
-                    ).strip()
-
-                    gio = str(
-                        item.get(
-                            "gio",
-                            ""
-                        )
-                    ).strip()
-
-                    if don_vi:
-                        value_text = (
-                            f"{gia_tri} {don_vi}"
-                        )
-                    else:
-                        value_text = gia_tri
-
-                 # ------------------------------------------------
-                # TÊN THÔNG SỐ HIỂN THỊ ĐỘNG
-                # ------------------------------------------------
-                parameter_labels = {
-                    "HTL": "Mực nước",
-                    "H": "Mực nước",
-                    "MNDBT": "Mực nước dâng bình thường",
-                    "MNDGC": "Mực nước dâng gia cường",
-                    "Q": "Lưu lượng",
-                    "X": "Độ mở",
-                    "Mưa": "Lượng mưa",
-                }
-                
-                parameter_text = parameter_labels.get(
-                    thong_so,
-                    thong_so or "Thông số"
-                )
-                
-                # ------------------------------------------------
-                # THỜI GIAN HIỂN THỊ
-                # ------------------------------------------------
-                time_text = ""
-                
-                if gio:
-                    time_text += f" lúc {gio} giờ"
-                
-                if ngay:
-                    time_text += f" ngày {ngay}/9/2026"
-                
-                # ------------------------------------------------
-                # CÂU TRẢ LỜI ĐỘNG
-                # ------------------------------------------------
-                answers.append(
-                    f"{parameter_text} tại "
-                    f"{cong_trinh}"
-                    f"{time_text} "
-                    f"là {value_text}."
-                )  
-
-                answer = "\n".join(
-                    answers
-                )
-
-                return {
-                    "status": "ok",
-                    "answer": answer,
-                    "engine": "Google Data Engine",
-                    "model": "AI_DATA",
-                    "cache": False,
-                    "data_source": "File trực 2026 GG.xlsx",
-                    "data": operational_rows
-                }
-
-        # ----------------------------------------------------
-        # 2.2. LÀ CÂU HỎI VẬN HÀNH NHƯNG KHÔNG CÓ DỮ LIỆU
-        # ----------------------------------------------------
-
-        print(
-            "OPERATIONAL DATA NOT FOUND"
+        operational_rows = operational_data.get(
+            "data",
+            []
         )
 
-        return {
-            "status": "ok",
-            "answer": (
-                "THỦY LỢI AI chưa tìm thấy "
-                "số liệu vận hành phù hợp "
-                "với yêu cầu trong Data Engine."
-            ),
-            "engine": "Google Data Engine",
-            "model": "AI_DATA",
-            "cache": False,
-            "data": []
-        }
+        print(
+            "OPERATIONAL ROWS DETAIL:",
+            [
+                {
+                    "ngay": item.get("ngay"),
+                    "gio": item.get("gio"),
+                    "thong_so": item.get("thong_so"),
+                    "gia_tri": item.get("gia_tri"),
+                    "don_vi_do": item.get("don_vi_do"),
+                }
+                for item in operational_rows
+            ]
+        )
+
+        print(
+            "OPERATIONAL DATA FOUND:",
+            len(operational_rows)
+        )
+
+        if operational_rows:
+            return {
+                "status": "ok",
+                "answer": build_operational_direct_answer(
+                    operational_rows
+                ),
+                "engine": "Google Data Engine",
+                "model": "AI_DATA",
+                "cache": False,
+                "query_route": "operational",
+                "data_source": "File trực 2026 GG.xlsx",
+                "data": operational_rows,
+            }
 
     # ========================================================
-    # 3. CÂU HỎI THÔNG THƯỜNG
+    # 5. OPERATIONAL KHÔNG CÓ DỮ LIỆU -> FALLBACK DOCUMENT
     # ========================================================
     #
-    # Chỉ câu hỏi không phải số liệu vận hành
-    # mới đi vào Cache + Gemini File Search.
+    # Đây là lớp bảo vệ cuối cùng cho các câu hỏi bị parser vận hành
+    # nhận nhầm. Không còn trả ngay thông báo Data Engine như phiên bản
+    # cũ; hệ thống chuyển sang File Search để kiểm tra kho hồ sơ.
     # ========================================================
 
-    cached = await get_cached_answer(
-        question
-    )
+    print("OPERATIONAL DATA NOT FOUND - FALLBACK TO DOCUMENT SEARCH")
 
-    if cached:
-
-        print(
-            "CACHE HIT - "
-            "TRẢ CÂU TRẢ LỜI TỪ CACHE"
-        )
-
-        response = {
-            "status": "ok",
-            "answer": cached["answer"],
-            "engine": "Local Cache",
-            "model": GEMINI_MODEL,
-            "cache": True
-        }
-
-        if cached["sources"]:
-            response["sources"] = (
-                cached["sources"]
+    if GEMINI_API_KEY and gemini_client is not None and GEMINI_FILE_SEARCH_STORE:
+        try:
+            answer, sources, was_cache = await ask_with_singleflight(
+                question,
+                route="document",
             )
 
-        return response
+            response = {
+                "status": "ok",
+                "answer": answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": was_cache,
+                "query_route": "document_fallback",
+            }
 
-    # ========================================================
-    # 4. KIỂM TRA GEMINI
-    # ========================================================
+            if sources:
+                response["sources"] = sources
 
-    if not GEMINI_API_KEY:
+            return response
 
-        return {
-            "status": "error",
-            "answer": (
-                "THỦY LỢI AI chưa được "
-                "cấu hình Gemini API."
-            )
-        }
+        except Exception as e:
+            print("DOCUMENT FALLBACK ERROR:", repr(e))
 
-    if gemini_client is None:
-
-        return {
-            "status": "error",
-            "answer": (
-                "THỦY LỢI AI chưa kết nối được "
-                "Gemini API. "
-                "Vui lòng thử lại sau."
-            )
-        }
-
-    if not GEMINI_FILE_SEARCH_STORE:
-
-        return {
-            "status": "error",
-            "answer": (
-                "THỦY LỢI AI chưa có "
-                "kho dữ liệu Gemini File Search."
-            )
-        }
-
-    # ========================================================
-    # 5. GEMINI FILE SEARCH
-    # ========================================================
-
-    try:
-
-        answer, sources, was_cache = (
-            await ask_with_singleflight(
-                question
-            )
-        )
-
-        response = {
-            "status": "ok",
-            "answer": answer,
-            "engine": "Gemini File Search",
-            "model": GEMINI_MODEL,
-            "cache": False
-        }
-
-        if sources:
-            response["sources"] = sources
-
-        return response
-
-    except Exception as e:
-
-        print(
-            "GEMINI KHÔNG TRẢ LỜI:",
-            repr(e)
-        )
-
-        return {
-            "status": "error",
-            "answer": (
-                "THỦY LỢI AI tạm thời chưa lấy "
-                "được câu trả lời từ kho dữ liệu "
-                "Gemini. Hệ thống đã tự kiểm tra "
-                "và thử lại. Vui lòng thử lại "
-                "sau ít giây."
-            ),
-            "engine": "Gemini File Search",
-            "model": GEMINI_MODEL,
-            "cache": False
-        }
+    # Chỉ trả thông báo Data Engine khi đã xác định đây thực sự là
+    # câu hỏi vận hành và cả fallback tài liệu cũng không có căn cứ.
+    return {
+        "status": "ok",
+        "answer": (
+            "THỦY LỢI AI chưa tìm thấy số liệu vận hành phù hợp "
+            "với yêu cầu trong Data Engine và chưa tìm thấy đủ "
+            "căn cứ trong kho hồ sơ THỦY LỢI AI."
+        ),
+        "engine": "Google Data Engine + Gemini File Search",
+        "model": "AI_DATA",
+        "cache": False,
+        "query_route": "operational_fallback",
+        "data": []
+    }
 
 
 # ============================================================
@@ -2868,13 +3462,300 @@ async def upload_file(file: UploadFile = File(...)):
 # KML / KMZ UPLOAD
 # ============================================================
 
+@app.post("/kml-upload")
+async def kml_upload(file: UploadFile = File(...)):
+    """
+    Nhận file KML/KMZ của hệ thống kênh mương,
+    lưu vào thư mục kml_data và đọc dữ liệu tọa độ.
+    """
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa chọn file KML/KMZ."
+        )
+
+    filename = Path(file.filename).name
+    suffix = Path(filename).suffix.lower()
+
+    if suffix not in {".kml", ".kmz"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Chỉ hỗ trợ file KML hoặc KMZ."
+        )
+
+    try:
+        content = await file.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail="File KML/KMZ rỗng."
+            )
+
+        save_path = KML_DATA_DIR / filename
+
+        with open(save_path, "wb") as f:
+            f.write(content)
+
+        kml_items = parse_kml_kmz(save_path)
+
+        total_coordinates = sum(
+            len(item.get("coordinates", []))
+            for item in kml_items
+        )
+
+        return {
+            "success": True,
+            "filename": filename,
+            "file_path": str(save_path),
+            "objects": len(kml_items),
+            "coordinates": total_coordinates,
+            "message": "Đã nạp hệ thống KML/KMZ thành công."
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print(f"[KML UPLOAD] Lỗi: {e}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Không thể nạp KML/KMZ: {str(e)}"
+        )
 
 # ============================================================
 # KML / KMZ DIAGNOSTIC - KIỂM TRA CẤU TRÚC ĐỘC LẬP
 # Không thay đổi parser KML/KMZ hiện tại
 # ============================================================
 
+def inspect_kml_structure(file_path, sample_limit=20):
+    """
+    Kiểm tra độc lập cấu trúc KML/KMZ.
 
+    Mục đích:
+    - Xác định Folder
+    - Xác định đường dẫn Folder cha/con
+    - Đếm Placemark
+    - Đếm Point / LineString / Polygon
+    - Kiểm tra tên đối tượng
+    - Kiểm tra tọa độ
+
+    Không thay đổi dữ liệu của parser hiện tại.
+    """
+
+    file_path = Path(file_path)
+
+    if file_path.suffix.lower() == ".kml":
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+
+    elif file_path.suffix.lower() == ".kmz":
+        with zipfile.ZipFile(file_path, "r") as archive:
+            kml_names = [
+                name for name in archive.namelist()
+                if name.lower().endswith(".kml")
+            ]
+
+            if not kml_names:
+                raise ValueError("KMZ không chứa file KML.")
+
+            kml_data = archive.read(kml_names[0])
+            root = ET.fromstring(kml_data)
+
+    else:
+        raise ValueError("Chỉ hỗ trợ KML hoặc KMZ.")
+
+    namespace = {
+        "kml": "http://www.opengis.net/kml/2.2"
+    }
+
+    stats = {
+        "folders": 0,
+        "placemarks": 0,
+        "points": 0,
+        "linestrings": 0,
+        "polygons": 0,
+        "coordinates": 0,
+        "named_placemarks": 0,
+        "unnamed_placemarks": 0
+    }
+
+    folder_samples = []
+    object_samples = []
+
+    def read_coordinates(element):
+        if element is None:
+            return []
+
+        return parse_kml_coordinates(element.text)
+
+    def process_element(element, folder_path):
+        tag = element.tag.split("}")[-1]
+
+        if tag == "Folder":
+
+            name_element = element.find("kml:name", namespace)
+
+            folder_name = (
+                name_element.text.strip()
+                if name_element is not None and name_element.text
+                else ""
+            )
+
+            stats["folders"] += 1
+
+            new_path = list(folder_path)
+
+            if folder_name:
+                new_path.append(folder_name)
+
+                if len(folder_samples) < sample_limit:
+                    folder_samples.append({
+                        "name": folder_name,
+                        "path": new_path
+                    })
+
+            for child in list(element):
+                process_element(child, new_path)
+
+        elif tag == "Placemark":
+
+            stats["placemarks"] += 1
+
+            name_element = element.find("kml:name", namespace)
+
+            name = (
+                name_element.text.strip()
+                if name_element is not None and name_element.text
+                else ""
+            )
+
+            if name:
+                stats["named_placemarks"] += 1
+            else:
+                stats["unnamed_placemarks"] += 1
+
+            geometry_type = None
+            coordinates = []
+
+            point = element.find(
+                ".//kml:Point/kml:coordinates",
+                namespace
+            )
+
+            line = element.find(
+                ".//kml:LineString/kml:coordinates",
+                namespace
+            )
+
+            polygon = element.find(
+                ".//kml:Polygon//kml:coordinates",
+                namespace
+            )
+
+            if point is not None:
+                geometry_type = "Point"
+                coordinates = read_coordinates(point)
+
+                stats["points"] += 1
+
+            elif line is not None:
+                geometry_type = "LineString"
+                coordinates = read_coordinates(line)
+
+                stats["linestrings"] += 1
+
+            elif polygon is not None:
+                geometry_type = "Polygon"
+                coordinates = read_coordinates(polygon)
+
+                stats["polygons"] += 1
+
+            stats["coordinates"] += len(coordinates)
+
+            if len(object_samples) < sample_limit:
+                object_samples.append({
+                    "name": name,
+                    "geometry_type": geometry_type,
+                    "folder_path": folder_path,
+                    "coordinate_count": len(coordinates),
+                    "first_coordinate": (
+                        coordinates[0]
+                        if coordinates
+                        else None
+                    )
+                })
+
+        else:
+
+            for child in list(element):
+                process_element(child, folder_path)
+
+    process_element(root, [])
+
+    return {
+        "success": True,
+        "file": file_path.name,
+        "stats": stats,
+        "folder_samples": folder_samples,
+        "object_samples": object_samples
+    }
+
+
+@app.get("/kml-diagnostic")
+async def kml_diagnostic():
+    """
+    API chẩn đoán độc lập cấu trúc KML/KMZ.
+
+    Không thay đổi dữ liệu hệ thống hiện tại.
+    """
+    # Ưu tiên GIS Master KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
+
+    else:
+        # Nếu chưa có GIS Master thì giữ cơ chế KML/KMZ cũ
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
+
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+
+        file_path = kml_files[0]
+
+    try:
+        result = inspect_kml_structure(file_path)
+
+        result["message"] = (
+            "Đã kiểm tra cấu trúc KML/KMZ độc lập."
+        )
+
+        return result
+
+    except Exception as e:
+
+        print(
+            "[KML DIAGNOSTIC ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi kiểm tra KML/KMZ: {str(e)}"
+        )
 
 # ============================================================
 # KML GIS INDEX - BƯỚC THỬ NGHIỆM
@@ -2882,12 +3763,298 @@ async def upload_file(file: UploadFile = File(...)):
 # Không thay đổi parser KML/KMZ hiện tại
 # ============================================================
 
+@app.get("/kml-index-preview")
+async def kml_index_preview():
+    """
+    Tạo GIS Index thử nghiệm từ file KML/KMZ hiện tại.
+
+    Mục đích:
+    - Tạo ID nội bộ cho từng đối tượng
+    - Giữ nguyên tên
+    - Giữ nguyên Folder path
+    - Chuẩn hóa latitude / longitude
+    - Không ghi đè dữ liệu KML/KMZ hiện tại
+    - Không thay đổi parser hiện tại
+    """
+    # Ưu tiên GIS MASTER KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
+
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
+
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+
+        file_path = kml_files[0]
+
+    try:
+        diagnostic = inspect_kml_structure(
+            file_path,
+            sample_limit=100
+        )
+
+        if not diagnostic.get("success"):
+            return diagnostic
+
+        gis_index = []
+
+        for index, item in enumerate(
+            diagnostic.get("object_samples", []),
+            start=1
+        ):
+
+            coordinate = item.get("first_coordinate")
+
+            latitude = None
+            longitude = None
+            altitude = None
+
+            if coordinate:
+                latitude = coordinate.get("lat")
+                longitude = coordinate.get("lng")
+                altitude = coordinate.get("alt")
+
+            gis_index.append({
+                "id": f"GIS-{index:06d}",
+                "name": item.get("name", ""),
+                "geometry_type": item.get("geometry_type"),
+                "folder_path": item.get("folder_path", []),
+                "coordinate_count": item.get(
+                    "coordinate_count",
+                    0
+                ),
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude
+            })
+
+        return {
+            "success": True,
+            "file": file_path.name,
+            "index_count": len(gis_index),
+            "samples": gis_index[:20],
+            "message": (
+                "Đã tạo GIS Index thử nghiệm trong RAM. "
+                "Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+
+        print(
+            "[KML INDEX PREVIEW ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi tạo GIS Index thử nghiệm: {str(e)}"
+        )
 
 # ============================================================
 # KML GIS INDEX - BUILD TOÀN BỘ
 # BƯỚC 3C - CHỈ KIỂM TRA, CHƯA GHI ĐÈ DỮ LIỆU CŨ
 # ============================================================
 
+@app.get("/kml-index-build")
+async def kml_index_build():
+    """
+    Xây GIS Index đầy đủ từ dữ liệu KML/KMZ hiện tại.
+
+    Nguyên tắc:
+    - Không thay đổi parser hiện tại.
+    - Không thay đổi dữ liệu KML/KMZ gốc.
+    - Không thay đổi hệ thống AI hiện tại.
+    - Chỉ đọc và chuẩn hóa dữ liệu GIS trong RAM.
+    """
+
+    # Ưu tiên GIS MASTER KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
+
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
+
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+
+        file_path = kml_files[0]
+
+    try:
+        # =====================================================
+        # ĐỌC TOÀN BỘ BẰNG PARSER HIỆN TẠI
+        # =====================================================
+
+        kml_items = parse_kml_kmz(file_path)
+
+        if not kml_items:
+            return {
+                "success": False,
+                "message": "Không đọc được đối tượng từ KML/KMZ."
+            }
+
+        # =====================================================
+        # THỐNG KÊ
+        # =====================================================
+
+        total_coordinates = sum(
+            len(item.get("coordinates", []))
+            for item in kml_items
+        )
+
+        point_count = sum(
+            1
+            for item in kml_items
+            if item.get("geometry_type") == "Point"
+        )
+
+        linestring_count = sum(
+            1
+            for item in kml_items
+            if item.get("geometry_type") == "LineString"
+        )
+
+        polygon_count = sum(
+            1
+            for item in kml_items
+            if item.get("geometry_type") == "Polygon"
+        )
+
+        named_count = sum(
+            1
+            for item in kml_items
+            if str(item.get("name", "")).strip()
+        )
+
+        unnamed_count = len(kml_items) - named_count
+
+        # =====================================================
+        # TẠO GIS INDEX TRONG RAM
+        # =====================================================
+
+        gis_index = []
+
+        for index, item in enumerate(kml_items, start=1):
+
+            coordinates = item.get("coordinates", [])
+
+            first_coordinate = (
+                coordinates[0]
+                if coordinates
+                else None
+            )
+
+            latitude = None
+            longitude = None
+            altitude = None
+
+            if first_coordinate:
+
+                if isinstance(first_coordinate, dict):
+
+                    latitude = first_coordinate.get("lat")
+                    longitude = first_coordinate.get("lng")
+                    altitude = first_coordinate.get("alt")
+
+                elif isinstance(first_coordinate, (list, tuple)):
+
+                    if len(first_coordinate) >= 2:
+                        longitude = first_coordinate[0]
+                        latitude = first_coordinate[1]
+
+                    if len(first_coordinate) >= 3:
+                        altitude = first_coordinate[2]
+
+            gis_index.append({
+                "id": f"GIS-{index:06d}",
+                "name": item.get("name", ""),
+                "description": item.get("description", ""),
+                "geometry_type": item.get("geometry_type"),
+                "coordinate_count": len(coordinates),
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude
+            })
+
+        # =====================================================
+        # KIỂM TRA TOÀN BỘ INDEX
+        # =====================================================
+
+        invalid_index = [
+            item
+            for item in gis_index
+            if item.get("latitude") is None
+            or item.get("longitude") is None
+        ]
+
+        return {
+            "success": True,
+            "file": file_path.name,
+
+            "source": {
+                "objects": len(kml_items),
+                "coordinates": total_coordinates,
+                "points": point_count,
+                "linestrings": linestring_count,
+                "polygons": polygon_count,
+                "named": named_count,
+                "unnamed": unnamed_count
+            },
+
+            "gis_index": {
+                "count": len(gis_index),
+                "valid_coordinates": (
+                    len(gis_index) - len(invalid_index)
+                ),
+                "invalid_coordinates": len(invalid_index)
+            },
+
+            "samples": gis_index[:20],
+
+            "message": (
+                "Đã xây dựng GIS Index toàn bộ trong RAM. "
+                "Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+
+        print(
+            "[KML GIS INDEX BUILD ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi xây dựng GIS Index: {str(e)}"
+        )
 
 # ============================================================
 # KML GIS - KIỂM TRA LINESTRING ĐỘC LẬP
@@ -2900,6 +4067,114 @@ async def upload_file(file: UploadFile = File(...)):
 # - Chỉ đọc LineString để kiểm tra
 # ============================================================
 
+@app.get("/kml-lines-preview")
+async def kml_lines_preview():
+    """
+    Lấy mẫu các đối tượng LineString từ KML/KMZ hiện tại.
+
+    Mục đích:
+    - Xác nhận tuyến dạng LineString thực tế.
+    - Kiểm tra tên tuyến.
+    - Kiểm tra số lượng tọa độ.
+    - Kiểm tra tọa độ đầu và cuối tuyến.
+
+    Chưa thực hiện tính khoảng cách GPS.
+    Chưa thay đổi dữ liệu hệ thống.
+    """
+
+    # Ưu tiên GIS MASTER KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
+
+    else:
+        # Giữ cơ chế KML/KMZ cũ làm dự phòng
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
+
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+
+        file_path = kml_files[0]
+
+    try:
+        kml_items = parse_kml_kmz(file_path)
+
+        if not kml_items:
+            return {
+                "success": False,
+                "message": "Không đọc được đối tượng từ KML/KMZ."
+            }
+
+        lines = [
+            item
+            for item in kml_items
+            if item.get("geometry_type") == "LineString"
+        ]
+
+        samples = []
+
+        for index, item in enumerate(lines[:10], start=1):
+            coordinates = item.get("coordinates", [])
+
+            first_coordinate = (
+                coordinates[0]
+                if coordinates
+                else None
+            )
+
+            last_coordinate = (
+                coordinates[-1]
+                if coordinates
+                else None
+            )
+
+            samples.append({
+                "id": f"LINE-{index:04d}",
+                "name": item.get("name", ""),
+                "geometry_type": item.get(
+                    "geometry_type"
+                ),
+                "coordinate_count": len(
+                    coordinates
+                ),
+                "first_coordinate": first_coordinate,
+                "last_coordinate": last_coordinate
+            })
+
+        return {
+            "success": True,
+            "file": file_path.name,
+            "linestring_count": len(lines),
+            "samples": samples,
+            "message": (
+                "Đã đọc các tuyến LineString "
+                "từ KML/KMZ. Chưa thay đổi dữ liệu hệ thống."
+            )
+        }
+
+    except Exception as e:
+        print(
+            "[KML LINE PREVIEW ERROR]",
+            repr(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Lỗi kiểm tra LineString: {str(e)}"
+            )
+        )
 # ============================================================
 # THỦY LỢI AI - BỘ MÁY XÁC ĐỊNH LÝ TRÌNH
 # BƯỚC 1: CHUẨN HÓA MỐC LÝ TRÌNH
@@ -2909,16 +4184,6 @@ CHAINAGE_PATTERN = re.compile(
     r'(?i)(?:K|Km)\s*(\d+)\s*\+\s*(\d+(?:\.\d+)?)'
 )
 
-
-# ============================================================
-# KML GIS - GPS -> TUYẾN KÊNH GẦN NHẤT
-# BƯỚC THỬ NGHIỆM ĐỘC LẬP
-#
-# Không thay đổi parser hiện tại
-# Không thay đổi GIS Index hiện tại
-# Không thay đổi /ask
-# Không thay đổi image-analyze
-# ============================================================
 
 def parse_chainage(text):
     """
@@ -2951,6 +4216,7 @@ def parse_chainage(text):
     except (TypeError, ValueError):
         return None
 
+
 def format_chainage(distance_m):
     """
     Chuyển số mét thành dạng:
@@ -2976,6 +4242,16 @@ def format_chainage(distance_m):
     except (TypeError, ValueError):
         return None
 
+# ============================================================
+# KML GIS - GPS -> TUYẾN KÊNH GẦN NHẤT
+# BƯỚC THỬ NGHIỆM ĐỘC LẬP
+#
+# Không thay đổi parser hiện tại
+# Không thay đổi GIS Index hiện tại
+# Không thay đổi /ask
+# Không thay đổi image-analyze
+# ============================================================
+
 @app.get("/kml-gps-test")
 async def kml_gps_test(
     latitude: float,
@@ -2989,13 +4265,25 @@ async def kml_gps_test(
     Chưa kết nối báo cáo.
     Chỉ dùng để kiểm tra thuật toán GIS.
     """
-    # GIS SUPPORT của Báo cáo hiện trường chỉ dùng nguồn chuẩn GIS MASTER.
-    if not GIS_MASTER_KMZ.exists():
-        return {
-            "success": False,
-            "message": "Chưa có file GIS Master KMZ trong hệ thống."
-        }
-    file_path = GIS_MASTER_KMZ
+    # Ưu tiên GIS MASTER KMZ
+    if GIS_MASTER_KMZ.exists():
+        file_path = GIS_MASTER_KMZ
+    else:
+        files = sorted(
+            KML_DATA_DIR.glob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+        kml_files = [
+            p for p in files
+            if p.suffix.lower() in {".kml", ".kmz"}
+        ]
+        if not kml_files:
+            return {
+                "success": False,
+                "message": "Chưa có file KML/KMZ trong hệ thống."
+            }
+        file_path = kml_files[0]
 
     print("KML GPS TEST FILE:", file_path)
 
@@ -3200,10 +4488,129 @@ async def kml_gps_test(
 # KHÔNG THAY ĐỔI API CŨ
 # ============================================================
 
+@app.post("/admin/gis-master-upload")
+async def gis_master_upload(
+    file: UploadFile = File(...)
+):
+    """
+    Nạp file KMZ Master vào hệ thống.
+
+    Chức năng này chỉ phục vụ quản trị dữ liệu GIS.
+    Người dùng AI Thủy lợi thông thường không cần nạp KMZ.
+    """
+
+    global GIS_MASTER_CACHE, GIS_GEOJSON_CACHE
+
+    try:
+        # ----------------------------------------------------
+        # 1. Kiểm tra định dạng
+        # ----------------------------------------------------
+        filename = (file.filename or "").strip()
+
+        if not filename.lower().endswith(".kmz"):
+            raise HTTPException(
+                status_code=400,
+                detail="Chỉ chấp nhận file KMZ."
+            )
+
+        # ----------------------------------------------------
+        # 2. Đọc dữ liệu upload
+        # ----------------------------------------------------
+        content = await file.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail="File KMZ rỗng."
+            )
+
+        # ----------------------------------------------------
+        # 3. Ghi vào file tạm
+        #    Không ghi đè master.kmz ngay
+        # ----------------------------------------------------
+        temp_path = GIS_MASTER_DIR / "_master_upload_tmp.kmz"
+
+        temp_path.write_bytes(content)
+
+        # ----------------------------------------------------
+        # 4. Kiểm tra KMZ có đọc được hay không
+        # ----------------------------------------------------
+        test_data = parse_kml_kmz(temp_path)
+
+        if not test_data:
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+
+            raise HTTPException(
+                status_code=400,
+                detail="Không đọc được dữ liệu từ KMZ. "
+                       "File có thể không hợp lệ hoặc không chứa dữ liệu KML."
+            )
+
+        # ----------------------------------------------------
+        # 5. KMZ hợp lệ -> thay thế Master
+        # ----------------------------------------------------
+        temp_path.replace(GIS_MASTER_KMZ)
+
+        # ----------------------------------------------------
+        # 6. Xóa cache cũ để hệ thống đọc Master mới
+        # ----------------------------------------------------
+        GIS_MASTER_CACHE = None
+        GIS_GEOJSON_CACHE = None
+
+        # Đọc lại Master ngay sau khi nạp
+        master_data = get_gis_master()
+
+        return {
+            "success": True,
+            "message": "Đã nạp GIS Master KMZ thành công.",
+            "file": GIS_MASTER_KMZ.name,
+            "source_filename": filename,
+            "count": master_data.get("count", 0)
+                if isinstance(master_data, dict)
+                else 0
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print(f"[GIS MASTER UPLOAD ERROR] {repr(e)}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi nạp GIS Master: {str(e)}"
+        )
 
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
+@app.post("/image-upload")
+async def image_upload(file: UploadFile = File(...)):
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    max_image_bytes = 10 * 1024 * 1024
+    filename = Path(file.filename or "image").name
+    content_type = (file.content_type or "").lower().strip()
+    if content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.")
+    content = await file.read()
+    if len(content) > max_image_bytes:
+        raise HTTPException(status_code=413, detail="Ảnh vượt quá giới hạn 10 MB.")
+    try:
+        image = Image.open(BytesIO(content))
+        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=75, optimize=True)
+        content = output.getvalue()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Không thể xử lý ảnh.")
+    image_hash = hashlib.sha256(content).hexdigest()
+    print("IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s" % (filename, len(content) / 1024, content_type, image_hash))
+    return {"success": True, "status": "received", "filename": filename, "mime_type": content_type, "size_bytes": len(content), "image_hash": image_hash}
 
 # ============================================================
 # IMAGE ANALYZE
