@@ -1924,7 +1924,6 @@ app.add_middleware(
 # GIS DATA API - BƯỚC 1
 # ============================================================
 
-@app.get("/gis/data")
 
 # ============================================================
 # MODELS
@@ -2032,7 +2031,6 @@ async def home():
 # TEST GOOGLE DATA ENGINE
 # ============================================================
 
-@app.get("/data-test")
 @app.get("/health")
 async def health():
     return {
@@ -2313,6 +2311,72 @@ def get_parameter_label(
 # ============================================================
 # ASK
 # ============================================================
+def build_operational_direct_answer(
+    operational_rows: list,
+) -> str:
+
+    answers = []
+
+    for item in operational_rows:
+
+        cong_trinh = str(
+            item.get("cong_trinh", "")
+        ).strip()
+
+        thong_so = str(
+            item.get("thong_so", "")
+        ).strip()
+
+        gia_tri = str(
+            item.get("gia_tri", "")
+        ).strip()
+
+        don_vi = str(
+            item.get("don_vi_do", "")
+        ).strip()
+
+        ngay = str(
+            item.get("ngay", "")
+        ).strip()
+
+        gio = str(
+            item.get("gio", "")
+        ).strip()
+
+        label = get_parameter_label(
+            thong_so
+        )
+
+        value_text = (
+            f"{gia_tri} {don_vi}".strip()
+            if don_vi
+            else gia_tri
+        )
+
+        time_text = ""
+
+        if gio:
+            time_text += f" lúc {gio} giờ"
+
+        if ngay:
+            time_text += f" ngày {ngay}"
+
+        if time_text:
+            time_text = time_text.strip()
+
+        answer = (
+            f"{label} tại {cong_trinh}"
+        )
+
+        if time_text:
+            answer += time_text
+
+        answer += f" là {value_text}."
+
+        answers.append(answer)
+
+    return "\n".join(answers)
+
 @app.post("/ask")
 async def ask(data: Question):
 
@@ -2804,7 +2868,6 @@ async def upload_file(file: UploadFile = File(...)):
 # KML / KMZ UPLOAD
 # ============================================================
 
-@app.post("/kml-upload")
 
 # ============================================================
 # KML / KMZ DIAGNOSTIC - KIỂM TRA CẤU TRÚC ĐỘC LẬP
@@ -2812,7 +2875,6 @@ async def upload_file(file: UploadFile = File(...)):
 # ============================================================
 
 
-@app.get("/kml-diagnostic")
 
 # ============================================================
 # KML GIS INDEX - BƯỚC THỬ NGHIỆM
@@ -2820,14 +2882,12 @@ async def upload_file(file: UploadFile = File(...)):
 # Không thay đổi parser KML/KMZ hiện tại
 # ============================================================
 
-@app.get("/kml-index-preview")
 
 # ============================================================
 # KML GIS INDEX - BUILD TOÀN BỘ
 # BƯỚC 3C - CHỈ KIỂM TRA, CHƯA GHI ĐÈ DỮ LIỆU CŨ
 # ============================================================
 
-@app.get("/kml-index-build")
 
 # ============================================================
 # KML GIS - KIỂM TRA LINESTRING ĐỘC LẬP
@@ -2840,7 +2900,6 @@ async def upload_file(file: UploadFile = File(...)):
 # - Chỉ đọc LineString để kiểm tra
 # ============================================================
 
-@app.get("/kml-lines-preview")
 # ============================================================
 # THỦY LỢI AI - BỘ MÁY XÁC ĐỊNH LÝ TRÌNH
 # BƯỚC 1: CHUẨN HÓA MỐC LÝ TRÌNH
@@ -2860,6 +2919,62 @@ CHAINAGE_PATTERN = re.compile(
 # Không thay đổi /ask
 # Không thay đổi image-analyze
 # ============================================================
+
+def parse_chainage(text):
+    """
+    Đọc lý trình từ tên hoặc mô tả GIS.
+
+    Ví dụ:
+        K3+101
+        Km3+101
+        K 3+101
+        K3+101.5
+
+    Trả về:
+        mét tính từ Km0
+    """
+
+    if not text:
+        return None
+
+    match = CHAINAGE_PATTERN.search(str(text))
+
+    if not match:
+        return None
+
+    try:
+        km = float(match.group(1))
+        met = float(match.group(2))
+
+        return km * 1000.0 + met
+
+    except (TypeError, ValueError):
+        return None
+
+def format_chainage(distance_m):
+    """
+    Chuyển số mét thành dạng:
+        K3+198
+    """
+
+    if distance_m is None:
+        return None
+
+    try:
+        distance_m = float(distance_m)
+
+        km = int(distance_m // 1000)
+        met = distance_m - km * 1000
+
+        if abs(met - round(met)) < 0.01:
+            met_text = str(int(round(met)))
+        else:
+            met_text = f"{met:.1f}"
+
+        return f"K{km}+{met_text}"
+
+    except (TypeError, ValueError):
+        return None
 
 @app.get("/kml-gps-test")
 async def kml_gps_test(
@@ -3085,12 +3200,10 @@ async def kml_gps_test(
 # KHÔNG THAY ĐỔI API CŨ
 # ============================================================
 
-@app.post("/admin/gis-master-upload")
 
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
-@app.post("/image-upload")
 
 # ============================================================
 # IMAGE ANALYZE
