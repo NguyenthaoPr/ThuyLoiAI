@@ -49,10 +49,6 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
-# ===== HỆ THỐNG BẢN ĐỒ KÊNH MƯƠNG KML/KMZ =====
-
-KML_DATA_DIR = BASE_DIR / "kml_data"
-KML_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # ===== GIS MASTER DATA - BỔ SUNG, KHÔNG THAY ĐỔI HỆ THỐNG CŨ =====
 GIS_MASTER_DIR = BASE_DIR / "gis_master"
 GIS_MASTER_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,7 +57,6 @@ GIS_MASTER_KMZ = GIS_MASTER_DIR / "master.kmz"
 print(f"[GIS MASTER] BASE_DIR = {BASE_DIR}")
 print(f"[GIS MASTER] GIS_MASTER_DIR = {GIS_MASTER_DIR}")
 print(f"[GIS MASTER] GIS_MASTER_KMZ = {GIS_MASTER_KMZ}, EXISTS = {GIS_MASTER_KMZ.exists()}")
-GIS_MASTER_INDEX = GIS_MASTER_DIR / "gis_index.json"
 
 
 def parse_kml_coordinates(text):
@@ -630,8 +625,7 @@ def parse_kml_kmz(file_path):
 
         return []  
 # ============================================================
-# GIS MASTER DATA - ĐỌC KMZ DÙNG CHUNG
-# BỔ SUNG MỚI - KHÔNG THAY ĐỔI HỆ THỐNG CŨ
+# 4. GIS SUPPORT - GIS MASTER DÙNG CHO BÁO CÁO HIỆN TRƯỜNG
 # ============================================================
 
 def load_gis_master():
@@ -673,7 +667,6 @@ def load_gis_master():
 
 # Bộ nhớ GIS Master trong phiên chạy hiện tại
 GIS_MASTER_CACHE = None
-GIS_GEOJSON_CACHE = None
 
 
 def get_gis_master():
@@ -697,164 +690,6 @@ def get_gis_master():
 # ============================================================
 
 
-def kml_items_to_geojson(items):
-    """
-    KML/KMZ -> GeoJSON
-
-    Giữ nguyên:
-    - tên
-    - mô tả
-    - loại hình học
-    - màu KML
-    - độ dày KML
-    - opacity KML
-    - style ID
-    """
-
-    features = []
-
-    geometry_map = {
-        "Point": "Point",
-        "LineString": "LineString",
-        "Polygon": "Polygon",
-    }
-
-    for index, item in enumerate(items or []):
-
-        geometry_type = item.get(
-            "geometry_type"
-        )
-
-        coordinates = item.get(
-            "coordinates"
-        ) or []
-
-        if geometry_type not in geometry_map:
-            continue
-
-        if not coordinates:
-            continue
-
-        # ====================================================
-        # POINT
-        # ====================================================
-        if geometry_type == "Point":
-
-            geometry_coordinates = [
-                coordinates[0]["lng"],
-                coordinates[0]["lat"],
-            ]
-
-        # ====================================================
-        # LINE
-        # ====================================================
-        elif geometry_type == "LineString":
-
-            geometry_coordinates = [
-                [
-                    point["lng"],
-                    point["lat"]
-                ]
-                for point in coordinates
-            ]
-
-        # ====================================================
-        # POLYGON
-        # ====================================================
-        elif geometry_type == "Polygon":
-
-            ring = [
-                [
-                    point["lng"],
-                    point["lat"]
-                ]
-                for point in coordinates
-            ]
-
-            if ring and ring[0] != ring[-1]:
-                ring.append(ring[0])
-
-            geometry_coordinates = [ring]
-
-        else:
-            continue
-
-        # ====================================================
-        # GEOJSON FEATURE
-        # ====================================================
-        features.append({
-
-            "type": "Feature",
-
-            "id": index,
-
-            "properties": {
-
-                "name": item.get(
-                    "name",
-                    ""
-                ),
-
-                "description": item.get(
-                    "description",
-                    ""
-                ),
-
-                "geometry_type": geometry_type,
-
-                "gis_class": item.get(
-                    "gis_class",
-                    "CONG_TRINH"
-                ),
-
-                # ==========================================
-                # KML STYLE
-                # ==========================================
-                "kmlColor": item.get(
-                    "kml_color"
-                ),
-
-                "kmlWidth": item.get(
-                    "kml_width"
-                ),
-
-                "kmlLineOpacity": item.get(
-                    "kml_line_opacity"
-                ),
-
-                "kmlPolyColor": item.get(
-                    "kml_poly_color"
-                ),
-
-                "kmlPolyOpacity": item.get(
-                    "kml_poly_opacity"
-                ),
-
-                "kmlStyleId": item.get(
-                    "kml_style_id"
-                ),
-
-            },
-
-            "geometry": {
-
-                "type": geometry_map[
-                    geometry_type
-                ],
-
-                "coordinates": geometry_coordinates,
-
-            },
-
-        })
-
-    return {
-
-        "type": "FeatureCollection",
-
-        "features": features,
-
-    }
 # ============================================================
 # GIS CLASSIFICATION - BƯỚC 1
 # TÁCH KHU TƯỚI KHỎI CÔNG TRÌNH
@@ -1065,35 +900,6 @@ def classify_construction_type(item):
     # 7. CHƯA XÁC ĐỊNH
     # ========================================================
     return "KHAC"
-def get_active_kml_file():
-    """
-    Tìm file KML/KMZ đang có trong thư mục kml_data.
-
-    Ưu tiên file KMZ mới nhất.
-    Không tạo cơ chế nạp dữ liệu mới.
-    """
-    if not KML_DATA_DIR.exists():
-        return None
-
-    files = [
-        path
-        for path in KML_DATA_DIR.iterdir()
-        if path.is_file()
-        and path.suffix.lower() in {".kml", ".kmz"}
-    ]
-
-    if not files:
-        return None
-
-    kmz_files = [
-        path for path in files
-        if path.suffix.lower() == ".kmz"
-    ]
-
-    if kmz_files:
-        return max(kmz_files, key=lambda path: path.stat().st_mtime)
-
-    return max(files, key=lambda path: path.stat().st_mtime)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_FILE_SEARCH_STORE = os.getenv("GEMINI_FILE_SEARCH_STORE", "").strip()
@@ -1573,7 +1379,6 @@ def detect_operational_datetime(
         )
 
     return ngay, gio
-
 
 
 def detect_operational_construction(
@@ -2120,70 +1925,6 @@ app.add_middleware(
 # ============================================================
 
 @app.get("/gis/data")
-async def gis_data():
-    """
-    Trả dữ liệu GIS dưới dạng GeoJSON.
-
-    Tối ưu tốc độ:
-    - Parse KMZ/KML chỉ một lần trong RAM.
-    - Chuyển sang GeoJSON chỉ một lần trong RAM.
-    - Các request sau trả thẳng GeoJSON đã cache.
-    - Cho phép CDN/proxy cache response trong thời gian ngắn.
-    """
-    global GIS_GEOJSON_CACHE
-
-    try:
-        active_file = GIS_MASTER_KMZ
-
-        if active_file is None or not active_file.exists():
-            return JSONResponse(
-                content={
-                    "success": False,
-                    "message": "Chưa có dữ liệu KML/KMZ trong hệ thống.",
-                    "geojson": {"type": "FeatureCollection", "features": []},
-                },
-                headers={"Cache-Control": "no-store"}
-            )
-
-        # Cache GeoJSON đã xử lý trong RAM.
-        # Khi upload Master mới, cache này được xóa ở endpoint upload.
-        cache_hit = GIS_GEOJSON_CACHE is not None
-        if GIS_GEOJSON_CACHE is None:
-            items = get_gis_master().get("data", [])
-            cong_trinh_items, khu_tuoi_items = split_gis_items(items)
-            converted = kml_items_to_geojson(cong_trinh_items + khu_tuoi_items)
-            GIS_GEOJSON_CACHE = {
-                "success": True,
-                "filename": active_file.name,
-                "objects": len(items),
-                "cong_trinh": len(cong_trinh_items),
-                "khu_tuoi": len(khu_tuoi_items),
-                "features": len(converted["features"]),
-                "geojson": converted,
-            }
-
-        return JSONResponse(
-            content=GIS_GEOJSON_CACHE,
-            headers={
-                # Trình duyệt/CDN có thể dùng bản cache trong 5 phút;
-                # sau đó vẫn có thể phục vụ bản cũ trong lúc revalidate.
-                "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
-                "X-GIS-Cache": "HIT" if cache_hit else "MISS",
-            }
-        )
-
-    except Exception as e:
-        print("[GIS DATA ERROR]", repr(e))
-
-        return JSONResponse(
-            content={
-                "success": False,
-                "message": "Không thể đọc dữ liệu GIS.",
-                "error": str(e),
-                "geojson": {"type": "FeatureCollection", "features": []},
-            },
-            headers={"Cache-Control": "no-store"}
-        )
 
 # ============================================================
 # MODELS
@@ -2292,21 +2033,6 @@ async def home():
 # ============================================================
 
 @app.get("/data-test")
-async def data_test(
-    congTrinh: str = "",
-    thongSo: str = "HTL",
-    ngay: str = "",
-    gio: str = "",
-):
-
-    result = await query_google_data(
-        cong_trinh=congTrinh,
-        thong_so=thongSo,
-        ngay=ngay,
-        gio=gio,
-    )
-
-    return result
 @app.get("/health")
 async def health():
     return {
@@ -2381,7 +2107,6 @@ async def api_info():
             "pdf_documents": "/documents/pdf",
             "delete_pdf": "/documents/pdf",
             "upload": "/upload",
-            "image_upload": "/image-upload",
             "image_analyze": "/image-analyze",
             "field_report": "/field-report",
             "field_report_pdf": "/field-report-pdf",
@@ -2585,71 +2310,6 @@ def get_parameter_label(
     )
 
 
-def build_operational_direct_answer(
-    operational_rows: list,
-) -> str:
-
-    answers = []
-
-    for item in operational_rows:
-
-        cong_trinh = str(
-            item.get("cong_trinh", "")
-        ).strip()
-
-        thong_so = str(
-            item.get("thong_so", "")
-        ).strip()
-
-        gia_tri = str(
-            item.get("gia_tri", "")
-        ).strip()
-
-        don_vi = str(
-            item.get("don_vi_do", "")
-        ).strip()
-
-        ngay = str(
-            item.get("ngay", "")
-        ).strip()
-
-        gio = str(
-            item.get("gio", "")
-        ).strip()
-
-        label = get_parameter_label(
-            thong_so
-        )
-
-        value_text = (
-            f"{gia_tri} {don_vi}".strip()
-            if don_vi
-            else gia_tri
-        )
-
-        time_text = ""
-
-        if gio:
-            time_text += f" lúc {gio} giờ"
-
-        if ngay:
-            time_text += f" ngày {ngay}"
-
-        if time_text:
-            time_text = time_text.strip()
-
-        answer = (
-            f"{label} tại {cong_trinh}"
-        )
-
-        if time_text:
-            answer += time_text
-
-        answer += f" là {value_text}."
-
-        answers.append(answer)
-
-    return "\n".join(answers)
 # ============================================================
 # ASK
 # ============================================================
@@ -3145,299 +2805,14 @@ async def upload_file(file: UploadFile = File(...)):
 # ============================================================
 
 @app.post("/kml-upload")
-async def kml_upload(file: UploadFile = File(...)):
-    """
-    Nhận file KML/KMZ của hệ thống kênh mương,
-    lưu vào thư mục kml_data và đọc dữ liệu tọa độ.
-    """
-
-    if not file.filename:
-        raise HTTPException(
-            status_code=400,
-            detail="Chưa chọn file KML/KMZ."
-        )
-
-    filename = Path(file.filename).name
-    suffix = Path(filename).suffix.lower()
-
-    if suffix not in {".kml", ".kmz"}:
-        raise HTTPException(
-            status_code=400,
-            detail="Chỉ hỗ trợ file KML hoặc KMZ."
-        )
-
-    try:
-        content = await file.read()
-
-        if not content:
-            raise HTTPException(
-                status_code=400,
-                detail="File KML/KMZ rỗng."
-            )
-
-        save_path = KML_DATA_DIR / filename
-
-        with open(save_path, "wb") as f:
-            f.write(content)
-
-        kml_items = parse_kml_kmz(save_path)
-
-        total_coordinates = sum(
-            len(item.get("coordinates", []))
-            for item in kml_items
-        )
-
-        return {
-            "success": True,
-            "filename": filename,
-            "file_path": str(save_path),
-            "objects": len(kml_items),
-            "coordinates": total_coordinates,
-            "message": "Đã nạp hệ thống KML/KMZ thành công."
-        }
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-        print(f"[KML UPLOAD] Lỗi: {e}")
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Không thể nạp KML/KMZ: {str(e)}"
-        )
 
 # ============================================================
 # KML / KMZ DIAGNOSTIC - KIỂM TRA CẤU TRÚC ĐỘC LẬP
 # Không thay đổi parser KML/KMZ hiện tại
 # ============================================================
 
-def inspect_kml_structure(file_path, sample_limit=20):
-    """
-    Kiểm tra độc lập cấu trúc KML/KMZ.
-
-    Mục đích:
-    - Xác định Folder
-    - Xác định đường dẫn Folder cha/con
-    - Đếm Placemark
-    - Đếm Point / LineString / Polygon
-    - Kiểm tra tên đối tượng
-    - Kiểm tra tọa độ
-
-    Không thay đổi dữ liệu của parser hiện tại.
-    """
-
-    file_path = Path(file_path)
-
-    if file_path.suffix.lower() == ".kml":
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-
-    elif file_path.suffix.lower() == ".kmz":
-        with zipfile.ZipFile(file_path, "r") as archive:
-            kml_names = [
-                name for name in archive.namelist()
-                if name.lower().endswith(".kml")
-            ]
-
-            if not kml_names:
-                raise ValueError("KMZ không chứa file KML.")
-
-            kml_data = archive.read(kml_names[0])
-            root = ET.fromstring(kml_data)
-
-    else:
-        raise ValueError("Chỉ hỗ trợ KML hoặc KMZ.")
-
-    namespace = {
-        "kml": "http://www.opengis.net/kml/2.2"
-    }
-
-    stats = {
-        "folders": 0,
-        "placemarks": 0,
-        "points": 0,
-        "linestrings": 0,
-        "polygons": 0,
-        "coordinates": 0,
-        "named_placemarks": 0,
-        "unnamed_placemarks": 0
-    }
-
-    folder_samples = []
-    object_samples = []
-
-    def read_coordinates(element):
-        if element is None:
-            return []
-
-        return parse_kml_coordinates(element.text)
-
-    def process_element(element, folder_path):
-        tag = element.tag.split("}")[-1]
-
-        if tag == "Folder":
-
-            name_element = element.find("kml:name", namespace)
-
-            folder_name = (
-                name_element.text.strip()
-                if name_element is not None and name_element.text
-                else ""
-            )
-
-            stats["folders"] += 1
-
-            new_path = list(folder_path)
-
-            if folder_name:
-                new_path.append(folder_name)
-
-                if len(folder_samples) < sample_limit:
-                    folder_samples.append({
-                        "name": folder_name,
-                        "path": new_path
-                    })
-
-            for child in list(element):
-                process_element(child, new_path)
-
-        elif tag == "Placemark":
-
-            stats["placemarks"] += 1
-
-            name_element = element.find("kml:name", namespace)
-
-            name = (
-                name_element.text.strip()
-                if name_element is not None and name_element.text
-                else ""
-            )
-
-            if name:
-                stats["named_placemarks"] += 1
-            else:
-                stats["unnamed_placemarks"] += 1
-
-            geometry_type = None
-            coordinates = []
-
-            point = element.find(
-                ".//kml:Point/kml:coordinates",
-                namespace
-            )
-
-            line = element.find(
-                ".//kml:LineString/kml:coordinates",
-                namespace
-            )
-
-            polygon = element.find(
-                ".//kml:Polygon//kml:coordinates",
-                namespace
-            )
-
-            if point is not None:
-                geometry_type = "Point"
-                coordinates = read_coordinates(point)
-
-                stats["points"] += 1
-
-            elif line is not None:
-                geometry_type = "LineString"
-                coordinates = read_coordinates(line)
-
-                stats["linestrings"] += 1
-
-            elif polygon is not None:
-                geometry_type = "Polygon"
-                coordinates = read_coordinates(polygon)
-
-                stats["polygons"] += 1
-
-            stats["coordinates"] += len(coordinates)
-
-            if len(object_samples) < sample_limit:
-                object_samples.append({
-                    "name": name,
-                    "geometry_type": geometry_type,
-                    "folder_path": folder_path,
-                    "coordinate_count": len(coordinates),
-                    "first_coordinate": (
-                        coordinates[0]
-                        if coordinates
-                        else None
-                    )
-                })
-
-        else:
-
-            for child in list(element):
-                process_element(child, folder_path)
-
-    process_element(root, [])
-
-    return {
-        "success": True,
-        "file": file_path.name,
-        "stats": stats,
-        "folder_samples": folder_samples,
-        "object_samples": object_samples
-    }
-
 
 @app.get("/kml-diagnostic")
-async def kml_diagnostic():
-    """
-    API chẩn đoán độc lập cấu trúc KML/KMZ.
-
-    Không thay đổi dữ liệu hệ thống hiện tại.
-    """
-    # Ưu tiên GIS Master KMZ
-    if GIS_MASTER_KMZ.exists():
-        file_path = GIS_MASTER_KMZ
-
-    else:
-        # Nếu chưa có GIS Master thì giữ cơ chế KML/KMZ cũ
-        files = sorted(
-            KML_DATA_DIR.glob("*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-
-        kml_files = [
-            p for p in files
-            if p.suffix.lower() in {".kml", ".kmz"}
-        ]
-
-        if not kml_files:
-            return {
-                "success": False,
-                "message": "Chưa có file KML/KMZ trong hệ thống."
-            }
-
-        file_path = kml_files[0]
-
-    try:
-        result = inspect_kml_structure(file_path)
-
-        result["message"] = (
-            "Đã kiểm tra cấu trúc KML/KMZ độc lập."
-        )
-
-        return result
-
-    except Exception as e:
-
-        print(
-            "[KML DIAGNOSTIC ERROR]",
-            repr(e)
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Lỗi kiểm tra KML/KMZ: {str(e)}"
-        )
 
 # ============================================================
 # KML GIS INDEX - BƯỚC THỬ NGHIỆM
@@ -3446,106 +2821,6 @@ async def kml_diagnostic():
 # ============================================================
 
 @app.get("/kml-index-preview")
-async def kml_index_preview():
-    """
-    Tạo GIS Index thử nghiệm từ file KML/KMZ hiện tại.
-
-    Mục đích:
-    - Tạo ID nội bộ cho từng đối tượng
-    - Giữ nguyên tên
-    - Giữ nguyên Folder path
-    - Chuẩn hóa latitude / longitude
-    - Không ghi đè dữ liệu KML/KMZ hiện tại
-    - Không thay đổi parser hiện tại
-    """
-    # Ưu tiên GIS MASTER KMZ
-    if GIS_MASTER_KMZ.exists():
-        file_path = GIS_MASTER_KMZ
-
-    else:
-        # Giữ cơ chế KML/KMZ cũ làm dự phòng
-        files = sorted(
-            KML_DATA_DIR.glob("*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-
-        kml_files = [
-            p for p in files
-            if p.suffix.lower() in {".kml", ".kmz"}
-        ]
-
-        if not kml_files:
-            return {
-                "success": False,
-                "message": "Chưa có file KML/KMZ trong hệ thống."
-            }
-
-        file_path = kml_files[0]
-
-    try:
-        diagnostic = inspect_kml_structure(
-            file_path,
-            sample_limit=100
-        )
-
-        if not diagnostic.get("success"):
-            return diagnostic
-
-        gis_index = []
-
-        for index, item in enumerate(
-            diagnostic.get("object_samples", []),
-            start=1
-        ):
-
-            coordinate = item.get("first_coordinate")
-
-            latitude = None
-            longitude = None
-            altitude = None
-
-            if coordinate:
-                latitude = coordinate.get("lat")
-                longitude = coordinate.get("lng")
-                altitude = coordinate.get("alt")
-
-            gis_index.append({
-                "id": f"GIS-{index:06d}",
-                "name": item.get("name", ""),
-                "geometry_type": item.get("geometry_type"),
-                "folder_path": item.get("folder_path", []),
-                "coordinate_count": item.get(
-                    "coordinate_count",
-                    0
-                ),
-                "latitude": latitude,
-                "longitude": longitude,
-                "altitude": altitude
-            })
-
-        return {
-            "success": True,
-            "file": file_path.name,
-            "index_count": len(gis_index),
-            "samples": gis_index[:20],
-            "message": (
-                "Đã tạo GIS Index thử nghiệm trong RAM. "
-                "Chưa thay đổi dữ liệu hệ thống."
-            )
-        }
-
-    except Exception as e:
-
-        print(
-            "[KML INDEX PREVIEW ERROR]",
-            repr(e)
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Lỗi tạo GIS Index thử nghiệm: {str(e)}"
-        )
 
 # ============================================================
 # KML GIS INDEX - BUILD TOÀN BỘ
@@ -3553,190 +2828,6 @@ async def kml_index_preview():
 # ============================================================
 
 @app.get("/kml-index-build")
-async def kml_index_build():
-    """
-    Xây GIS Index đầy đủ từ dữ liệu KML/KMZ hiện tại.
-
-    Nguyên tắc:
-    - Không thay đổi parser hiện tại.
-    - Không thay đổi dữ liệu KML/KMZ gốc.
-    - Không thay đổi hệ thống AI hiện tại.
-    - Chỉ đọc và chuẩn hóa dữ liệu GIS trong RAM.
-    """
-
-    # Ưu tiên GIS MASTER KMZ
-    if GIS_MASTER_KMZ.exists():
-        file_path = GIS_MASTER_KMZ
-
-    else:
-        # Giữ cơ chế KML/KMZ cũ làm dự phòng
-        files = sorted(
-            KML_DATA_DIR.glob("*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-
-        kml_files = [
-            p for p in files
-            if p.suffix.lower() in {".kml", ".kmz"}
-        ]
-
-        if not kml_files:
-            return {
-                "success": False,
-                "message": "Chưa có file KML/KMZ trong hệ thống."
-            }
-
-        file_path = kml_files[0]
-
-    try:
-        # =====================================================
-        # ĐỌC TOÀN BỘ BẰNG PARSER HIỆN TẠI
-        # =====================================================
-
-        kml_items = parse_kml_kmz(file_path)
-
-        if not kml_items:
-            return {
-                "success": False,
-                "message": "Không đọc được đối tượng từ KML/KMZ."
-            }
-
-        # =====================================================
-        # THỐNG KÊ
-        # =====================================================
-
-        total_coordinates = sum(
-            len(item.get("coordinates", []))
-            for item in kml_items
-        )
-
-        point_count = sum(
-            1
-            for item in kml_items
-            if item.get("geometry_type") == "Point"
-        )
-
-        linestring_count = sum(
-            1
-            for item in kml_items
-            if item.get("geometry_type") == "LineString"
-        )
-
-        polygon_count = sum(
-            1
-            for item in kml_items
-            if item.get("geometry_type") == "Polygon"
-        )
-
-        named_count = sum(
-            1
-            for item in kml_items
-            if str(item.get("name", "")).strip()
-        )
-
-        unnamed_count = len(kml_items) - named_count
-
-        # =====================================================
-        # TẠO GIS INDEX TRONG RAM
-        # =====================================================
-
-        gis_index = []
-
-        for index, item in enumerate(kml_items, start=1):
-
-            coordinates = item.get("coordinates", [])
-
-            first_coordinate = (
-                coordinates[0]
-                if coordinates
-                else None
-            )
-
-            latitude = None
-            longitude = None
-            altitude = None
-
-            if first_coordinate:
-
-                if isinstance(first_coordinate, dict):
-
-                    latitude = first_coordinate.get("lat")
-                    longitude = first_coordinate.get("lng")
-                    altitude = first_coordinate.get("alt")
-
-                elif isinstance(first_coordinate, (list, tuple)):
-
-                    if len(first_coordinate) >= 2:
-                        longitude = first_coordinate[0]
-                        latitude = first_coordinate[1]
-
-                    if len(first_coordinate) >= 3:
-                        altitude = first_coordinate[2]
-
-            gis_index.append({
-                "id": f"GIS-{index:06d}",
-                "name": item.get("name", ""),
-                "description": item.get("description", ""),
-                "geometry_type": item.get("geometry_type"),
-                "coordinate_count": len(coordinates),
-                "latitude": latitude,
-                "longitude": longitude,
-                "altitude": altitude
-            })
-
-        # =====================================================
-        # KIỂM TRA TOÀN BỘ INDEX
-        # =====================================================
-
-        invalid_index = [
-            item
-            for item in gis_index
-            if item.get("latitude") is None
-            or item.get("longitude") is None
-        ]
-
-        return {
-            "success": True,
-            "file": file_path.name,
-
-            "source": {
-                "objects": len(kml_items),
-                "coordinates": total_coordinates,
-                "points": point_count,
-                "linestrings": linestring_count,
-                "polygons": polygon_count,
-                "named": named_count,
-                "unnamed": unnamed_count
-            },
-
-            "gis_index": {
-                "count": len(gis_index),
-                "valid_coordinates": (
-                    len(gis_index) - len(invalid_index)
-                ),
-                "invalid_coordinates": len(invalid_index)
-            },
-
-            "samples": gis_index[:20],
-
-            "message": (
-                "Đã xây dựng GIS Index toàn bộ trong RAM. "
-                "Chưa thay đổi dữ liệu hệ thống."
-            )
-        }
-
-    except Exception as e:
-
-        print(
-            "[KML GIS INDEX BUILD ERROR]",
-            repr(e)
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Lỗi xây dựng GIS Index: {str(e)}"
-        )
 
 # ============================================================
 # KML GIS - KIỂM TRA LINESTRING ĐỘC LẬP
@@ -3750,113 +2841,6 @@ async def kml_index_build():
 # ============================================================
 
 @app.get("/kml-lines-preview")
-async def kml_lines_preview():
-    """
-    Lấy mẫu các đối tượng LineString từ KML/KMZ hiện tại.
-
-    Mục đích:
-    - Xác nhận tuyến dạng LineString thực tế.
-    - Kiểm tra tên tuyến.
-    - Kiểm tra số lượng tọa độ.
-    - Kiểm tra tọa độ đầu và cuối tuyến.
-
-    Chưa thực hiện tính khoảng cách GPS.
-    Chưa thay đổi dữ liệu hệ thống.
-    """
-
-    # Ưu tiên GIS MASTER KMZ
-    if GIS_MASTER_KMZ.exists():
-        file_path = GIS_MASTER_KMZ
-
-    else:
-        # Giữ cơ chế KML/KMZ cũ làm dự phòng
-        files = sorted(
-            KML_DATA_DIR.glob("*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-
-        kml_files = [
-            p for p in files
-            if p.suffix.lower() in {".kml", ".kmz"}
-        ]
-
-        if not kml_files:
-            return {
-                "success": False,
-                "message": "Chưa có file KML/KMZ trong hệ thống."
-            }
-
-        file_path = kml_files[0]
-
-    try:
-        kml_items = parse_kml_kmz(file_path)
-
-        if not kml_items:
-            return {
-                "success": False,
-                "message": "Không đọc được đối tượng từ KML/KMZ."
-            }
-
-        lines = [
-            item
-            for item in kml_items
-            if item.get("geometry_type") == "LineString"
-        ]
-
-        samples = []
-
-        for index, item in enumerate(lines[:10], start=1):
-            coordinates = item.get("coordinates", [])
-
-            first_coordinate = (
-                coordinates[0]
-                if coordinates
-                else None
-            )
-
-            last_coordinate = (
-                coordinates[-1]
-                if coordinates
-                else None
-            )
-
-            samples.append({
-                "id": f"LINE-{index:04d}",
-                "name": item.get("name", ""),
-                "geometry_type": item.get(
-                    "geometry_type"
-                ),
-                "coordinate_count": len(
-                    coordinates
-                ),
-                "first_coordinate": first_coordinate,
-                "last_coordinate": last_coordinate
-            })
-
-        return {
-            "success": True,
-            "file": file_path.name,
-            "linestring_count": len(lines),
-            "samples": samples,
-            "message": (
-                "Đã đọc các tuyến LineString "
-                "từ KML/KMZ. Chưa thay đổi dữ liệu hệ thống."
-            )
-        }
-
-    except Exception as e:
-        print(
-            "[KML LINE PREVIEW ERROR]",
-            repr(e)
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Lỗi kiểm tra LineString: {str(e)}"
-            )
-        )
 # ============================================================
 # THỦY LỢI AI - BỘ MÁY XÁC ĐỊNH LÝ TRÌNH
 # BƯỚC 1: CHUẨN HÓA MỐC LÝ TRÌNH
@@ -3866,63 +2850,6 @@ CHAINAGE_PATTERN = re.compile(
     r'(?i)(?:K|Km)\s*(\d+)\s*\+\s*(\d+(?:\.\d+)?)'
 )
 
-
-def parse_chainage(text):
-    """
-    Đọc lý trình từ tên hoặc mô tả GIS.
-
-    Ví dụ:
-        K3+101
-        Km3+101
-        K 3+101
-        K3+101.5
-
-    Trả về:
-        mét tính từ Km0
-    """
-
-    if not text:
-        return None
-
-    match = CHAINAGE_PATTERN.search(str(text))
-
-    if not match:
-        return None
-
-    try:
-        km = float(match.group(1))
-        met = float(match.group(2))
-
-        return km * 1000.0 + met
-
-    except (TypeError, ValueError):
-        return None
-
-
-def format_chainage(distance_m):
-    """
-    Chuyển số mét thành dạng:
-        K3+198
-    """
-
-    if distance_m is None:
-        return None
-
-    try:
-        distance_m = float(distance_m)
-
-        km = int(distance_m // 1000)
-        met = distance_m - km * 1000
-
-        if abs(met - round(met)) < 0.01:
-            met_text = str(int(round(met)))
-        else:
-            met_text = f"{met:.1f}"
-
-        return f"K{km}+{met_text}"
-
-    except (TypeError, ValueError):
-        return None
 
 # ============================================================
 # KML GIS - GPS -> TUYẾN KÊNH GẦN NHẤT
@@ -3947,25 +2874,13 @@ async def kml_gps_test(
     Chưa kết nối báo cáo.
     Chỉ dùng để kiểm tra thuật toán GIS.
     """
-    # Ưu tiên GIS MASTER KMZ
-    if GIS_MASTER_KMZ.exists():
-        file_path = GIS_MASTER_KMZ
-    else:
-        files = sorted(
-            KML_DATA_DIR.glob("*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-        kml_files = [
-            p for p in files
-            if p.suffix.lower() in {".kml", ".kmz"}
-        ]
-        if not kml_files:
-            return {
-                "success": False,
-                "message": "Chưa có file KML/KMZ trong hệ thống."
-            }
-        file_path = kml_files[0]
+    # GIS SUPPORT của Báo cáo hiện trường chỉ dùng nguồn chuẩn GIS MASTER.
+    if not GIS_MASTER_KMZ.exists():
+        return {
+            "success": False,
+            "message": "Chưa có file GIS Master KMZ trong hệ thống."
+        }
+    file_path = GIS_MASTER_KMZ
 
     print("KML GPS TEST FILE:", file_path)
 
@@ -4171,128 +3086,11 @@ async def kml_gps_test(
 # ============================================================
 
 @app.post("/admin/gis-master-upload")
-async def gis_master_upload(
-    file: UploadFile = File(...)
-):
-    """
-    Nạp file KMZ Master vào hệ thống.
-
-    Chức năng này chỉ phục vụ quản trị dữ liệu GIS.
-    Người dùng AI Thủy lợi thông thường không cần nạp KMZ.
-    """
-
-    global GIS_MASTER_CACHE, GIS_GEOJSON_CACHE
-
-    try:
-        # ----------------------------------------------------
-        # 1. Kiểm tra định dạng
-        # ----------------------------------------------------
-        filename = (file.filename or "").strip()
-
-        if not filename.lower().endswith(".kmz"):
-            raise HTTPException(
-                status_code=400,
-                detail="Chỉ chấp nhận file KMZ."
-            )
-
-        # ----------------------------------------------------
-        # 2. Đọc dữ liệu upload
-        # ----------------------------------------------------
-        content = await file.read()
-
-        if not content:
-            raise HTTPException(
-                status_code=400,
-                detail="File KMZ rỗng."
-            )
-
-        # ----------------------------------------------------
-        # 3. Ghi vào file tạm
-        #    Không ghi đè master.kmz ngay
-        # ----------------------------------------------------
-        temp_path = GIS_MASTER_DIR / "_master_upload_tmp.kmz"
-
-        temp_path.write_bytes(content)
-
-        # ----------------------------------------------------
-        # 4. Kiểm tra KMZ có đọc được hay không
-        # ----------------------------------------------------
-        test_data = parse_kml_kmz(temp_path)
-
-        if not test_data:
-            try:
-                temp_path.unlink()
-            except Exception:
-                pass
-
-            raise HTTPException(
-                status_code=400,
-                detail="Không đọc được dữ liệu từ KMZ. "
-                       "File có thể không hợp lệ hoặc không chứa dữ liệu KML."
-            )
-
-        # ----------------------------------------------------
-        # 5. KMZ hợp lệ -> thay thế Master
-        # ----------------------------------------------------
-        temp_path.replace(GIS_MASTER_KMZ)
-
-        # ----------------------------------------------------
-        # 6. Xóa cache cũ để hệ thống đọc Master mới
-        # ----------------------------------------------------
-        GIS_MASTER_CACHE = None
-        GIS_GEOJSON_CACHE = None
-
-        # Đọc lại Master ngay sau khi nạp
-        master_data = get_gis_master()
-
-        return {
-            "success": True,
-            "message": "Đã nạp GIS Master KMZ thành công.",
-            "file": GIS_MASTER_KMZ.name,
-            "source_filename": filename,
-            "count": master_data.get("count", 0)
-                if isinstance(master_data, dict)
-                else 0
-        }
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-        print(f"[GIS MASTER UPLOAD ERROR] {repr(e)}")
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Lỗi nạp GIS Master: {str(e)}"
-        )
 
 # ============================================================
 # IMAGE UPLOAD
 # ============================================================
 @app.post("/image-upload")
-async def image_upload(file: UploadFile = File(...)):
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    max_image_bytes = 10 * 1024 * 1024
-    filename = Path(file.filename or "image").name
-    content_type = (file.content_type or "").lower().strip()
-    if content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.")
-    content = await file.read()
-    if len(content) > max_image_bytes:
-        raise HTTPException(status_code=413, detail="Ảnh vượt quá giới hạn 10 MB.")
-    try:
-        image = Image.open(BytesIO(content))
-        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        output = BytesIO()
-        image.save(output, format="JPEG", quality=75, optimize=True)
-        content = output.getvalue()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Không thể xử lý ảnh.")
-    image_hash = hashlib.sha256(content).hexdigest()
-    print("IMAGE RECEIVED | %s | %.2f KB | %s | SHA256=%s" % (filename, len(content) / 1024, content_type, image_hash))
-    return {"success": True, "status": "received", "filename": filename, "mime_type": content_type, "size_bytes": len(content), "image_hash": image_hash}
 
 # ============================================================
 # IMAGE ANALYZE
