@@ -1807,6 +1807,9 @@ UPLOAD_OPERATION_TIMEOUT = max(30, int(os.getenv("UPLOAD_OPERATION_TIMEOUT", "30
 CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
+# Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
+CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v3").strip() or "rag-v3"
+CACHE_NAMESPACE = os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION
 
 _answer_cache = OrderedDict()
 _cache_lock = asyncio.Lock()
@@ -2094,6 +2097,8 @@ async def lifespan(app: FastAPI):
     print("CACHE ENABLED:", CACHE_ENABLED)
     print("CACHE TTL:", CACHE_TTL)
     print("CACHE MAX ENTRIES:", CACHE_MAX_ENTRIES)
+    print("CHATBOT ROUTER VERSION:", CHATBOT_ROUTER_VERSION)
+    print("CACHE NAMESPACE:", CACHE_NAMESPACE)
     print("MAX UPLOAD MB:", MAX_UPLOAD_MB)
     print("=" * 60)
     yield
@@ -2297,9 +2302,6 @@ OPERATIONAL_CURRENT_TERMS = (
     "thuc te",
     "truc tiep",
     "gio nay",
-    "luc ",
-    "ngay ",
-    "van hanh",
     "dang chay",
     "dang bom",
     "dang xa",
@@ -2308,24 +2310,42 @@ OPERATIONAL_CURRENT_TERMS = (
     "dung may",
     "bat may",
     "so may dang",
-    "chay",
-    "dang chay",
+    "dang van hanh",
+    "hien dang van hanh",
 )
 
+# Các từ này chỉ là tham số vận hành khi đi cùng ngữ cảnh hiện thời.
+# Không dùng các từ quá rộng như "ngày", "lúc", "mưa", "máy" một mình
+# vì chúng gây false-positive cho câu hỏi hồ sơ/tài liệu.
 OPERATIONAL_PARAMETER_TERMS = (
     "muc nuoc",
     "luu luong",
     "do man",
     "luong mua",
     "do mo",
-    "mua",
-    "htl",
     "q ve",
     "q ra",
     "q vao",
     "xa nuoc",
+    "so may",
+    "may bom",
     "bom",
-    "may",
+)
+
+OPERATIONAL_EXPLICIT_PHRASES = (
+    "muc nuoc hien tai",
+    "muc nuoc hom nay",
+    "luu luong hien tai",
+    "luu luong hom nay",
+    "do man hien tai",
+    "do man hom nay",
+    "luong mua hien tai",
+    "luong mua hom nay",
+    "dang bom may",
+    "dang chay may",
+    "dang van hanh",
+    "dang xa nuoc",
+    "hien dang bom",
 )
 
 
@@ -2340,65 +2360,62 @@ def _normalize_router_text(text: str) -> str:
     return value
 
 
+def _contains_any(text: str, terms) -> list:
+    return [term for term in terms if term in text]
+
+
+def _has_current_time_context(text: str) -> bool:
+    # Chỉ coi ngày/giờ là ngữ cảnh vận hành khi có biểu thức thời gian rõ.
+    if any(term in text for term in OPERATIONAL_CURRENT_TERMS):
+        return True
+    return bool(re.search(
+        r"\b(?:\d{1,2}[:h]\d{0,2}|\d{1,2}h|ngay\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b",
+        text,
+    ))
+
+
 def classify_query_route(question: str) -> dict:
     """
-    Phân loại câu hỏi trước khi gọi Data Engine.
+    Router 3 tầng cho Chatbot: DOCUMENT / HYBRID / OPERATIONAL.
 
-    DOCUMENT  : câu hỏi về hồ sơ, quy định, văn bản, nhân sự,
-                thông số tĩnh và kiến thức chuyên ngành.
-    OPERATIONAL: câu hỏi có dấu hiệu rõ về số liệu vận hành hiện thời.
-    HYBRID     : vừa cần hồ sơ vừa cần số liệu vận hành.
-
-    Nếu không đủ căn cứ để xác định, mặc định DOCUMENT để tránh
-    bỏ sót câu hỏi nằm trong kho Gemini File Search.
+    Ưu tiên tài liệu khi câu hỏi có ngữ nghĩa hồ sơ/quy định/thông tin
+    tĩnh. Chỉ chọn OPERATIONAL khi có tham số vận hành + ngữ cảnh hiện
+    thời rõ ràng. Nếu không chắc -> DOCUMENT.
     """
     text = _normalize_router_text(question)
 
-    document_hits = []
-    operational_hits = []
-
-    for term in DOCUMENT_STRONG_TERMS + DOCUMENT_KNOWLEDGE_TERMS:
-        if term in text:
-            document_hits.append(term)
-
-    for term in OPERATIONAL_CURRENT_TERMS:
-        if term in text:
-            operational_hits.append(term)
-
-    parameter_hits = [
-        term for term in OPERATIONAL_PARAMETER_TERMS
-        if term in text
-    ]
-
-    document_score = len(set(document_hits))
-    operational_score = len(set(operational_hits))
-
-    # Có tham số vận hành nhưng không có mốc hiện thời vẫn chưa đủ
-    # để kết luận đây là Data Engine; rất nhiều câu hỏi về thông số
-    # tĩnh nằm trong hồ sơ.
-    if operational_score and parameter_hits:
-        operational_score += 1
-
-    has_strong_document = any(
-        term in text for term in DOCUMENT_STRONG_TERMS
+    document_hits = _contains_any(
+        text, DOCUMENT_STRONG_TERMS + DOCUMENT_KNOWLEDGE_TERMS
     )
-    has_knowledge_document = any(
-        term in text for term in DOCUMENT_KNOWLEDGE_TERMS
-    )
-    has_current_operation = bool(operational_hits)
+    operational_hits = _contains_any(text, OPERATIONAL_CURRENT_TERMS)
+    parameter_hits = _contains_any(text, OPERATIONAL_PARAMETER_TERMS)
+    explicit_operational_hits = _contains_any(text, OPERATIONAL_EXPLICIT_PHRASES)
+
+    has_strong_document = bool(_contains_any(text, DOCUMENT_STRONG_TERMS))
+    has_knowledge_document = bool(_contains_any(text, DOCUMENT_KNOWLEDGE_TERMS))
+    has_document_context = has_strong_document or has_knowledge_document
+    has_current_operation = _has_current_time_context(text)
     has_operation_parameter = bool(parameter_hits)
 
-    # HYBRID: người dùng vừa hỏi căn cứ/hồ sơ vừa hỏi tình trạng,
-    # số liệu hiện thời.
-    if has_strong_document and has_current_operation and has_operation_parameter:
-        route = "hybrid"
-    elif has_strong_document or has_knowledge_document:
+    # Một số câu hỏi có chữ "đang/hôm nay" nhưng mục tiêu thực tế vẫn là
+    # quy định/hồ sơ. Tài liệu luôn thắng khi có tín hiệu văn bản mạnh.
+    if has_strong_document and not explicit_operational_hits:
         route = "document"
+    elif has_strong_document and has_current_operation and has_operation_parameter:
+        route = "hybrid"
+    elif has_document_context and has_current_operation and has_operation_parameter:
+        route = "hybrid"
+    elif explicit_operational_hits:
+        route = "operational"
     elif has_current_operation and has_operation_parameter:
         route = "operational"
     else:
-        # Fail-open về tài liệu/kiến thức.
         route = "document"
+
+    document_score = len(set(document_hits)) + (2 if has_strong_document else 0)
+    operational_score = len(set(operational_hits)) + len(set(explicit_operational_hits))
+    if has_current_operation and has_operation_parameter:
+        operational_score += 1
 
     return {
         "route": route,
@@ -2407,49 +2424,82 @@ def classify_query_route(question: str) -> dict:
         "document_hits": document_hits,
         "operational_hits": operational_hits,
         "parameter_hits": parameter_hits,
+        "explicit_operational_hits": explicit_operational_hits,
+        "router_version": CHATBOT_ROUTER_VERSION,
     }
 
 
+DOCUMENT_QUERY_ALIASES = {
+    "pham vi bao ve": ["hanh lang bao ve", "gioi han bao ve", "khoang cach bao ve"],
+    "cong trinh thuy loi": ["ho chua", "dap", "kenh", "tram bom", "cong trinh dau moi"],
+    "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su"],
+    "chi nhanh": ["don vi", "bo phan", "cum", "phong ban"],
+    "quy dinh": ["quy pham", "quy che", "quy trinh", "dieu khoan"],
+    "thong so ky thuat": ["thong so", "thiet ke", "quy mo", "kich thuoc", "dung tich"],
+}
+
+
+def build_retrieval_query(question: str) -> str:
+    """Mở rộng truy vấn nhẹ, giữ nguyên câu hỏi gốc và thêm thuật ngữ đồng nghĩa."""
+    normalized = _normalize_router_text(question)
+    aliases = []
+    for key, values in DOCUMENT_QUERY_ALIASES.items():
+        if key in normalized:
+            aliases.extend(values)
+    aliases = list(dict.fromkeys(aliases))[:8]
+    if not aliases:
+        return question
+    return f"{question}\n\nThuật ngữ liên quan để tra cứu hồ sơ: {', '.join(aliases)}"
+
+
 def build_document_prompt(question: str, attempt: int = 1) -> str:
-    """Tạo chỉ dẫn mạnh cho câu hỏi cần File Search."""
+    """Tạo chỉ dẫn retrieval ngắn, rõ và có mở rộng truy vấn khi retry."""
+    retrieval_query = build_retrieval_query(question)
     if attempt <= 1:
         instruction = (
-            "ĐÂY LÀ CÂU HỎI ƯU TIÊN TÀI LIỆU. "
-            "BẮT BUỘC sử dụng Gemini File Search để tìm trong kho "
-            "THỦY LỢI AI trước khi trả lời. Chỉ sử dụng nội dung có "
-            "căn cứ từ kết quả tìm kiếm. Nếu có tài liệu phù hợp, "
-            "nêu tên tài liệu và điều/khoản/trang nếu có."
+            "ĐÂY LÀ CÂU HỎI ƯU TIÊN TÀI LIỆU. BẮT BUỘC sử dụng Gemini "
+            "File Search trong kho THỦY LỢI AI trước khi trả lời. Chỉ dùng "
+            "căn cứ từ kết quả tìm kiếm; nếu có tài liệu phù hợp, nêu tên "
+            "tài liệu và Điều/Khoản/Trang nếu có. Không dùng Data Engine để "
+            "thay thế việc tra cứu hồ sơ."
         )
     else:
         instruction = (
-            "ĐÂY LÀ LẦN TÌM KIẾM LẠI CÂU HỎI TÀI LIỆU. "
-            "BẮT BUỘC sử dụng Gemini File Search và tìm rộng hơn theo "
-            "từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn đạt "
-            "khác nhau. Không được trả lời theo trí nhớ nếu chưa có "
-            "căn cứ trong kho THỦY LỢI AI. Nếu không tìm thấy, nói rõ "
-            "chưa tìm thấy đủ căn cứ trong kho hồ sơ."
+            "TÌM KIẾM LẠI TRONG KHO THỦY LỢI AI. Bắt buộc dùng File Search; "
+            "mở rộng theo từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn "
+            "đạt khác nhau. Không trả lời theo trí nhớ nếu chưa có căn cứ."
         )
-    return f"{instruction}\n\nCÂU HỎI NGƯỜI DÙNG:\n{question}"
+    return f"{instruction}\n\nCÂU HỎI GỐC:\n{question}\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
 
 
 class DocumentRetrievalRequiredError(RuntimeError):
-    """File Search không được gọi hoặc không trả về nguồn cho câu hỏi tài liệu."""
+    """File Search không được gọi hoặc không trả về kết quả truy xuất."""
 
 
-def file_search_was_used(result) -> bool:
-    """Kiểm tra interaction steps để xác nhận File Search thực sự được gọi."""
+def file_search_status(result) -> dict:
+    """Phân biệt rõ tool call và kết quả retrieval của Gemini."""
+    status = {"called": False, "result": False, "citations": 0}
     try:
         for step in getattr(result, "steps", []) or []:
             step_type = str(getattr(step, "type", "") or "").lower()
-            if step_type in {"file_search_call", "file_search_result"}:
-                return True
-            # Một số SDK có thể biểu diễn step/tool theo tên khác.
-            if "file_search" in step_type:
-                return True
+            if "file_search_call" == step_type or ("file_search" in step_type and "call" in step_type):
+                status["called"] = True
+            if "file_search_result" == step_type or ("file_search" in step_type and "result" in step_type):
+                status["result"] = True
+            if "file_search" in step_type and "result" not in step_type and "call" not in step_type:
+                status["called"] = True
+        # Citation fallback: một số SDK chỉ lộ citation trong model_output.
+        for step in getattr(result, "steps", []) or []:
+            if getattr(step, "type", None) != "model_output":
+                continue
+            for block in getattr(step, "content", []) or []:
+                for annotation in getattr(block, "annotations", []) or []:
+                    if getattr(annotation, "type", None) == "file_citation":
+                        status["citations"] += 1
+                        status["result"] = True
     except Exception as e:
-        print("FILE SEARCH STEP CHECK ERROR:", repr(e))
-    return False
-
+        print("FILE SEARCH STATUS CHECK ERROR:", repr(e))
+    return status
 
 # ============================================================
 # CACHE
@@ -2457,7 +2507,7 @@ def file_search_was_used(result) -> bool:
 async def get_cached_answer(question: str, route: str = "default"):
     if not CACHE_ENABLED:
         return None
-    key = f"{route}:{normalize_question(question)}"
+    key = f"{CACHE_NAMESPACE}:{route}:{normalize_question(question)}"
     async with _cache_lock:
         item = _answer_cache.get(key)
         if not item:
@@ -2569,6 +2619,8 @@ async def health():
         "cache_enabled": CACHE_ENABLED,
         "cache_ttl": CACHE_TTL,
         "cache_max_entries": CACHE_MAX_ENTRIES,
+        "chatbot_router_version": CHATBOT_ROUTER_VERSION,
+        "cache_namespace": CACHE_NAMESPACE,
     }
 
 @app.get("/health/deep")
@@ -2760,14 +2812,14 @@ async def _gemini_once(question: str, route: str = "document", attempt: int = 1)
         # không thực sự gọi File Search. Đây là lớp bảo vệ chống routing
         # sai và chống trả lời theo trí nhớ.
         if route in {"document", "hybrid"}:
-            used = file_search_was_used(result)
+            retrieval = file_search_status(result)
             print(
                 "DOCUMENT RETRIEVAL CHECK:",
-                {"route": route, "file_search_used": used, "sources": len(sources)},
+                {"route": route, **retrieval, "sources": len(sources)},
             )
-            if not used:
+            if not retrieval["result"]:
                 raise DocumentRetrievalRequiredError(
-                    "Gemini chưa thực hiện File Search cho câu hỏi tài liệu."
+                    "Gemini chưa trả về kết quả File Search cho câu hỏi tài liệu."
                 )
 
         return answer, sources
@@ -2785,14 +2837,6 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
                 route=route,
                 attempt=attempt + 1,
             )
-
-            # Câu hỏi tài liệu cần có nguồn/citation khi File Search đã
-            # được gọi. Nếu không có citation thì thử lại một lần trong
-            # giới hạn MAX_RETRIES; sau đó trả lời an toàn.
-            if route in {"document", "hybrid"} and not sources:
-                raise DocumentRetrievalRequiredError(
-                    "File Search đã được gọi nhưng chưa có nguồn/citation."
-                )
 
             elapsed = time.monotonic() - started
             print(
@@ -2831,7 +2875,7 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
 
 
 async def ask_with_singleflight(question: str, route: str = "document"):
-    key = f"{route}:{normalize_question(question)}"
+    key = f"{CACHE_NAMESPACE}:{route}:{normalize_question(question)}"
     cached = await get_cached_answer(question, route=route)
     if cached:
         print("CACHE HIT -", f"age={cached['age_seconds']}s", f"route={route}")
@@ -3068,6 +3112,7 @@ async def ask(data: Question):
                 "model": GEMINI_MODEL,
                 "cache": was_cache,
                 "query_route": "document",
+                "router_version": CHATBOT_ROUTER_VERSION,
             }
 
             if sources:
@@ -3103,6 +3148,7 @@ async def ask(data: Question):
                 "model": GEMINI_MODEL,
                 "cache": False,
                 "query_route": "document",
+                "router_version": CHATBOT_ROUTER_VERSION,
             }
 
     # ========================================================
@@ -3115,20 +3161,35 @@ async def ask(data: Question):
 
     if route == "hybrid":
 
-        operational_data = await get_operational_data(question)
-        print("HYBRID OPERATIONAL DATA:", operational_data)
-
         document_answer = None
         document_sources = []
 
+        # Hai nguồn độc lập nên chạy song song để giảm latency của HYBRID.
+        operational_task = asyncio.create_task(get_operational_data(question))
+        document_task = None
         if GEMINI_API_KEY and gemini_client is not None and GEMINI_FILE_SEARCH_STORE:
-            try:
-                document_answer, document_sources, _ = await ask_with_singleflight(
-                    question,
-                    route="hybrid",
-                )
-            except Exception as e:
-                print("HYBRID DOCUMENT ERROR:", repr(e))
+            document_task = asyncio.create_task(
+                ask_with_singleflight(question, route="hybrid")
+            )
+
+        operational_result, document_result = await asyncio.gather(
+            operational_task,
+            document_task if document_task is not None else asyncio.sleep(0, result=None),
+            return_exceptions=True,
+        )
+
+        if isinstance(operational_result, Exception):
+            print("HYBRID OPERATIONAL ERROR:", repr(operational_result))
+            operational_data = {"found": False, "parsed": {"is_operational": False}, "data": []}
+        else:
+            operational_data = operational_result
+
+        if isinstance(document_result, tuple):
+            document_answer, document_sources, _ = document_result
+        elif isinstance(document_result, Exception):
+            print("HYBRID DOCUMENT ERROR:", repr(document_result))
+
+        print("HYBRID OPERATIONAL DATA:", operational_data)
 
         parsed = operational_data.get("parsed", {})
         is_operational = parsed.get("is_operational", False)
