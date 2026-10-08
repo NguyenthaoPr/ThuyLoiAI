@@ -120,13 +120,38 @@ class PlanDataEngine:
             "lon nhat" in nq or "cao nhat" in nq
         )
         construction = None if (aggregate_intent or ranking_intent) else self._find_construction(nq)
+        explicit_method = any(term in nq for term in ("chu dong", "tao nguon"))
         method = self._find_row_method(nq)
         rows = [r for r in self.rows if int(r.get("nam", year) or year) == year]
         if group:
             rows = [r for r in rows if r.get("nhom") == group]
         if construction:
             rows = [r for r in rows if r.get("ten_cong_trinh") == construction]
-        rows = [r for r in rows if str(r.get("bien_phap", "")).strip() == method]
+
+        # Khi người dùng chỉ hỏi diện tích/quy mô của một công trình mà
+        # không chỉ rõ "Chủ động/Tạo nguồn", ưu tiên dòng tổng của công trình.
+        # Một số biểu mẫu cũ dùng row_type=construction + bien_phap=None,
+        # trong khi một số biểu mẫu (ví dụ Tứ Câu) dùng bien_phap="Tổng".
+        if construction and not explicit_method:
+            construction_rows = [
+                r for r in rows
+                if str(r.get("row_type", "")).strip().lower() == "construction"
+            ]
+            if construction_rows:
+                rows = construction_rows
+                method = "Tổng"
+            else:
+                total_rows = [
+                    r for r in rows
+                    if str(r.get("bien_phap", "")).strip().lower() == "tổng"
+                ]
+                if total_rows:
+                    rows = total_rows
+                    method = "Tổng"
+                else:
+                    rows = [r for r in rows if str(r.get("bien_phap", "")).strip() == method]
+        else:
+            rows = [r for r in rows if str(r.get("bien_phap", "")).strip() == method]
         return year, group, construction, method, rows
 
     def query(self, question: str):
