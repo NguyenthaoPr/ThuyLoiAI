@@ -2325,7 +2325,9 @@ PLAN_DATA_TERMS = (
     "ke hoach", "phu luc", "nam toi", "nam sau", "nam 2027",
     "quy mo phuc vu", "dien tich phuc vu", "dien tich tuoi",
     "dien tich cap nuoc", "phuc vu bao nhieu", "nuoi thuy san",
-    "nuoi trong thuy san", "thuy san", "tao nguon",
+    "nuoi trong thuy san", "thuy san", "dien tich ho chua", "dien tich ho",
+    "dien tich cong trinh", "dien tich khu tuoi", "dien tich khu cap nuoc",
+    "tao nguon",
     "chu dong 1 phan", "dong xuan", "he thu", "ca nam",
 )
 
