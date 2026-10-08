@@ -1,0 +1,34 @@
+THỦY LỢI AI — PLAN_DATA v3 READY
+
+Mục tiêu: kết nối Phụ lục 09 (VG-TB)(2027) vào Chatbot bằng Structured Data Engine.
+
+Các file cần đưa lên GitHub cùng server.py:
+- server.py
+- plan_data_engine.py
+- phu_luc_09_vgtb_2027_normalized.json
+
+Không xóa các module hiện có của dự án.
+Không thay đổi AI_DATA hiện tại.
+Không thay đổi GIS/KMZ/PDF/Báo cáo hiện trường.
+
+Router mới:
+DOCUMENT -> Gemini File Search
+PLAN_DATA -> plan_data_engine.py + JSON
+OPERATIONAL -> Data Engine/AI_DATA
+HYBRID_PLAN_OPERATIONAL -> PLAN_DATA + OPERATIONAL
+
+Kiểm tra trước Deploy:
+python test_plan_data_integration.py
+python -m py_compile server.py plan_data_engine.py
+
+Render:
+1. Commit 3 file trên vào branch main.
+2. Chờ Auto-Deploy hoàn tất.
+3. Kiểm tra Logs phải có dòng [PLAN_DATA] READY ... records=...
+4. Test: Tứ Câu nuôi thủy sản bao nhiêu ha? -> 9,98 ha
+5. Test: Tứ Câu kế hoạch năm 2027 bao nhiêu ha? -> 496,08 ha
+6. Test: Tứ Câu phục vụ bao nhiêu diện tích? -> 496,08 ha
+7. Test: Quy định về phạm vi bảo vệ công trình thủy lợi? -> DOCUMENT
+8. Test câu hiện tại/đang bơm -> OPERATIONAL
+
+Cache: CHATBOT_ROUTER_VERSION mặc định đã nâng lên rag-v4-plan-data để không lấy cache cũ.

@@ -57,10 +57,6 @@ class PlanDataEngine:
             return "CẤP NƯỚC BẰNG TRỌNG LỰC"
         return None
 
-    def find_construction(self, question: str):
-        """Public construction-name matcher for the Smart Router."""
-        return self._find_construction(_norm(question))
-
     def _find_construction(self, q):
         nq = _norm(q)
         for name in self._names:
@@ -68,7 +64,7 @@ class PlanDataEngine:
                 return name
         best, score = None, 0.0
         qtokens = set(nq.split())
-        stop = {"tram", "bom", "ho", "chua", "nuoc", "dap", "kenh", "cong", "kc", "tb", "trinh", "thuy", "loi"}
+        stop = {"tram", "bom", "ho", "chua", "nuoc", "dap", "kenh", "cong", "kc", "tb"}
         qtokens -= stop
         for name in self._names:
             nn = _norm(name)
@@ -229,55 +225,3 @@ class PlanDataEngine:
             "filters": {"year": year, "group": group, "method": method,
                         "season": season, "crop": crop, "field": field}
         }
-
-
-def format_plan_data_answer(result: dict) -> str:
-    """Deterministic Vietnamese answer formatter for PLAN_DATA results."""
-    if not result or not result.get("found"):
-        return "Chưa tìm thấy dữ liệu phù hợp trong Phụ lục 09 (VG-TB) năm 2027."
-
-    op = result.get("operation")
-    if op == "lookup":
-        name = result.get("construction") or "Công trình"
-        value = result.get("value")
-        unit = result.get("unit", "ha")
-        season = {"dong_xuan":"Đông Xuân", "he_thu":"Hè Thu", "ca_nam":"cả năm"}.get(result.get("season"), result.get("season"))
-        crop = {"lua":"lúa", "mau":"màu", "ntts":"nuôi trồng thủy sản", "cay_dl":"cây dài ngày", "tong":"tổng"}.get(result.get("crop"), result.get("crop"))
-        method = result.get("method") or "Tổng"
-        if result.get("crop") == "tong":
-            target = f"tổng diện tích {season}"
-        else:
-            target = f"diện tích {crop} {season}"
-        return (
-            f"Theo Phụ lục 09 (VG-TB) năm 2027, {name} ({method}) có {target} "
-            f"là **{value:,.2f} {unit}**."
-        ).replace(",", "X").replace(".", ",").replace("X", ".")
-
-    if op == "sum":
-        value = result.get("value", 0.0)
-        group = result.get("filters", {}).get("group")
-        label = group or "toàn bộ các công trình"
-        return (
-            f"Theo Phụ lục 09 (VG-TB) năm 2027, tổng diện tích cả năm của {label.lower()} "
-            f"là **{value:,.2f} ha** (tính từ {result.get('count', 0)} bản ghi)."
-        ).replace(",", "X").replace(".", ",").replace("X", ".")
-
-    if op == "ranking":
-        lines = ["Theo Phụ lục 09 (VG-TB) năm 2027, các công trình có diện tích lớn nhất:"]
-        for i, item in enumerate(result.get("items", []), 1):
-            value = item.get("value", 0.0)
-            value_text = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            lines.append(f"{i}. {item.get('cong_trinh')}: **{value_text} ha**")
-        return "\
-".join(lines)
-
-    if op == "list":
-        lines = ["Dữ liệu tìm thấy trong Phụ lục 09 (VG-TB) năm 2027:"]
-        for item in result.get("items", []):
-            value = item.get("value")
-            value_text = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if value is not None else "-"
-            lines.append(f"- {item.get('construction')}: {value_text} ha")
-        return "\
-".join(lines)
-
-    return "Đã tìm thấy dữ liệu trong Phụ lục 09 (VG-TB) năm 2027."
