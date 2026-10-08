@@ -1838,7 +1838,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v4-plan-data").strip() or "rag-v4-plan-data"
+CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v5-chatbook").strip() or "rag-v5-chatbook"
 CACHE_NAMESPACE = os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION
 
 _answer_cache = OrderedDict()
@@ -2327,73 +2327,47 @@ PLAN_DATA_TERMS = (
     "dien tich cap nuoc", "phuc vu bao nhieu", "nuoi thuy san",
     "nuoi trong thuy san", "thuy san", "dien tich ho chua", "dien tich ho",
     "dien tich cong trinh", "dien tich khu tuoi", "dien tich khu cap nuoc",
-    "tao nguon",
-    "chu dong 1 phan", "dong xuan", "he thu", "ca nam",
+    "tao nguon", "chu dong 1 phan", "dong xuan", "he thu", "ca nam",
+)
+
+# Các mẫu ngữ nghĩa tự nhiên của PLAN_DATA. Mục tiêu là nhận diện ý định,
+# không phụ thuộc việc người dùng phải dùng đúng một từ khóa cố định.
+PLAN_DATA_INTENT_PHRASES = (
+    "bao nhieu ha", "bao nhieu hecta", "co bao nhieu ha", "co bao nhieu hecta",
+    "tuoi bao nhieu", "cap nuoc bao nhieu", "phuc vu bao nhieu",
+    "phuc vu duoc bao nhieu", "dien tich bao nhieu", "dien tich la bao nhieu",
+    "quy mo bao nhieu", "quy mo phuc vu", "tong dien tich",
+    "dien tich lon nhat", "dien tich nho nhat", "lon nhat", "nho nhat", "top ", "xep hang",
+    "dien tich lúa", "dien tich lua", "dien tich mau", "dien tich thuy san",
+    "nuoi thuy san bao nhieu", "nuoi trong thuy san bao nhieu",
+)
+
+PLAN_DATA_TIME_TERMS = (
+    "nam 2027", "nam nay", "nam toi", "nam sau", "2027", "dong xuan", "he thu", "ca nam",
 )
 
 OPERATIONAL_CURRENT_TERMS = (
-    "hom nay",
-    "hien tai",
-    "hien nay",
-    "luc nay",
-    "dang",
-    "vua cap nhat",
-    "moi nhat",
-    "thuc te",
-    "truc tiep",
-    "gio nay",
-    "dang chay",
-    "dang bom",
-    "dang xa",
-    "mo may",
-    "dong may",
-    "dung may",
-    "bat may",
-    "so may dang",
-    "dang van hanh",
-    "hien dang van hanh",
+    "hom nay", "hien tai", "hien nay", "luc nay", "dang",
+    "vua cap nhat", "moi nhat", "thuc te", "truc tiep", "gio nay",
+    "dang chay", "dang bom", "dang xa", "mo may", "dong may",
+    "dung may", "bat may", "so may dang", "dang van hanh", "hien dang van hanh",
 )
 
-# Các từ này chỉ là tham số vận hành khi đi cùng ngữ cảnh hiện thời.
-# Không dùng các từ quá rộng như "ngày", "lúc", "mưa", "máy" một mình
-# vì chúng gây false-positive cho câu hỏi hồ sơ/tài liệu.
 OPERATIONAL_PARAMETER_TERMS = (
-    "muc nuoc",
-    "luu luong",
-    "do man",
-    "luong mua",
-    "do mo",
-    "q ve",
-    "q ra",
-    "q vao",
-    "xa nuoc",
-    "so may",
-    "may bom",
-    "bom",
+    "muc nuoc", "luu luong", "do man", "luong mua", "mua t1", "mua t2", "mua t3",
+    "do mo", "q ve", "q ra", "q vao", "xa nuoc", "so may", "may bom", "bom",
 )
 
 OPERATIONAL_EXPLICIT_PHRASES = (
-    "muc nuoc hien tai",
-    "muc nuoc hom nay",
-    "luu luong hien tai",
-    "luu luong hom nay",
-    "do man hien tai",
-    "do man hom nay",
-    "luong mua hien tai",
-    "luong mua hom nay",
-    "dang bom may",
-    "dang chay may",
-    "dang van hanh",
-    "dang xa nuoc",
-    "hien dang bom",
+    "muc nuoc hien tai", "muc nuoc hom nay", "luu luong hien tai", "luu luong hom nay",
+    "do man hien tai", "do man hom nay", "luong mua hien tai", "luong mua hom nay",
+    "dang bom may", "dang chay may", "dang van hanh", "dang xa nuoc", "hien dang bom",
 )
 
 
 def _normalize_router_text(text: str) -> str:
     import unicodedata
-
-    value = str(text or "").strip().lower()
-    value = value.replace("đ", "d")
+    value = str(text or "").strip().lower().replace("đ", "d")
     value = unicodedata.normalize("NFD", value)
     value = "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
     value = re.sub(r"\s+", " ", value)
@@ -2405,20 +2379,42 @@ def _contains_any(text: str, terms) -> list:
 
 
 def _has_current_time_context(text: str) -> bool:
-    # Chỉ coi ngày/giờ là ngữ cảnh vận hành khi có biểu thức thời gian rõ.
     if any(term in text for term in OPERATIONAL_CURRENT_TERMS):
         return True
-    return bool(re.search(
-        r"\b(?:\d{1,2}[:h]\d{0,2}|\d{1,2}h|ngay\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b",
+    return bool(re.search(r"\b(?:\d{1,2}[:h]\d{0,2}|\d{1,2}h|ngay\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b", text))
+
+
+def _looks_like_plan_intent(text: str) -> bool:
+    """Nhận diện PLAN_DATA theo tổ hợp ý định + ngữ cảnh, không theo một keyword đơn."""
+    intent_hits = _contains_any(text, PLAN_DATA_INTENT_PHRASES)
+    time_hits = _contains_any(text, PLAN_DATA_TIME_TERMS)
+    explicit_plan_hits = _contains_any(text, PLAN_DATA_TERMS)
+    has_area_unit = bool(re.search(r"\b(?:ha|hecta)\b", text))
+    has_area_question = bool(intent_hits) or has_area_unit
+    ranking_intent = any(x in text for x in ("lon nhat", "nho nhat", "top ", "xep hang")) and ("dien tich" in text or "cong trinh" in text)
+    has_plan_time = bool(time_hits)
+    has_plan_phrase = bool(explicit_plan_hits)
+    # Câu hỏi diện tích/quy mô của một công trình được xem là PLAN_DATA,
+    # kể cả khi không có cụm "kế hoạch" hay "năm 2027".
+    construction_context = bool(re.search(
+        r"\b(?:ho|ho chua|tram bom|dap|cong trinh|kenh|tu cau|thach ban|vinh dien|cam sa|thanh quyet|dong ho|dong quang|duy thanh)\b",
         text,
     ))
+    return bool(
+        (has_area_question and construction_context)
+        or ranking_intent
+        or (has_plan_phrase and (has_area_question or has_plan_time or construction_context))
+        or (has_plan_time and (has_area_question or construction_context))
+    )
 
 
 def classify_query_route(question: str) -> dict:
-    """Router: DOCUMENT / PLAN_DATA / OPERATIONAL / HYBRID_PLAN_OPERATIONAL / HYBRID."""
+    """Router v5: ưu tiên ý định PLAN_DATA/OPERATIONAL, sau đó mới DOCUMENT."""
     text = _normalize_router_text(question)
     document_hits = _contains_any(text, DOCUMENT_STRONG_TERMS + DOCUMENT_KNOWLEDGE_TERMS)
     plan_hits = _contains_any(text, PLAN_DATA_TERMS)
+    plan_intent_hits = _contains_any(text, PLAN_DATA_INTENT_PHRASES)
+    plan_time_hits = _contains_any(text, PLAN_DATA_TIME_TERMS)
     operational_hits = _contains_any(text, OPERATIONAL_CURRENT_TERMS)
     parameter_hits = _contains_any(text, OPERATIONAL_PARAMETER_TERMS)
     explicit_operational_hits = _contains_any(text, OPERATIONAL_EXPLICIT_PHRASES)
@@ -2426,35 +2422,31 @@ def classify_query_route(question: str) -> dict:
     has_knowledge_document = bool(_contains_any(text, DOCUMENT_KNOWLEDGE_TERMS))
     has_current_operation = _has_current_time_context(text)
     has_operation_parameter = bool(parameter_hits)
-    has_plan_context = bool(plan_hits)
-    # Mọi tín hiệu PLAN_DATA đã được chọn đều đủ mạnh để tránh rơi vào
-    # DOCUMENT chỉ vì các từ như "thủy sản" hoặc "phục vụ" xuất hiện.
-    plan_strong = has_plan_context
+    plan_semantic = _looks_like_plan_intent(text)
 
-    if has_plan_context and has_current_operation and has_operation_parameter:
+    # HYBRID phải được xét trước PLAN_DATA/OPERATIONAL đơn để giữ đủ hai nguồn.
+    if plan_semantic and has_current_operation and has_operation_parameter:
         route = "hybrid_plan_operational"
-    elif plan_strong:
+    elif plan_semantic:
         route = "plan_data"
-    elif has_strong_document and not explicit_operational_hits:
+    elif has_current_operation and has_operation_parameter and has_strong_document:
+        route = "hybrid"
+    elif explicit_operational_hits or (has_current_operation and has_operation_parameter):
+        route = "operational"
+    elif has_strong_document or has_knowledge_document:
         route = "document"
-    elif has_strong_document and has_current_operation and has_operation_parameter:
-        route = "hybrid"
-    elif has_knowledge_document and has_current_operation and has_operation_parameter:
-        route = "hybrid"
-    elif explicit_operational_hits:
-        route = "operational"
-    elif has_current_operation and has_operation_parameter:
-        route = "operational"
     else:
         route = "document"
 
     return {
         "route": route,
         "document_score": len(set(document_hits)) + (2 if has_strong_document else 0),
-        "plan_score": len(set(plan_hits)) + (3 if plan_strong else 0),
+        "plan_score": len(set(plan_hits)) + len(set(plan_intent_hits)) + len(set(plan_time_hits)) + (3 if plan_semantic else 0),
         "operational_score": len(set(operational_hits)) + len(set(explicit_operational_hits)) + (1 if has_current_operation and has_operation_parameter else 0),
         "document_hits": document_hits,
         "plan_hits": plan_hits,
+        "plan_intent_hits": plan_intent_hits,
+        "plan_time_hits": plan_time_hits,
         "operational_hits": operational_hits,
         "parameter_hits": parameter_hits,
         "explicit_operational_hits": explicit_operational_hits,
@@ -2561,7 +2553,7 @@ async def set_cached_answer(question: str, answer: str, sources=None, route: str
     if not CACHE_ENABLED:
         return
     normalized = normalize_question(question)
-    key = f"{route}:{normalized}"
+    key = f"{CACHE_NAMESPACE}:{route}:{normalized}"
     if not normalized or not answer:
         return
     async with _cache_lock:
@@ -3265,6 +3257,7 @@ async def ask(data: Question):
                 "model": GEMINI_MODEL,
                 "cache": False,
                 "query_route": "document",
+                "router_version": CHATBOT_ROUTER_VERSION,
                 "sources": [],
             }
         except Exception as e:
@@ -3342,6 +3335,7 @@ async def ask(data: Question):
                 "model": GEMINI_MODEL,
                 "cache": False,
                 "query_route": "hybrid",
+                "router_version": CHATBOT_ROUTER_VERSION,
                 "data": operational_rows,
             }
             if document_sources:
@@ -3356,6 +3350,7 @@ async def ask(data: Question):
                 "model": GEMINI_MODEL,
                 "cache": False,
                 "query_route": "hybrid",
+                "router_version": CHATBOT_ROUTER_VERSION,
             }
             if document_sources:
                 response["sources"] = document_sources
@@ -3370,6 +3365,7 @@ async def ask(data: Question):
                 "model": "AI_DATA",
                 "cache": False,
                 "query_route": "hybrid",
+                "router_version": CHATBOT_ROUTER_VERSION,
                 "data_source": "File trực 2026 GG.xlsx",
                 "data": operational_rows,
             }
@@ -3384,6 +3380,7 @@ async def ask(data: Question):
             "model": GEMINI_MODEL,
             "cache": False,
             "query_route": "hybrid",
+            "router_version": CHATBOT_ROUTER_VERSION,
             "data": [],
         }
 
