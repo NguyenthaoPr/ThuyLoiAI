@@ -1,0 +1,244 @@
+[
+  {
+    "question": "Cho tôi biết quy mô phục vụ của Tứ Câu trong năm tới",
+    "expected": 496.08,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Cho tôi biết quy mô phục vụ của Tứ Câu trong năm tới",
+      "operation": "lookup",
+      "value": 496.08,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "ca_nam",
+      "crop": "tong",
+      "field": "ca_nam_tong",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu vụ hè thu nuôi thủy sản được bao nhiêu?",
+    "expected": 9.98,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu vụ hè thu nuôi thủy sản được bao nhiêu?",
+      "operation": "lookup",
+      "value": 9.98,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "he_thu",
+      "crop": "ntts",
+      "field": "he_thu_ntts",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu phục vụ bao nhiêu diện tích?",
+    "expected": 496.08,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu phục vụ bao nhiêu diện tích?",
+      "operation": "lookup",
+      "value": 496.08,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "ca_nam",
+      "crop": "tong",
+      "field": "ca_nam_tong",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu năm sau có bao nhiêu ha lúa?",
+    "expected": 476.82,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu năm sau có bao nhiêu ha lúa?",
+      "operation": "lookup",
+      "value": 476.82,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "ca_nam",
+      "crop": "lua",
+      "field": "ca_nam_lua",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Những công trình nào có diện tích lớn nhất?",
+    "expected": "ranking",
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Những công trình nào có diện tích lớn nhất?",
+      "operation": "ranking",
+      "items": [
+        {
+          "cong_trinh": "Trạm bơm Vĩnh Điện",
+          "value": 1505.8,
+          "unit": "ha",
+          "method": "Tổng",
+          "field": "ca_nam_tong"
+        },
+        {
+          "cong_trinh": "Đập Duy Thành",
+          "value": 1460.08,
+          "unit": "ha",
+          "method": "Tổng",
+          "field": "ca_nam_tong"
+        },
+        {
+          "cong_trinh": "Trạm bơm Đông Quang",
+          "value": 1356.11,
+          "unit": "ha",
+          "method": "Tổng",
+          "field": "ca_nam_tong"
+        },
+        {
+          "cong_trinh": "Đập Thanh Quýt",
+          "value": 1295.18,
+          "unit": "ha",
+          "method": "Tổng",
+          "field": "ca_nam_tong"
+        },
+        {
+          "cong_trinh": "Trạm bơm Đông Hồ",
+          "value": 943.76,
+          "unit": "ha",
+          "method": "Tổng",
+          "field": "ca_nam_tong"
+        }
+      ],
+      "filters": {
+        "year": 2027,
+        "group": null,
+        "method": "Tổng",
+        "season": "ca_nam",
+        "crop": "tong"
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu kế hoạch năm 2027 bao nhiêu ha?",
+    "expected": 496.08,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu kế hoạch năm 2027 bao nhiêu ha?",
+      "operation": "lookup",
+      "value": 496.08,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "ca_nam",
+      "crop": "tong",
+      "field": "ca_nam_tong",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu mùa Đông Xuân bao nhiêu?",
+    "expected": 243.05,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu mùa Đông Xuân bao nhiêu?",
+      "operation": "lookup",
+      "value": 243.05,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "dong_xuan",
+      "crop": "tong",
+      "field": "dong_xuan_tong",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu nuôi thủy sản bao nhiêu ha?",
+    "expected": 9.98,
+    "pass": true,
+    "result": {
+      "found": true,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu nuôi thủy sản bao nhiêu ha?",
+      "operation": "lookup",
+      "value": 9.98,
+      "unit": "ha",
+      "construction": "Trạm bơm Tứ Câu",
+      "address": "Khối phố Ngân Giang, phường Điện Bàn Đông",
+      "group": "CẤP NƯỚC BẰNG ĐỘNG LỰC",
+      "method": "Tổng",
+      "season": "ca_nam",
+      "crop": "ntts",
+      "field": "ca_nam_ntts",
+      "source": {
+        "dataset": "Phụ lục 09 (VG-TB)(2027)",
+        "excel_row": 1346
+      }
+    }
+  },
+  {
+    "question": "Tứ Câu năm 2030 bao nhiêu ha?",
+    "expected": "not_found",
+    "pass": true,
+    "result": {
+      "found": false,
+      "engine": "PLAN_DATA",
+      "question": "Tứ Câu năm 2030 bao nhiêu ha?",
+      "filters": {
+        "year": 2030,
+        "group": null,
+        "construction": "Trạm bơm Tứ Câu",
+        "method": "Tổng",
+        "season": "ca_nam",
+        "crop": "tong"
+      },
+      "reason": "Không tìm thấy bản ghi phù hợp."
+    }
+  }
+]
