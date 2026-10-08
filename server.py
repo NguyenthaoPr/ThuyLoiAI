@@ -25,6 +25,14 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
+
+# PLAN_DATA — dữ liệu kế hoạch/bảng biểu có cấu trúc
+try:
+    from plan_data_engine import PlanDataEngine, format_plan_data_answer
+except Exception as _plan_import_error:
+    PlanDataEngine = None
+    format_plan_data_answer = None
+    print("[PLAN_DATA] Không tải được plan_data_engine:", repr(_plan_import_error))
 from google import genai
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -49,6 +57,26 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
+
+# ============================================================
+# PLAN_DATA — PHỤ LỤC / KẾ HOẠCH CÓ CẤU TRÚC
+# ============================================================
+PLAN_DATA_FILE = Path(os.getenv(
+    "PLAN_DATA_FILE",
+    str(BASE_DIR / "phu_luc_09_vgtb_2027_normalized.json")
+))
+PLAN_DATA_ENABLED = os.getenv("PLAN_DATA_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+plan_data_engine = None
+if PLAN_DATA_ENABLED and PlanDataEngine is not None:
+    try:
+        plan_data_engine = PlanDataEngine(data_file=PLAN_DATA_FILE)
+        print(
+            f"[PLAN_DATA] ENABLED records={len(plan_data_engine.rows)} "
+            f"file={PLAN_DATA_FILE}"
+        )
+    except Exception as _plan_engine_error:
+        plan_data_engine = None
+        print("[PLAN_DATA] Không khởi tạo được engine:", repr(_plan_engine_error))
 # ===== HỆ THỐNG BẢN ĐỒ KÊNH MƯƠNG KML/KMZ =====
 
 KML_DATA_DIR = BASE_DIR / "kml_data"
@@ -1808,7 +1836,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v3").strip() or "rag-v3"
+CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v4-plan-v1").strip() or "rag-v4-plan-v1"
 CACHE_NAMESPACE = os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION
 
 _answer_cache = OrderedDict()
@@ -2374,6 +2402,62 @@ def _has_current_time_context(text: str) -> bool:
     ))
 
 
+PLAN_DATA_STRONG_TERMS = (
+    "phu luc 09",
+    "phu luc 9",
+    "ke hoach 2027",
+    "nam 2027",
+    "dien tich tuoi",
+    "dien tich cap nuoc",
+    "cap nuoc",
+    "dong xuan",
+    "he thu",
+    "ca nam",
+    "tao nguon",
+    "chu dong 1 phan",
+    "ntts",
+    "nuoi trong thuy san",
+)
+PLAN_DATA_METRIC_TERMS = (
+    "dien tich",
+    "ha",
+    "lua",
+    "mau",
+    "ntts",
+    "tao nguon",
+    "cap nuoc",
+)
+
+def classify_plan_data_route(question: str) -> dict:
+    text = _normalize_router_text(question)
+    if plan_data_engine is None:
+        return {"is_plan": False, "is_hybrid": False, "plan_hits": [], "construction": None}
+
+    plan_hits = _contains_any(text, PLAN_DATA_STRONG_TERMS)
+    metric_hits = _contains_any(text, PLAN_DATA_METRIC_TERMS)
+    construction = plan_data_engine.find_construction(question)
+    has_year = bool(re.search(r"\b20\d{2}\b", text))
+    has_plan_context = bool(plan_hits) or has_year
+    has_metric = bool(metric_hits)
+    current = _has_current_time_context(text)
+    parameter = bool(_contains_any(text, OPERATIONAL_PARAMETER_TERMS))
+    is_plan = bool(
+        (has_plan_context and has_metric) or
+        (construction and has_year) or
+        (construction and any(x in text for x in ("phu luc", "ke hoach", "dong xuan", "he thu", "ca nam", "tao nguon")))
+    )
+    # Chỉ gắn HYBRID khi câu hỏi vừa có mục tiêu kế hoạch vừa hỏi số liệu vận hành hiện tại.
+    is_hybrid = is_plan and current and parameter
+    return {
+        "is_plan": is_plan,
+        "is_hybrid": is_hybrid,
+        "plan_hits": plan_hits,
+        "metric_hits": metric_hits,
+        "construction": construction,
+        "year_explicit": has_year,
+    }
+
+
 def classify_query_route(question: str) -> dict:
     """
     Router 3 tầng cho Chatbot: DOCUMENT / HYBRID / OPERATIONAL.
@@ -2383,6 +2467,7 @@ def classify_query_route(question: str) -> dict:
     thời rõ ràng. Nếu không chắc -> DOCUMENT.
     """
     text = _normalize_router_text(question)
+    plan_info = classify_plan_data_route(question)
 
     document_hits = _contains_any(
         text, DOCUMENT_STRONG_TERMS + DOCUMENT_KNOWLEDGE_TERMS
@@ -2399,7 +2484,12 @@ def classify_query_route(question: str) -> dict:
 
     # Một số câu hỏi có chữ "đang/hôm nay" nhưng mục tiêu thực tế vẫn là
     # quy định/hồ sơ. Tài liệu luôn thắng khi có tín hiệu văn bản mạnh.
-    if has_strong_document and not explicit_operational_hits:
+    # Tuy nhiên, PLAN_DATA được ưu tiên khi câu hỏi rõ ràng đang hỏi bảng kế hoạch.
+    if plan_info["is_hybrid"] and not has_strong_document:
+        route = "hybrid_plan_operational"
+    elif plan_info["is_plan"] and not has_strong_document:
+        route = "plan_data"
+    elif has_strong_document and not explicit_operational_hits:
         route = "document"
     elif has_strong_document and has_current_operation and has_operation_parameter:
         route = "hybrid"
@@ -2425,6 +2515,7 @@ def classify_query_route(question: str) -> dict:
         "operational_hits": operational_hits,
         "parameter_hits": parameter_hits,
         "explicit_operational_hits": explicit_operational_hits,
+        "plan_data": plan_info,
         "router_version": CHATBOT_ROUTER_VERSION,
     }
 
@@ -3068,7 +3159,100 @@ async def ask(data: Question):
     print("QUERY ROUTE:", route_info)
 
     # ========================================================
-    # 2. DOCUMENT / KNOWLEDGE QUERY
+    # 2. PLAN_DATA QUERY — BẢNG KẾ HOẠCH CÓ CẤU TRÚC
+    # ========================================================
+    # PLAN_DATA được truy vấn xác định bằng engine, không giao việc tính
+    # số liệu cho Gemini. Gemini/LLM chỉ nên diễn giải ở lớp trên.
+
+    if route == "plan_data":
+        if plan_data_engine is None or format_plan_data_answer is None:
+            return {
+                "status": "error",
+                "answer": "PLAN_DATA chưa được cấu hình trên máy chủ.",
+                "query_route": "plan_data",
+                "router_version": CHATBOT_ROUTER_VERSION,
+            }
+        try:
+            plan_result = await asyncio.to_thread(plan_data_engine.query, question)
+            answer = format_plan_data_answer(plan_result)
+            response = {
+                "status": "ok",
+                "answer": answer,
+                "engine": "PLAN_DATA Engine",
+                "model": "Structured Data",
+                "cache": False,
+                "query_route": "plan_data",
+                "router_version": CHATBOT_ROUTER_VERSION,
+                "data": plan_result,
+            }
+            return response
+        except Exception as e:
+            print("PLAN_DATA QUERY ERROR:", repr(e))
+            return {
+                "status": "error",
+                "answer": "THỦY LỢI AI chưa thể truy vấn bảng dữ liệu kế hoạch này.",
+                "engine": "PLAN_DATA Engine",
+                "query_route": "plan_data",
+                "router_version": CHATBOT_ROUTER_VERSION,
+            }
+
+    # ========================================================
+    # 3. HYBRID PLAN_DATA + OPERATIONAL
+    # ========================================================
+
+    if route == "hybrid_plan_operational":
+        if plan_data_engine is None:
+            return {
+                "status": "error",
+                "answer": "PLAN_DATA chưa được cấu hình trên máy chủ.",
+                "query_route": "hybrid_plan_operational",
+                "router_version": CHATBOT_ROUTER_VERSION,
+            }
+        plan_task = asyncio.create_task(asyncio.to_thread(plan_data_engine.query, question))
+        operational_task = asyncio.create_task(get_operational_data(question))
+        plan_result, operational_result = await asyncio.gather(
+            plan_task, operational_task, return_exceptions=True
+        )
+        if isinstance(plan_result, Exception):
+            print("HYBRID PLAN ERROR:", repr(plan_result))
+            plan_result = {"found": False, "engine": "PLAN_DATA"}
+        if isinstance(operational_result, Exception):
+            print("HYBRID PLAN OPERATIONAL ERROR:", repr(operational_result))
+            operational_result = {"found": False, "data": [], "parsed": {"is_operational": False}}
+
+        parts = []
+        if plan_result.get("found"):
+            parts.append(format_plan_data_answer(plan_result))
+        parsed = operational_result.get("parsed", {})
+        if parsed.get("is_operational") and operational_result.get("found"):
+            rows = operational_result.get("data", [])
+            if rows:
+                parts.append("### Số liệu vận hành hiện tại\n" + build_operational_direct_answer(rows))
+
+        if parts:
+            return {
+                "status": "ok",
+                "answer": "\n\n".join(parts),
+                "engine": "PLAN_DATA Engine + Google Data Engine",
+                "model": "Structured Data + AI_DATA",
+                "cache": False,
+                "query_route": "hybrid_plan_operational",
+                "router_version": CHATBOT_ROUTER_VERSION,
+                "plan_data": plan_result,
+                "operational_data": operational_result.get("data", []),
+            }
+
+        return {
+            "status": "ok",
+            "answer": "Chưa tìm thấy dữ liệu kế hoạch hoặc số liệu vận hành phù hợp với câu hỏi.",
+            "engine": "Hybrid PLAN_DATA + Google Data Engine",
+            "query_route": "hybrid_plan_operational",
+            "router_version": CHATBOT_ROUTER_VERSION,
+            "data": [],
+        }
+
+    # ========================================================
+    # 4. DOCUMENT / KNOWLEDGE QUERY
     # ========================================================
     #
     # Đây là nhánh ưu tiên cho câu hỏi về văn bản, quy định,
@@ -3152,7 +3336,7 @@ async def ask(data: Question):
             }
 
     # ========================================================
-    # 3. HYBRID QUERY
+    # 5. HYBRID QUERY
     # ========================================================
     #
     # HYBRID vẫn phải tìm hồ sơ trước/đồng thời với Data Engine.
@@ -3256,7 +3440,7 @@ async def ask(data: Question):
         }
 
     # ========================================================
-    # 4. OPERATIONAL QUERY - GOOGLE DATA ENGINE
+    # 6. OPERATIONAL QUERY - GOOGLE DATA ENGINE
     # ========================================================
 
     operational_data = await get_operational_data(question)
@@ -3317,7 +3501,7 @@ async def ask(data: Question):
             }
 
     # ========================================================
-    # 5. OPERATIONAL KHÔNG CÓ DỮ LIỆU -> FALLBACK DOCUMENT
+    # 7. OPERATIONAL KHÔNG CÓ DỮ LIỆU -> FALLBACK DOCUMENT
     # ========================================================
     #
     # Đây là lớp bảo vệ cuối cùng cho các câu hỏi bị parser vận hành
