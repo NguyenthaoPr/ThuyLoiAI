@@ -1838,7 +1838,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = "rag-v6-3-date-verified-exact-scope"  # File Search first + exact date and unit verification
+CHATBOT_ROUTER_VERSION = "rag-v6-4-exact-person-record-date-scope"  # File Search first + exact person/unit/date verification
 CACHE_NAMESPACE = CHATBOT_ROUTER_VERSION  # New namespace invalidates responses from older router versions
 
 _answer_cache = OrderedDict()
@@ -2544,6 +2544,52 @@ def _answer_misses_explicit_date(question: str, answer: str) -> str | None:
     return None
 
 
+PERSONNEL_IDENTITY_TERMS = (
+    "ly lich", "la ai", "ho so can bo", "can bo ten",
+)
+PERSONNEL_CONTEXT_TERMS = ("nhan su", "can bo", "nhan vien", "nguoi lao dong")
+
+PERSONNEL_NO_EVIDENCE_TERMS = (
+    "chua tim thay", "khong tim thay", "khong co ho so", "khong co du lieu",
+    "khong ghi nhan", "chua co tai lieu", "chua tim duoc", "chua du can cu",
+)
+
+
+def is_personnel_question(question: str) -> bool:
+    """Detect staff identity, staff-list and unit headcount queries for cross-check retrieval."""
+    text = _normalize_router_text(question)
+    has_identity_intent = any(term in text for term in PERSONNEL_IDENTITY_TERMS) or bool(re.search(r"\b(ong|ba|dong chi)\b", text))
+    has_person_context = any(term in text for term in PERSONNEL_CONTEXT_TERMS)
+    has_headcount_intent = any(term in text for term in ("bao nhieu nguoi", "tong cong nguoi", "so luong nguoi", "danh sach nguoi lao dong"))
+    has_unit_context = any(term in text for term in ("vinh an", "vinh thanh", "vinh thach", "dong quang", "phu dong", "chi nhanh", "cum tn", "cum thuy nong"))
+    has_name_shape = bool(re.search(r"\b[\wÀ-ỹĐđ]+(?:\s+[\wÀ-ỹĐđ]+){1,4}\b", question or ""))
+    return (has_name_shape and has_identity_intent) or (has_headcount_intent and (has_person_context or has_unit_context)) or (has_person_context and has_unit_context)
+
+
+def _personnel_answer_needs_retry(question: str, answer: str) -> bool:
+    """Retry when an identity query is answered with a no-record claim or similar-name fallback."""
+    if not is_personnel_question(question):
+        return False
+    normalized = _normalize_router_text(answer)
+    return any(term in normalized for term in PERSONNEL_NO_EVIDENCE_TERMS)
+
+
+def build_exact_personnel_retry(question: str, attempt: int = 2) -> str:
+    """Force a second File Search using exact-name and table/list terminology."""
+    return (
+        "TRA CỨU ĐỐI CHIẾU LẦN HAI ĐỐI VỚI HỒ SƠ NHÂN SỰ. "
+        "Bắt buộc gọi Gemini File Search trong store đã cấu hình; không trả lời từ trí nhớ. "
+        "Nếu câu hỏi nêu họ tên, tìm nguyên văn đúng họ tên trong các tài liệu 'danh sách người lao động', "
+        "'danh sách cán bộ', 'hồ sơ cán bộ' và bảng có cột Họ và tên/Chức vụ/Đơn vị. "
+        "Nếu câu hỏi hỏi số người của đơn vị, tìm đúng tên đơn vị và dòng tổng số của chính đơn vị đó; "
+        "không lấy số của đơn vị gần tên hoặc tổng toàn Chi nhánh. Nếu câu hỏi nêu ngày, chỉ dùng tài liệu "
+        "đúng ngày yêu cầu. Không thay người được hỏi bằng người có tên gần giống. "
+        "Đối chiếu nguồn và ngày trước khi trả lời; nếu không có đoạn nguồn xác nhận đúng tên/đơn vị/ngày, "
+        "nói chưa truy xuất được bằng chứng chính xác và không suy đoán. "
+        f"\nCÂU HỎI GỐC: {question}"
+    )
+
+
 def build_document_prompt(question: str, attempt: int = 1) -> str:
     """Tạo chỉ dẫn retrieval; ưu tiên đúng phạm vi đơn vị và xác minh ngày yêu cầu."""
     retrieval_query = build_retrieval_query(question)
@@ -2967,6 +3013,36 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
                         "Vui lòng kiểm tra file đã tải lên, trạng thái lập chỉ mục và đúng Gemini File Search Store."
                     )
                     sources = [src for src in sources if isinstance(src, dict)]
+
+            # Exact-person guard: Gemini can retrieve a nearby name or claim no record
+            # even when the same store contains a matching personnel list. Retry once with
+            # an explicit exact-name/table search before accepting that conclusion.
+            if is_personnel_question(question):
+                targeted_personnel_question = build_exact_personnel_retry(question, attempt=attempt + 2)
+                print("PERSONNEL EXACT-NAME RETRY - search exact record and list/table context")
+                retry_answer, retry_sources = await _gemini_once(
+                    targeted_personnel_question,
+                    route=route,
+                    attempt=attempt + 2,
+                )
+                # Do not replace a useful original answer with a retry that merely repeats
+                # an unsupported denial. Prefer the retry only when it no longer asserts
+                # that the record is missing.
+                if not _personnel_answer_needs_retry(question, retry_answer):
+                    answer, sources = retry_answer, retry_sources
+                else:
+                    answer = (
+                        "Chưa truy xuất được đoạn hồ sơ xác nhận chính xác người được hỏi. "
+                        "Hệ thống đã tìm lại Gemini File Search theo họ tên và danh sách nhân sự, "
+                        "nhưng kết quả chưa đủ căn cứ để kết luận. Không sử dụng người có tên gần giống "
+                        "thay cho người được hỏi. Vui lòng kiểm tra tài liệu nhân sự đã được lập chỉ mục "
+                        "trong đúng File Search Store."
+                    )
+                    sources = list(dict.fromkeys(
+                        [str(src.get("file_name", "")) for src in (sources + retry_sources)
+                         if isinstance(src, dict) and src.get("file_name")]
+                    ))
+                    sources = [{"file_name": name} for name in sources]
 
             elapsed = time.monotonic() - started
             print(
