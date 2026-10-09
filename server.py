@@ -3105,14 +3105,19 @@ def build_plan_direct_answer(plan_result: dict) -> str:
         return text
     if operation == "lookup":
         construction = plan_result.get("construction", "Công trình")
+        parent = plan_result.get("parent")
         value = format_plan_number(plan_result.get("value"))
+        subject = f"{construction} thuộc {parent}" if parent else construction
         if crop == "tong":
-            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có tổng diện tích cấp nước {season_label} là **{value} ha**."
+            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {subject} có tổng diện tích cấp nước {season_label} là **{value} ha**."
         else:
-            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có diện tích {crop_label} {season_label} là **{value} ha**."
+            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {subject} có diện tích {crop_label} {season_label} là **{value} ha**."
         method = plan_result.get("method")
         if method and method != "Tổng":
             text += f" (Biện pháp: {method}.)"
+        source = plan_result.get("source", {})
+        if source.get("excel_row"):
+            text += f" Nguồn: dòng {source.get('excel_row')} của Phụ lục 09."
         return text
     if operation == "sum":
         return f"Theo Phụ lục 09 (VG-TB) năm {year}, tổng {crop_label} {season_label} là **{format_plan_number(plan_result.get('value'))} ha**."
@@ -3120,8 +3125,17 @@ def build_plan_direct_answer(plan_result: dict) -> str:
         lines = [f"{i}. {x.get('cong_trinh')}: **{format_plan_number(x.get('value'))} ha**" for i, x in enumerate(plan_result.get("items", []), 1)]
         return f"Các công trình có {crop_label} {season_label} lớn nhất theo Phụ lục 09 năm {year}:\n" + "\n".join(lines)
     if operation == "list":
-        lines = [f"- {x.get('construction')}: **{format_plan_number(x.get('value'))} ha**" for x in plan_result.get("items", [])]
-        return f"Dữ liệu PLAN_DATA năm {year}:\n" + "\n".join(lines)
+        lines = []
+        for x in plan_result.get("items", []):
+            name = x.get("construction") or x.get("cong_trinh") or "Công trình chưa rõ tên"
+            parent = x.get("parent")
+            address = x.get("address")
+            qualifiers = [f"thuộc {parent}" if parent else None, f"địa điểm {address}" if address else None,
+                          f"nhóm {x.get('nhom')}" if x.get("nhom") else None,
+                          f"dòng Excel {x.get('excel_row')}" if x.get("excel_row") else None]
+            qualifier_text = " — " + "; ".join(z for z in qualifiers if z) if any(qualifiers) else ""
+            lines.append(f"- {name}{qualifier_text}: **{format_plan_number(x.get('value'))} ha**")
+        return f"Có nhiều bản ghi trùng tên trong PLAN_DATA năm {year}; cần phân biệt theo công trình cha/địa điểm:\n" + "\n".join(lines)
     return "Đã tìm thấy dữ liệu PLAN_DATA nhưng chưa có mẫu diễn giải phù hợp."
 
 def run_plan_query(question: str) -> dict:
