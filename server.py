@@ -2362,6 +2362,7 @@ OPERATIONAL_PARAMETER_TERMS = (
     "luu luong",
     "do man",
     "luong mua",
+    "mua",
     "do mo",
     "q ve",
     "q ra",
@@ -2427,9 +2428,18 @@ def classify_query_route(question: str) -> dict:
     has_current_operation = _has_current_time_context(text)
     has_operation_parameter = bool(parameter_hits)
     has_plan_context = bool(plan_hits)
+    # Nhận diện câu hỏi diện tích/kế hoạch bằng cấu trúc câu, kể cả khi
+    # người dùng không nói rõ "Phụ lục 09" hoặc "kế hoạch 2027".
+    # Không áp dụng khi câu hỏi có tín hiệu văn bản/quy định mạnh.
+    has_plan_area_intent = bool(re.search(
+        r"\b(?:tuoi|phuc vu|cap nuoc|nuoi thuy san)\b.*\b(?:bao nhieu|dien tich|ha)\b"
+        r"|\bco bao nhieu ha\b"
+        r"|\b(?:top\s+\d+|lon nhat|nhieu nhat)\b",
+        text,
+    ))
     # Mọi tín hiệu PLAN_DATA đã được chọn đều đủ mạnh để tránh rơi vào
     # DOCUMENT chỉ vì các từ như "thủy sản" hoặc "phục vụ" xuất hiện.
-    plan_strong = has_plan_context
+    plan_strong = has_plan_context or (has_plan_area_intent and not has_strong_document)
 
     if has_plan_context and has_current_operation and has_operation_parameter:
         route = "hybrid_plan_operational"
