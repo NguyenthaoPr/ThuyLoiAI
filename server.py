@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 # PLAN_DATA structured query engine
 try:
-    from plan_data_engine_v6 import PlanDataEngineV6 as PlanDataEngine
+    from plan_data_engine import PlanDataEngine
 except Exception as _plan_import_error:
     PlanDataEngine = None
     print("[PLAN_DATA] import error:", repr(_plan_import_error))
@@ -61,7 +61,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # ============================================================
 PLAN_DATA_FILE = Path(os.getenv(
     "PLAN_DATA_FILE",
-    str(BASE_DIR / "phu_luc_09_vgtb_2027_v6.json"),
+    str(BASE_DIR / "phu_luc_09_vgtb_2027_normalized.json"),
 )).expanduser()
 _plan_data_engine = None
 
@@ -1838,7 +1838,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v6-chatbook").strip() or "rag-v6-chatbook"
+CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v4-plan-data").strip() or "rag-v4-plan-data"
 CACHE_NAMESPACE = os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION
 
 _answer_cache = OrderedDict()
@@ -2325,9 +2325,7 @@ PLAN_DATA_TERMS = (
     "ke hoach", "phu luc", "nam toi", "nam sau", "nam 2027",
     "quy mo phuc vu", "dien tich phuc vu", "dien tich tuoi",
     "dien tich cap nuoc", "phuc vu bao nhieu", "nuoi thuy san",
-    "nuoi trong thuy san", "thuy san", "dien tich ho chua", "dien tich ho",
-    "dien tich cong trinh", "dien tich khu tuoi", "dien tich khu cap nuoc",
-    "tao nguon",
+    "nuoi trong thuy san", "thuy san", "tao nguon",
     "chu dong 1 phan", "dong xuan", "he thu", "ca nam",
 )
 
@@ -2362,7 +2360,6 @@ OPERATIONAL_PARAMETER_TERMS = (
     "luu luong",
     "do man",
     "luong mua",
-    "mua",
     "do mo",
     "q ve",
     "q ra",
@@ -2428,18 +2425,9 @@ def classify_query_route(question: str) -> dict:
     has_current_operation = _has_current_time_context(text)
     has_operation_parameter = bool(parameter_hits)
     has_plan_context = bool(plan_hits)
-    # Nhận diện câu hỏi diện tích/kế hoạch bằng cấu trúc câu, kể cả khi
-    # người dùng không nói rõ "Phụ lục 09" hoặc "kế hoạch 2027".
-    # Không áp dụng khi câu hỏi có tín hiệu văn bản/quy định mạnh.
-    has_plan_area_intent = bool(re.search(
-        r"\b(?:tuoi|phuc vu|cap nuoc|nuoi thuy san)\b.*\b(?:bao nhieu|dien tich|ha)\b"
-        r"|\bco bao nhieu ha\b"
-        r"|\b(?:top\s+\d+|lon nhat|nhieu nhat)\b",
-        text,
-    ))
     # Mọi tín hiệu PLAN_DATA đã được chọn đều đủ mạnh để tránh rơi vào
     # DOCUMENT chỉ vì các từ như "thủy sản" hoặc "phục vụ" xuất hiện.
-    plan_strong = has_plan_context or (has_plan_area_intent and not has_strong_document)
+    plan_strong = has_plan_context
 
     if has_plan_context and has_current_operation and has_operation_parameter:
         route = "hybrid_plan_operational"
@@ -3091,33 +3079,16 @@ def build_plan_direct_answer(plan_result: dict) -> str:
     crop = filters.get("crop", "tong")
     season_label = {"dong_xuan": "Đông Xuân", "he_thu": "Hè Thu", "ca_nam": "cả năm"}.get(season, season)
     crop_label = {"lua": "lúa", "mau": "màu", "ntts": "NTTS", "cay_dl": "cây dài ngày", "tong": "tổng diện tích"}.get(crop, crop)
-    if operation == "detail":
-        construction = plan_result.get("construction", "Công trình")
-        breakdown = plan_result.get("breakdown", [])
-        total = format_plan_number(plan_result.get("total"))
-        lines = [f"- {x.get('loai')}: **{format_plan_number(x.get('value'))} ha**" for x in breakdown]
-        text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có cơ cấu diện tích {season_label}:\n" + "\n".join(lines)
-        if total:
-            text += f"\n**Tổng: {total} ha.**"
-        source = plan_result.get("source", {})
-        if source.get("excel_row"):
-            text += f"\nNguồn: dòng {source.get('excel_row')} của bảng Phụ lục 09."
-        return text
     if operation == "lookup":
         construction = plan_result.get("construction", "Công trình")
-        parent = plan_result.get("parent")
         value = format_plan_number(plan_result.get("value"))
-        subject = f"{construction} thuộc {parent}" if parent else construction
         if crop == "tong":
-            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {subject} có tổng diện tích cấp nước {season_label} là **{value} ha**."
+            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có tổng diện tích cấp nước {season_label} là **{value} ha**."
         else:
-            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {subject} có diện tích {crop_label} {season_label} là **{value} ha**."
+            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có diện tích {crop_label} {season_label} là **{value} ha**."
         method = plan_result.get("method")
         if method and method != "Tổng":
             text += f" (Biện pháp: {method}.)"
-        source = plan_result.get("source", {})
-        if source.get("excel_row"):
-            text += f" Nguồn: dòng {source.get('excel_row')} của Phụ lục 09."
         return text
     if operation == "sum":
         return f"Theo Phụ lục 09 (VG-TB) năm {year}, tổng {crop_label} {season_label} là **{format_plan_number(plan_result.get('value'))} ha**."
@@ -3125,17 +3096,8 @@ def build_plan_direct_answer(plan_result: dict) -> str:
         lines = [f"{i}. {x.get('cong_trinh')}: **{format_plan_number(x.get('value'))} ha**" for i, x in enumerate(plan_result.get("items", []), 1)]
         return f"Các công trình có {crop_label} {season_label} lớn nhất theo Phụ lục 09 năm {year}:\n" + "\n".join(lines)
     if operation == "list":
-        lines = []
-        for x in plan_result.get("items", []):
-            name = x.get("construction") or x.get("cong_trinh") or "Công trình chưa rõ tên"
-            parent = x.get("parent")
-            address = x.get("address")
-            qualifiers = [f"thuộc {parent}" if parent else None, f"địa điểm {address}" if address else None,
-                          f"nhóm {x.get('nhom')}" if x.get("nhom") else None,
-                          f"dòng Excel {x.get('excel_row')}" if x.get("excel_row") else None]
-            qualifier_text = " — " + "; ".join(z for z in qualifiers if z) if any(qualifiers) else ""
-            lines.append(f"- {name}{qualifier_text}: **{format_plan_number(x.get('value'))} ha**")
-        return f"Có nhiều bản ghi trùng tên trong PLAN_DATA năm {year}; cần phân biệt theo công trình cha/địa điểm:\n" + "\n".join(lines)
+        lines = [f"- {x.get('construction')}: **{format_plan_number(x.get('value'))} ha**" for x in plan_result.get("items", [])]
+        return f"Dữ liệu PLAN_DATA năm {year}:\n" + "\n".join(lines)
     return "Đã tìm thấy dữ liệu PLAN_DATA nhưng chưa có mẫu diễn giải phù hợp."
 
 def run_plan_query(question: str) -> dict:
