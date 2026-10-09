@@ -1838,7 +1838,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = "rag-v6-2-latest-document-exact-scope"  # File Search first + latest-document and exact-scope safeguards
+CHATBOT_ROUTER_VERSION = "rag-v6-3-date-verified-exact-scope"  # File Search first + exact date and unit verification
 CACHE_NAMESPACE = CHATBOT_ROUTER_VERSION  # New namespace invalidates responses from older router versions
 
 _answer_cache = OrderedDict()
@@ -2485,8 +2485,11 @@ def classify_query_route(question: str) -> dict:
 DOCUMENT_QUERY_ALIASES = {
     "pham vi bao ve": ["hanh lang bao ve", "gioi han bao ve", "khoang cach bao ve"],
     "cong trinh thuy loi": ["ho chua", "dap", "kenh", "tram bom", "cong trinh dau moi"],
-    "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su"],
+    "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su", "tong cong nguoi"],
+    "danh sach": ["danh sach nguoi lao dong", "ngay lap danh sach", "tong cong nguoi"],
     "chi nhanh": ["don vi", "bo phan", "cum", "phong ban"],
+    "vinh an": ["Cum Thuy nong Vinh An", "Cum TN Vinh An", "nhan su Vinh An", "so nguoi Vinh An"],
+    "vinh thanh": ["Cum Thuy nong Vinh Thanh", "Cum TN Vinh Thanh", "nhan su Vinh Thanh"],
     "quy dinh": ["quy pham", "quy che", "quy trinh", "dieu khoan"],
     "thong so ky thuat": ["thong so", "thiet ke", "quy mo", "kich thuoc", "dung tich"],
 }
@@ -2517,35 +2520,58 @@ def is_fresh_document_question(question: str) -> bool:
     return any(term in text for term in freshness_terms)
 
 
+def _explicit_dates_in_text(text: str) -> list[str]:
+    """Extract explicit dates as DD/MM/YYYY without guessing ambiguous dates."""
+    found = []
+    for m in re.finditer(r"(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)", text or ""):
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= d <= 31 and 1 <= mo <= 12:
+            found.append(f"{d:02d}/{mo:02d}/{y:04d}")
+    return list(dict.fromkeys(found))
+
+
+def _answer_misses_explicit_date(question: str, answer: str) -> str | None:
+    """Return the requested date if an explicit-date question was answered from another/undated source."""
+    requested = _explicit_dates_in_text(question)
+    if not requested:
+        return None
+    normalized_answer_dates = set(_explicit_dates_in_text(answer))
+    # Require the answer to explicitly ground itself in the requested date.
+    # This deliberately fails closed rather than treating an older list as current.
+    for date in requested:
+        if date not in normalized_answer_dates:
+            return date
+    return None
+
+
 def build_document_prompt(question: str, attempt: int = 1) -> str:
-    """Tạo chỉ dẫn retrieval; ưu tiên đúng phạm vi đơn vị và bản tài liệu mới nhất."""
+    """Tạo chỉ dẫn retrieval; ưu tiên đúng phạm vi đơn vị và xác minh ngày yêu cầu."""
     retrieval_query = build_retrieval_query(question)
+    explicit_dates = _explicit_dates_in_text(question)
+    date_rule = ""
+    if explicit_dates:
+        date_rule = (
+            f" CÂU HỎI YÊU CẦU NGÀY CỤ THỂ: {', '.join(explicit_dates)}. "
+            "Chỉ kết luận số liệu cho ngày này nếu đoạn nguồn xác nhận đúng ngày. "
+            "Không thay bằng danh sách ngày khác; nếu không tìm thấy đúng ngày, "
+            "phải nói chưa truy xuất được bằng chứng đúng ngày và không nêu số cũ như đáp án."
+        )
     common_rules = (
-        "BẮT BUỘC sử dụng Gemini File Search trong kho THỦY LỢI AI. "
-        "Chỉ trả lời dựa trên các đoạn tài liệu thực sự tìm được; nêu đúng tên "
-        "tài liệu và ngày/thời điểm của tài liệu nếu có. "
-        "Với câu hỏi nhân sự, danh sách lao động, số người hoặc dữ liệu có thể "
-        "thay đổi theo thời gian: phải tìm và đối chiếu tất cả kết quả liên quan, "
-        "xác định ngày lập/ngày cập nhật ghi trong chính tài liệu, rồi ưu tiên "
-        "tài liệu có thời điểm mới nhất trong các kết quả đã tìm được. Không được "
-        "gọi một tài liệu là mới nhất nếu chưa thấy ngày tháng làm căn cứ. "
-        "Phải khớp chính xác đơn vị được hỏi; ví dụ Vĩnh An không phải Vĩnh Thạnh, "
-        "và số liệu của Cụm Vĩnh An không phải số liệu của toàn Chi nhánh. "
-        "Không dùng số liệu cũ nếu đã tìm thấy tài liệu mới hơn cho cùng phạm vi. "
-        "Nếu có dòng tổng cộng được ghi trực tiếp, dùng đúng dòng tổng đó; không "
-        "cộng nhóm con, không cộng trùng nhóm cha/con, không tự suy ra tổng từ "
-        "các đoạn rời rạc. Nếu tài liệu mới nhất chỉ có danh sách mà không có tổng, "
-        "chỉ đếm khi đã truy xuất được đầy đủ danh sách và nói rõ phương pháp; "
-        "nếu không đủ dữ liệu thì nêu rõ chưa đủ căn cứ, không đoán."
+        "BẮT BUỘC sử dụng Gemini File Search trong kho THỦY LỢI AI trước mọi nguồn phụ. "
+        "Chỉ trả lời dựa trên các đoạn tài liệu thực sự tìm được; nêu tên tài liệu và ngày/thời điểm. "
+        "Với dữ liệu nhân sự hoặc dữ liệu thay đổi theo thời gian, phải đối chiếu ngày ghi trong tài liệu. "
+        "Phải khớp chính xác tên đơn vị: Vĩnh An không phải Vĩnh Thạnh; số liệu một cụm không phải toàn Chi nhánh. "
+        "Nếu có dòng tổng cộng được ghi trực tiếp, dùng đúng dòng đó; không cộng nhóm con hoặc nhóm cha/con. "
+        "Nếu không truy xuất đủ danh sách hoặc không có bằng chứng đúng phạm vi/ngày, hãy nói rõ chưa đủ căn cứ; không đoán."
     )
     if attempt <= 1:
-        instruction = "TRA CỨU TÀI LIỆU LẦN ĐẦU. " + common_rules
+        instruction = "TRA CỨU TÀI LIỆU LẦN ĐẦU. " + common_rules + date_rule
     else:
         instruction = (
-            "TRA CỨU LẠI VỚI PHẠM VI RỘNG HƠN. " + common_rules +
-            " Tìm riêng theo tên đơn vị chính xác, ngày tháng trong tên file/nội dung, "
-            "các cụm 'danh sách người lao động', 'tổng cộng (người)', 'ngày cập nhật' "
-            "và các bản tài liệu cùng chủ đề ở thời điểm khác nhau."
+            "TRA CỨU LẠI CÓ MỤC TIÊU, KHÔNG LẶP LẠI KẾT LUẬN CŨ. " + common_rules + date_rule +
+            " Tìm riêng cụm tên đơn vị chính xác, ngày trong câu hỏi, ngày trong tên file/nội dung, "
+            "các cụm 'danh sách người lao động', 'tổng cộng (người)', 'ngày cập nhật'. "
+            "Nếu kết quả đầu là tài liệu cũ, không dùng nó để trả lời thay cho ngày được yêu cầu."
         )
     return (
         f"{instruction}\n\nCÂU HỎI GỐC:\n{question}"
@@ -2917,6 +2943,30 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
                 route=route,
                 attempt=attempt + 1,
             )
+
+            # Semantic guard: if the user specified a date but the answer cites
+            # another/undated period, force one targeted File Search retry.
+            missing_date = _answer_misses_explicit_date(question, answer)
+            if missing_date and attempt < MAX_RETRIES - 1:
+                targeted_question = (
+                    f"TRA CỨU LẠI BẮT BUỘC: chỉ trả lời theo tài liệu xác nhận ngày {missing_date}. "
+                    f"Nếu không có bằng chứng đúng ngày {missing_date}, hãy nói rõ không tìm thấy tài liệu đúng ngày; "
+                    f"không dùng số liệu ngày khác. Câu hỏi gốc: {question}"
+                )
+                print("DATE MISMATCH - retry File Search with exact date:", missing_date)
+                answer, sources = await _gemini_once(
+                    targeted_question,
+                    route=route,
+                    attempt=attempt + 2,
+                )
+                missing_date = _answer_misses_explicit_date(question, answer)
+                if missing_date:
+                    answer = (
+                        f"Chưa truy xuất được bằng chứng xác nhận đúng ngày {missing_date} trong kho hồ sơ THỦY LỢI AI. "
+                        "Kết quả tìm được không xác nhận đúng ngày yêu cầu nên hệ thống không sử dụng số liệu ở ngày khác. "
+                        "Vui lòng kiểm tra file đã tải lên, trạng thái lập chỉ mục và đúng Gemini File Search Store."
+                    )
+                    sources = [src for src in sources if isinstance(src, dict)]
 
             elapsed = time.monotonic() - started
             print(
