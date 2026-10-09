@@ -1838,7 +1838,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = "rag-v6-file-search-first"  # Bump explicitly to prevent legacy Render env vars overriding deployed code
+CHATBOT_ROUTER_VERSION = "rag-v6-1-file-search-total-first"  # File Search first + explicit totals prioritized
 CACHE_NAMESPACE = CHATBOT_ROUTER_VERSION  # New namespace invalidates responses from older router versions
 
 _answer_cache = OrderedDict()
@@ -1905,6 +1905,16 @@ I. NGUYÊN TẮC CHUNG
 
 10. Với số liệu:
     giữ nguyên số liệu và đơn vị theo tài liệu.
+
+11. QUY TẮC BẮT BUỘC KHI CÂU HỎI HỎI "TỔNG", "TỔNG CỘNG", "TOÀN CHI NHÁNH", "TỔNG SỐ NGƯỜI":
+    - Trước tiên tìm dòng tổng kết/tổng cộng được ghi trực tiếp trong tài liệu, ví dụ
+      "Tổng cộng (người): 79", "Tổng diện tích cả năm: ..." hoặc dòng tổng của bảng.
+    - Nếu tìm thấy dòng tổng phù hợp đúng phạm vi câu hỏi, phải dùng chính số liệu đó làm câu trả lời chính.
+    - Không thay thế tổng đã ghi sẵn bằng cách cộng một vài nhóm/đơn vị được trích xuất riêng lẻ.
+    - Không coi một nhóm con (Văn phòng, Phòng Kỹ thuật, một Cụm Thủy nông...) là tổng toàn Chi nhánh.
+    - Chỉ tự cộng các nhóm khi tài liệu không có tổng được ghi sẵn và các nhóm được xác định đầy đủ, không chồng lặp, cùng phạm vi và cùng thời điểm.
+    - Nếu tài liệu có tổng và các số liệu thành phần không khớp, nêu rõ tổng được ghi trong tài liệu và cảnh báo cần đối chiếu; không tự sửa số liệu nguồn.
+    - Phân biệt câu hỏi tổng toàn đơn vị với câu hỏi riêng từng phòng/cụm; không cộng trùng các nhóm cha và nhóm con.
 
 ==================================================
 II. KHI NGƯỜI DÙNG GỬI HÌNH ẢNH
@@ -2504,13 +2514,21 @@ def build_document_prompt(question: str, attempt: int = 1) -> str:
             "File Search trong kho THỦY LỢI AI trước khi trả lời. Chỉ dùng "
             "căn cứ từ kết quả tìm kiếm; nếu có tài liệu phù hợp, nêu tên "
             "tài liệu và Điều/Khoản/Trang nếu có. Không dùng Data Engine để "
-            "thay thế việc tra cứu hồ sơ."
+            "thay thế việc tra cứu hồ sơ. Với câu hỏi tổng số/tổng cộng/toàn "
+            "đơn vị, phải tìm và ưu tiên dòng tổng kết được ghi trực tiếp trong "
+            "tài liệu; không lấy một vài đoạn về các đơn vị con rồi suy ra tổng. "
+            "Nếu thấy dòng như 'Tổng cộng (người): 79', trả lời con số đó và "
+            "nêu đúng tên tài liệu/thời điểm. Không cộng lại hoặc thay số liệu "
+            "tổng ghi sẵn bằng các thành phần rời rạc."
         )
     else:
         instruction = (
             "TÌM KIẾM LẠI TRONG KHO THỦY LỢI AI. Bắt buộc dùng File Search; "
             "mở rộng theo từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn "
-            "đạt khác nhau. Không trả lời theo trí nhớ nếu chưa có căn cứ."
+            "đạt khác nhau. Không trả lời theo trí nhớ nếu chưa có căn cứ. "
+            "Đối với câu hỏi tổng cộng, chủ động tìm các từ 'Tổng cộng', 'Tổng số', "
+            "'Tổng diện tích', 'Tổng cộng (người)' và các dòng tổng kết cuối bảng; "
+            "ưu tiên dòng tổng đúng phạm vi, không suy tổng từ các đoạn rời rạc."
         )
     return f"{instruction}\n\nCÂU HỎI GỐC:\n{question}\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
 
