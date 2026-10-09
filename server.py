@@ -3600,6 +3600,140 @@ async def list_pdf_documents():
         print("PDF LIST ERROR:", repr(e))
         return {"success": False, "count": 0, "documents": [], "error": str(e)}
 
+
+# ============================================================
+# GEMINI FILE SEARCH - DUPLICATE REVIEW (ADDITIVE, SAFE BY DEFAULT)
+# ============================================================
+def _normalize_document_name(value):
+    """Chuẩn hóa tên để phát hiện ứng viên trùng; không chứng minh nội dung giống hệt."""
+    import unicodedata
+    value = str(value or "").strip().lower()
+    value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"\s+", " ", value)
+    value = re.sub(r"\s*\(\s*(?:copy|bản sao|\d+)\s*\)(?=\.[^.]+$|$)", "", value)
+    value = re.sub(r"[\s_-]+", "_", value)
+    return value
+
+
+def find_duplicate_document_candidates(documents):
+    """Nhóm ứng viên theo tên chuẩn hóa + kích thước; không tự động xóa."""
+    groups = {}
+    for doc in documents or []:
+        name = doc.get("display_name") or ""
+        if not name:
+            continue
+        normalized = _normalize_document_name(name)
+        size = doc.get("size_bytes")
+        key = (normalized, str(size) if size is not None else "unknown")
+        groups.setdefault(key, []).append(doc)
+
+    result = []
+    for (normalized, size), items in groups.items():
+        if len(items) < 2:
+            continue
+        result.append({
+            "normalized_name": normalized,
+            "size_bytes": None if size == "unknown" else size,
+            "content_verified_identical": False,
+            "review_required": True,
+            "documents": items,
+            "recommended_keep": max(
+                items,
+                key=lambda d: (str(d.get("update_time") or ""), str(d.get("create_time") or ""))
+            ),
+            "suggested_review_delete": [
+                d for d in items
+                if d.get("name") != max(
+                    items,
+                    key=lambda x: (str(x.get("update_time") or ""), str(x.get("create_time") or ""))
+                ).get("name")
+            ],
+        })
+    return result
+
+
+class DuplicateDeleteRequest(BaseModel):
+    document_names: list[str]
+    confirm: str
+    store: str
+
+
+@app.get("/documents/duplicates/preview")
+async def preview_duplicate_documents():
+    """Chỉ xem trước ứng viên trùng. Endpoint này tuyệt đối không xóa."""
+    if gemini_client is None:
+        return {"success": False, "error": "Gemini API chưa được kết nối."}
+    if not GEMINI_FILE_SEARCH_STORE:
+        return {"success": False, "error": "Chưa cấu hình GEMINI_FILE_SEARCH_STORE."}
+    try:
+        docs = await asyncio.to_thread(list_documents_sync)
+        groups = find_duplicate_document_candidates(docs)
+        return {
+            "success": True,
+            "mode": "dry_run",
+            "store": store_name(),
+            "document_count": len(docs),
+            "duplicate_group_count": len(groups),
+            "candidate_delete_count": sum(len(g["suggested_review_delete"]) for g in groups),
+            "warning": "Tên và kích thước giống nhau chỉ là dấu hiệu ứng viên, không chứng minh nội dung giống hệt. Chưa xóa tài liệu nào.",
+            "groups": groups,
+        }
+    except Exception as exc:
+        logger.exception("DUPLICATE PREVIEW ERROR")
+        return {"success": False, "store": store_name(), "error": str(exc)}
+
+
+@app.post("/documents/duplicates/delete-selected")
+async def delete_selected_duplicate_documents(request: DuplicateDeleteRequest):
+    """Xóa đúng các resource name do người vận hành chọn sau khi xem preview."""
+    if gemini_client is None:
+        raise HTTPException(status_code=503, detail="Gemini API chưa được kết nối.")
+    if not GEMINI_FILE_SEARCH_STORE:
+        raise HTTPException(status_code=503, detail="Chưa cấu hình GEMINI_FILE_SEARCH_STORE.")
+    if request.confirm != "DELETE_SELECTED_DOCUMENTS":
+        raise HTTPException(status_code=400, detail="Thiếu xác nhận DELETE_SELECTED_DOCUMENTS.")
+    if request.store != store_name():
+        raise HTTPException(status_code=409, detail="Store xác nhận không khớp store đang cấu hình.")
+    names = list(dict.fromkeys(str(n).strip() for n in request.document_names if str(n).strip()))
+    if not names:
+        raise HTTPException(status_code=400, detail="Chưa chọn document_names.")
+    if len(names) > 100:
+        raise HTTPException(status_code=400, detail="Mỗi lần chỉ được xóa tối đa 100 tài liệu.")
+    try:
+        current = await asyncio.to_thread(list_documents_sync)
+        current_by_name = {d.get("name"): d for d in current if d.get("name")}
+        missing = [name for name in names if name not in current_by_name]
+        if missing:
+            raise HTTPException(status_code=409, detail={"message": "Có mã tài liệu không còn tồn tại trong store; chưa xóa tài liệu nào.", "missing": missing})
+        deleted, failed = [], []
+        def do_delete():
+            for name in names:
+                try:
+                    gemini_client.file_search_stores.documents.delete(
+                        name=name, config={"force": True}
+                    )
+                    deleted.append({"name": name, "display_name": current_by_name[name].get("display_name")})
+                except Exception as exc:
+                    failed.append({"name": name, "error": str(exc)})
+        await asyncio.to_thread(do_delete)
+        if deleted:
+            await clear_answer_cache()
+        return {
+            "success": not failed,
+            "store": store_name(),
+            "deleted_count": len(deleted),
+            "failed_count": len(failed),
+            "deleted": deleted,
+            "failed": failed,
+            "message": "Đã xử lý đúng các mã tài liệu được chọn; cache đã làm mới nếu có tài liệu bị xóa."
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("DUPLICATE DELETE SELECTED ERROR")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 def delete_pdf_documents_sync():
     require_gemini()
     documents = list_documents_sync()
