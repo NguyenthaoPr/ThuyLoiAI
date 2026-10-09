@@ -1838,7 +1838,7 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = "rag-v6-1-file-search-total-first"  # File Search first + explicit totals prioritized
+CHATBOT_ROUTER_VERSION = "rag-v6-2-latest-document-exact-scope"  # File Search first + latest-document and exact-scope safeguards
 CACHE_NAMESPACE = CHATBOT_ROUTER_VERSION  # New namespace invalidates responses from older router versions
 
 _answer_cache = OrderedDict()
@@ -2505,33 +2505,52 @@ def build_retrieval_query(question: str) -> str:
     return f"{question}\n\nThuật ngữ liên quan để tra cứu hồ sơ: {', '.join(aliases)}"
 
 
+def is_fresh_document_question(question: str) -> bool:
+    """Nhận diện câu hỏi cần tài liệu mới nhất; không dùng cache cũ cho các câu này."""
+    text = _normalize_router_text(question)
+    freshness_terms = (
+        "moi nhat", "cap nhat", "hien nay", "hien tai", "thoi diem",
+        "ngay ", "danh sach nguoi lao dong", "nhan su", "bao nhieu nguoi",
+        "tong so nguoi", "so luong nguoi", "toan chi nhanh", "cum vinh an",
+        "vinh an", "vinh thanh",
+    )
+    return any(term in text for term in freshness_terms)
+
+
 def build_document_prompt(question: str, attempt: int = 1) -> str:
-    """Tạo chỉ dẫn retrieval ngắn, rõ và có mở rộng truy vấn khi retry."""
+    """Tạo chỉ dẫn retrieval; ưu tiên đúng phạm vi đơn vị và bản tài liệu mới nhất."""
     retrieval_query = build_retrieval_query(question)
+    common_rules = (
+        "BẮT BUỘC sử dụng Gemini File Search trong kho THỦY LỢI AI. "
+        "Chỉ trả lời dựa trên các đoạn tài liệu thực sự tìm được; nêu đúng tên "
+        "tài liệu và ngày/thời điểm của tài liệu nếu có. "
+        "Với câu hỏi nhân sự, danh sách lao động, số người hoặc dữ liệu có thể "
+        "thay đổi theo thời gian: phải tìm và đối chiếu tất cả kết quả liên quan, "
+        "xác định ngày lập/ngày cập nhật ghi trong chính tài liệu, rồi ưu tiên "
+        "tài liệu có thời điểm mới nhất trong các kết quả đã tìm được. Không được "
+        "gọi một tài liệu là mới nhất nếu chưa thấy ngày tháng làm căn cứ. "
+        "Phải khớp chính xác đơn vị được hỏi; ví dụ Vĩnh An không phải Vĩnh Thạnh, "
+        "và số liệu của Cụm Vĩnh An không phải số liệu của toàn Chi nhánh. "
+        "Không dùng số liệu cũ nếu đã tìm thấy tài liệu mới hơn cho cùng phạm vi. "
+        "Nếu có dòng tổng cộng được ghi trực tiếp, dùng đúng dòng tổng đó; không "
+        "cộng nhóm con, không cộng trùng nhóm cha/con, không tự suy ra tổng từ "
+        "các đoạn rời rạc. Nếu tài liệu mới nhất chỉ có danh sách mà không có tổng, "
+        "chỉ đếm khi đã truy xuất được đầy đủ danh sách và nói rõ phương pháp; "
+        "nếu không đủ dữ liệu thì nêu rõ chưa đủ căn cứ, không đoán."
+    )
     if attempt <= 1:
-        instruction = (
-            "ĐÂY LÀ CÂU HỎI ƯU TIÊN TÀI LIỆU. BẮT BUỘC sử dụng Gemini "
-            "File Search trong kho THỦY LỢI AI trước khi trả lời. Chỉ dùng "
-            "căn cứ từ kết quả tìm kiếm; nếu có tài liệu phù hợp, nêu tên "
-            "tài liệu và Điều/Khoản/Trang nếu có. Không dùng Data Engine để "
-            "thay thế việc tra cứu hồ sơ. Với câu hỏi tổng số/tổng cộng/toàn "
-            "đơn vị, phải tìm và ưu tiên dòng tổng kết được ghi trực tiếp trong "
-            "tài liệu; không lấy một vài đoạn về các đơn vị con rồi suy ra tổng. "
-            "Nếu thấy dòng như 'Tổng cộng (người): 79', trả lời con số đó và "
-            "nêu đúng tên tài liệu/thời điểm. Không cộng lại hoặc thay số liệu "
-            "tổng ghi sẵn bằng các thành phần rời rạc."
-        )
+        instruction = "TRA CỨU TÀI LIỆU LẦN ĐẦU. " + common_rules
     else:
         instruction = (
-            "TÌM KIẾM LẠI TRONG KHO THỦY LỢI AI. Bắt buộc dùng File Search; "
-            "mở rộng theo từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn "
-            "đạt khác nhau. Không trả lời theo trí nhớ nếu chưa có căn cứ. "
-            "Đối với câu hỏi tổng cộng, chủ động tìm các từ 'Tổng cộng', 'Tổng số', "
-            "'Tổng diện tích', 'Tổng cộng (người)' và các dòng tổng kết cuối bảng; "
-            "ưu tiên dòng tổng đúng phạm vi, không suy tổng từ các đoạn rời rạc."
+            "TRA CỨU LẠI VỚI PHẠM VI RỘNG HƠN. " + common_rules +
+            " Tìm riêng theo tên đơn vị chính xác, ngày tháng trong tên file/nội dung, "
+            "các cụm 'danh sách người lao động', 'tổng cộng (người)', 'ngày cập nhật' "
+            "và các bản tài liệu cùng chủ đề ở thời điểm khác nhau."
         )
-    return f"{instruction}\n\nCÂU HỎI GỐC:\n{question}\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
-
+    return (
+        f"{instruction}\n\nCÂU HỎI GỐC:\n{question}"
+        f"\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
+    )
 
 class DocumentRetrievalRequiredError(RuntimeError):
     """File Search không được gọi hoặc không trả về kết quả truy xuất."""
@@ -2589,7 +2608,7 @@ async def set_cached_answer(question: str, answer: str, sources=None, route: str
     if not CACHE_ENABLED:
         return
     normalized = normalize_question(question)
-    key = f"{route}:{normalized}"
+    key = f"{CACHE_NAMESPACE}:{route}:{normalized}"
     if not normalized or not answer:
         return
     async with _cache_lock:
@@ -2937,7 +2956,10 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
 
 async def ask_with_singleflight(question: str, route: str = "document"):
     key = f"{CACHE_NAMESPACE}:{route}:{normalize_question(question)}"
-    cached = await get_cached_answer(question, route=route)
+    force_refresh = is_fresh_document_question(question)
+    cached = None if force_refresh else await get_cached_answer(question, route=route)
+    if force_refresh:
+        print("FRESH DOCUMENT QUERY - bỏ qua cache để tra cứu tài liệu mới nhất")
     if cached:
         print("CACHE HIT -", f"age={cached['age_seconds']}s", f"route={route}")
         return cached["answer"], cached["sources"], True
@@ -2975,12 +2997,13 @@ async def ask_with_singleflight(question: str, route: str = "document"):
             question,
             route=route,
         )
-        await set_cached_answer(
-            question,
-            answer,
-            sources,
-            route=route,
-        )
+        if not force_refresh:
+            await set_cached_answer(
+                question,
+                answer,
+                sources,
+                route=route,
+            )
         if not future.done():
             future.set_result((answer, sources))
         print("CACHE SAVED - CÂU TRẢ LỜI ĐÃ ĐƯỢC LƯU")
