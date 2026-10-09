@@ -3494,6 +3494,64 @@ async def ask(data: Question):
         "query_route": str(route),
     })
 
+def _sdk_value(obj, *names, default=None):
+    """Đọc thuộc tính từ object Google GenAI SDK hoặc dict, không phụ thuộc kiểu model."""
+    for name in names:
+        try:
+            if isinstance(obj, dict) and name in obj:
+                value = obj[name]
+            else:
+                value = getattr(obj, name, None)
+            if value is not None:
+                return value
+        except Exception:
+            continue
+    return default
+
+
+def _iso_value(value):
+    if value is None:
+        return None
+    try:
+        return value.isoformat()
+    except Exception:
+        return str(value)
+
+
+def serialize_store(store):
+    """Chuyển FileSearchStore SDK thành dict JSON-safe cho endpoint /stores."""
+    raw_name = _sdk_value(store, "name", default="")
+    return {
+        "name": str(raw_name or ""),
+        "display_name": str(_sdk_value(store, "display_name", "displayName", default="") or ""),
+        "create_time": _iso_value(_sdk_value(store, "create_time", "createTime")),
+        "update_time": _iso_value(_sdk_value(store, "update_time", "updateTime")),
+    }
+
+
+def serialize_document(document):
+    """Chuyển FileSearchDocument SDK thành dict JSON-safe."""
+    return {
+        "name": str(_sdk_value(document, "name", default="") or ""),
+        "display_name": str(_sdk_value(document, "display_name", "displayName", default="") or ""),
+        "mime_type": str(_sdk_value(document, "mime_type", "mimeType", default="") or ""),
+        "size_bytes": _sdk_value(document, "size_bytes", "sizeBytes"),
+        "create_time": _iso_value(_sdk_value(document, "create_time", "createTime")),
+        "update_time": _iso_value(_sdk_value(document, "update_time", "updateTime")),
+        "state": str(_sdk_value(document, "state", default="") or ""),
+    }
+
+
+def list_documents_sync():
+    """Liệt kê tài liệu trong đúng Gemini File Search Store đã cấu hình."""
+    require_gemini()
+    documents = []
+    pager = gemini_client.file_search_stores.documents.list(parent=store_name())
+    for document in pager:
+        documents.append(serialize_document(document))
+    return documents
+
+
 @app.get("/stores")
 async def list_stores():
     if gemini_client is None:
