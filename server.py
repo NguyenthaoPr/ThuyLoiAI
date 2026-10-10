@@ -5538,22 +5538,22 @@ def create_gis_location_map(
         try:
             font_regular = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                30
+                45
             )
 
             font_small = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                26
+                39
             )
 
             font_title = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                34
+                48
             )
 
             font_big = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                38
+                54
             )
 
         except Exception:
@@ -5913,12 +5913,12 @@ def create_gis_location_map(
                 # Tuyến kênh đậm, có viền tương phản để đọc rõ trên nền vệ tinh.
                 item_name = str(item.get("name", "")).strip().lower()
                 is_branch = any(token in item_name for token in ("nhánh", "n(", "-nh", "nhánh kênh"))
-                outer_width = 12 if not is_branch else 9
-                inner_width = 8 if not is_branch else 5
-                draw.line(line_points, fill="#f5fbff", width=outer_width, joint="curve")
+                outer_width = 14 if not is_branch else 11
+                inner_width = 9 if not is_branch else 7
+                draw.line(line_points, fill="#fff4f4", width=outer_width, joint="curve")
                 draw.line(
                     line_points,
-                    fill="#0078e7" if not is_branch else "#00b9e8",
+                    fill="#9E1018" if not is_branch else "#C62828",
                     width=inner_width,
                     joint="curve"
                 )
@@ -5997,7 +5997,7 @@ def create_gis_location_map(
                         x + radius,
                         y + radius
                     ],
-                    fill="red" if is_identified else "gray",
+                    fill="#9E1018" if is_identified else "#667085",
                     outline="white",
                     width=3
                 )
@@ -6068,7 +6068,7 @@ def create_gis_location_map(
                 gps_x + 10,
                 gps_y + 10
             ],
-            fill="#e60023"
+            fill="#9E1018"
         )
 
         # ----------------------------------------------------
@@ -6093,7 +6093,7 @@ def create_gis_location_map(
                 legend_x + 18,
                 legend_y + 18
             ],
-            fill="red"
+            fill="#9E1018"
         )
 
         draw.text(
@@ -6110,8 +6110,8 @@ def create_gis_location_map(
                 legend_x + 45,
                 legend_y + 45
             ],
-            fill="#0078e7",
-            width=9
+            fill="#9E1018",
+            width=10
         )
 
         draw.text(
@@ -6860,8 +6860,10 @@ async def field_report_image(
                 lines.append("Công trình/lý trình: Chưa xác định trong bán kính 200 m")
 
         # Chừa vùng bản đồ bên phải, chữ phẳng ở phần dưới bên trái.
-        map_w = int(width * 0.36)
-        map_h = int(height * 0.30)
+        # Tăng khung bản đồ GIS lên 1,2 lần so với kích thước trước.
+        # Giữ tỷ lệ khung hình và chừa vùng chữ bên trái.
+        map_w = int(width * 0.432)
+        map_h = int(height * 0.36)
         map_x = width - map_w - pad
         map_y = height - map_h - pad
         text_x = pad
@@ -6878,16 +6880,13 @@ async def field_report_image(
             flat_text(text_x, y, line, text_font)
             y += text_font.size + line_gap
 
-        # Ghép bản đồ GIS thực bằng viền trắng mảnh; không có nền tối/hiệu ứng.
+        # Ghép bản đồ GIS thực trực tiếp, không vẽ viền trắng bao quanh.
         if gis_map_bytes:
             try:
                 map_image = ImageOps.exif_transpose(Image.open(BytesIO(gis_map_bytes))).convert("RGB")
                 map_image.thumbnail((map_w, map_h), Image.Resampling.LANCZOS)
                 map_x = width - map_image.width - pad
                 map_y = height - map_image.height - pad
-                border = max(2, int(width * 0.004))
-                draw.rounded_rectangle((map_x-border, map_y-border, map_x+map_image.width+border, map_y+map_image.height+border),
-                                       radius=max(4, int(width * 0.008)), fill=(255,255,255,255))
                 base = source.convert("RGBA")
                 base.alpha_composite(overlay)
                 source = base.convert("RGB")
