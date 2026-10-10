@@ -13,7 +13,7 @@ import json
 import urllib.parse
 import urllib.request
 import qrcode
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFont, ImageDraw
 from io import BytesIO
 from collections import OrderedDict
 from pathlib import Path
