@@ -5499,38 +5499,35 @@ def create_gis_location_map(
        
         # 4. CHỌN VÙNG BẢN ĐỒ
         # ----------------------------------------------------
-        # Giữ vùng bản đồ tập trung quanh GPS.
-        # Tỷ lệ latitude/longitude được hiệu chỉnh
-        # để ảnh vệ tinh không bị méo.
-        map_radius_lng = 0.0035
-        
-        lat_scale = max(
-            0.5,
-            math.cos(math.radians(gps_lat))
-        )
-        
-        map_radius_lat = (
-            map_radius_lng
-            * 720 / 1260
-            / lat_scale
-        )
-        
+        # Khung bản đồ chuẩn hóa quanh GPS: bán kính tìm kiếm 200 m,
+        # cộng biên hiển thị nhỏ để dễ nhận biết tuyến và công trình lân cận.
+        # Tính theo mét, hiệu chỉnh kinh độ theo vĩ độ địa phương.
+        map_radius_m = 240.0
+        meters_per_degree_lat = 111_320.0
+        lat_scale = max(0.15, abs(math.cos(math.radians(gps_lat))))
+        map_radius_lat = map_radius_m / meters_per_degree_lat
+        map_radius_lng = map_radius_m / (meters_per_degree_lat * lat_scale)
+
+        # Giữ tỷ lệ địa lý nhất quán với khung bản đồ, tránh kéo giãn ảnh vệ tinh.
+        map_aspect = 1392 / 892
+        required_lng_radius = map_radius_lat * map_aspect * lat_scale
+        map_radius_lng = max(map_radius_lng, required_lng_radius)
         min_lng = gps_lng - map_radius_lng
         max_lng = gps_lng + map_radius_lng
-        
         min_lat = gps_lat - map_radius_lat
         max_lat = gps_lat + map_radius_lat
 
         # ----------------------------------------------------
         # 5. KÍCH THƯỚC ẢNH
         # ----------------------------------------------------
+        # Bản đồ tối ưu cho khung nhỏ trên điện thoại: sát mép, không viền trắng dày.
         width = 1400
         height = 900
 
         image = Image.new(
             "RGB",
             (width, height),
-            "white"
+            "#eaf2f5"
         )
 
         draw = ImageDraw.Draw(image)
@@ -5541,22 +5538,22 @@ def create_gis_location_map(
         try:
             font_regular = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                24
+                30
             )
 
             font_small = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                18
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                26
             )
 
             font_title = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                30
+                34
             )
 
             font_big = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                34
+                38
             )
 
         except Exception:
@@ -5583,13 +5580,15 @@ def create_gis_location_map(
                 return
     
             # Kích thước chữ
-            bbox = draw.textbbox((0, 0), text, font=font)
+            # Nhãn đậm, tăng cỡ chữ và gắn biểu tượng tuyến nhỏ bên trái.
+            bbox = draw.textbbox((0, 0), text, font=font, stroke_width=1)
     
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
     
-            padding_x = 10
-            padding_y = 6
+            icon_size = max(24, min(32, text_height + 8))
+            padding_x = 12
+            padding_y = 8
     
             # Vị trí ban đầu của hộp chú thích
             label_x = target_x + 35
@@ -5597,18 +5596,18 @@ def create_gis_location_map(
     
             box_left = label_x
             box_top = label_y
-            box_right = label_x + text_width + padding_x * 2
+            box_right = label_x + text_width + padding_x * 2 + icon_size + 8
             box_bottom = label_y + text_height + padding_y * 2
     
             # Không cho hộp vượt mép phải
             if box_right > image_width - 10:
-                box_left = target_x - text_width - padding_x * 2 - 35
-                box_right = box_left + text_width + padding_x * 2
+                box_left = target_x - text_width - padding_x * 2 - icon_size - 8 - 35
+                box_right = box_left + text_width + padding_x * 2 + icon_size + 8
     
             # Không cho hộp vượt mép trái
             if box_left < 10:
                 box_left = 10
-                box_right = box_left + text_width + padding_x * 2
+                box_right = box_left + text_width + padding_x * 2 + icon_size + 8
     
             # Không cho hộp vượt mép trên
             if box_top < 10:
@@ -5618,7 +5617,7 @@ def create_gis_location_map(
             # Không cho hộp vượt mép dưới
             if box_bottom > image_height - 10:
                 box_top = image_height - text_height - padding_y * 2 - 10
-                box_bottom = image_height - 10
+                box_bottom = box_top + text_height + padding_y * 2
     
             # Điểm bắt đầu của mũi tên
             arrow_start_x = (box_left + box_right) / 2
@@ -5700,23 +5699,37 @@ def create_gis_location_map(
                 width=2
             )
     
-            # Tên công trình
+            # Biểu tượng tuyến nhỏ gắn liền với nhãn (không dùng emoji phụ thuộc font).
+            icon_cx = box_left + padding_x + icon_size // 2
+            icon_cy = box_top + (box_bottom - box_top) // 2
+            draw.ellipse(
+                (icon_cx - icon_size // 2, icon_cy - icon_size // 2,
+                 icon_cx + icon_size // 2, icon_cy + icon_size // 2),
+                fill="#e5f3ff", outline=accent, width=2
+            )
+            draw.line(
+                (icon_cx - icon_size // 3, icon_cy,
+                 icon_cx + icon_size // 3, icon_cy),
+                fill=accent, width=max(3, icon_size // 6)
+            )
+
+            # Tên tuyến: chữ đậm, có viền sáng mảnh để nổi trên ảnh vệ tinh.
             draw.text(
-                (
-                    box_left + padding_x,
-                    box_top + padding_y
-                ),
+                (box_left + padding_x + icon_size + 8, box_top + padding_y),
                 text,
                 fill=accent,
-                font=font
+                font=font,
+                stroke_width=1,
+                stroke_fill="white"
             )
         # ----------------------------------------------------
         # 7. HÀM CHUYỂN LAT/LNG -> PIXEL
         # ----------------------------------------------------
-        margin_left = 70
-        margin_right = 70
-        margin_top = 110
-        margin_bottom = 70
+        # Bỏ viền trắng quanh ảnh GIS; chỉ chừa 4 px để tránh cắt pixel ở mép.
+        margin_left = 4
+        margin_right = 4
+        margin_top = 4
+        margin_bottom = 4
 
         map_width = width - margin_left - margin_right
         map_height = height - margin_top - margin_bottom
@@ -5823,16 +5836,7 @@ def create_gis_location_map(
         # ----------------------------------------------------
         # 8. KHUNG BẢN ĐỒ
         # ----------------------------------------------------
-        draw.rectangle(
-            [
-                margin_left,
-                margin_top,
-                width - margin_right,
-                height - margin_bottom
-            ],
-            outline="gray",
-            width=2
-        )
+        # Không vẽ khung viền bao quanh ảnh GIS; bản đồ phủ gần kín canvas.
 
         # ----------------------------------------------------
         # 9. VẼ POLYGON
@@ -5906,16 +5910,17 @@ def create_gis_location_map(
             if len(line_points) >= 2:
 
              
+                # Tuyến kênh đậm, có viền tương phản để đọc rõ trên nền vệ tinh.
+                item_name = str(item.get("name", "")).strip().lower()
+                is_branch = any(token in item_name for token in ("nhánh", "n(", "-nh", "nhánh kênh"))
+                outer_width = 12 if not is_branch else 9
+                inner_width = 8 if not is_branch else 5
+                draw.line(line_points, fill="#f5fbff", width=outer_width, joint="curve")
                 draw.line(
-                line_points,
-                fill="white",
-                width=9
-                )
-                
-                draw.line(
-                line_points,
-                fill="#287f8f",
-                width=5
+                    line_points,
+                    fill="#0078e7" if not is_branch else "#00b9e8",
+                    width=inner_width,
+                    joint="curve"
                 )
                         # -----------------------------------------------
                 # NHÃN + MŨI TÊN CHO TUYẾN KÊNH
@@ -5932,6 +5937,8 @@ def create_gis_location_map(
                 if (
                     gis_class != "KHU_TUOI"
                     and item.get("name")
+                    and identified_name
+                    and str(item.get("name", "")).strip() == identified_name
                     and len(line_points) >= 2
                 ):
                     mid_index = len(line_points) // 2
@@ -6045,23 +6052,23 @@ def create_gis_location_map(
         # Vòng tròn GPS
         draw.ellipse(
             [
-                gps_x - 22,
-                gps_y - 22,
-                gps_x + 22,
-                gps_y + 22
+                gps_x - 26,
+                gps_y - 26,
+                gps_x + 26,
+                gps_y + 26
             ],
-            outline="red",
-            width=6
+            outline="#ffffff",
+            width=9
         )
 
         draw.ellipse(
             [
-                gps_x - 8,
-                gps_y - 8,
-                gps_x + 8,
-                gps_y + 8
+                gps_x - 10,
+                gps_y - 10,
+                gps_x + 10,
+                gps_y + 10
             ],
-            fill="red"
+            fill="#e60023"
         )
 
         # ----------------------------------------------------
@@ -6076,8 +6083,8 @@ def create_gis_location_map(
         # ----------------------------------------------------
         # 15. CHÚ GIẢI
         # ----------------------------------------------------
-        legend_x = 80
-        legend_y = height - 130
+        legend_x = 58
+        legend_y = height - 92
 
         draw.ellipse(
             [
@@ -6103,8 +6110,8 @@ def create_gis_location_map(
                 legend_x + 45,
                 legend_y + 45
             ],
-            fill="#287f8f",
-            width=5
+            fill="#0078e7",
+            width=9
         )
 
         draw.text(
