@@ -6708,6 +6708,92 @@ async def field_report_pdf(
 # FIELD REPORT IMAGE - ẢNH HIỆN TRƯỜNG ĐÓNG DẤU + BẢN ĐỒ GIS
 # Endpoint độc lập; không thay đổi luồng /field-report-pdf hiện có.
 # ============================================================
+# ============================================================
+# BỘ TIỆN ÍCH ẢNH HIỆN TRƯỜNG: metadata, font và icon GIS
+# ============================================================
+def _field_image_font(size: int, bold: bool = False):
+    """Nạp font hỗ trợ Unicode/tiếng Việt, ưu tiên font đóng gói cùng dự án."""
+    candidates = [
+        str(BASE_DIR / "assets" / ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf")),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    ]
+    for path in candidates:
+        try:
+            if Path(path).is_file():
+                return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _crop_gis_whitespace(image: Image.Image, threshold: int = 246, padding: int = 2) -> Image.Image:
+    """Cắt lề trắng/trắng ngà quanh ảnh GIS, không cắt các vùng bản đồ sáng bên trong."""
+    rgb = image.convert("RGB")
+    import PIL.ImageChops as ImageChops
+    # Chỉ nhận diện các pixel gần trắng; vùng sáng màu xanh nhạt của bản đồ vẫn được giữ.
+    mask = Image.new("L", rgb.size, 0)
+    px = rgb.load(); mp = mask.load()
+    for yy in range(rgb.height):
+        for xx in range(rgb.width):
+            r, g, b = px[xx, yy]
+            if r >= threshold and g >= threshold and b >= threshold and max(r,g,b)-min(r,g,b) <= 12:
+                mp[xx, yy] = 255
+    # Tạo vùng nội dung bằng cách đảo mask, rồi lấy bounding box.
+    content = Image.eval(mask, lambda v: 255-v)
+    bbox = content.getbbox()
+    if not bbox:
+        return rgb
+    left, top, right, bottom = bbox
+    left = max(0, left-padding); top=max(0,top-padding)
+    right=min(rgb.width,right+padding); bottom=min(rgb.height,bottom+padding)
+    # Không crop quá mức khi nền bản đồ phần lớn rất sáng.
+    if (right-left) < rgb.width*0.55 or (bottom-top) < rgb.height*0.55:
+        return rgb
+    return rgb.crop((left,top,right,bottom))
+
+
+def _make_field_icon(kind: str, size: int = 46) -> Image.Image:
+    """Tạo icon PNG RGBA nhỏ, nhất quán, dùng nền tròn trắng viền xanh dương."""
+    from PIL import ImageDraw
+    im = Image.new("RGBA", (size,size), (0,0,0,0))
+    d = ImageDraw.Draw(im)
+    blue=(17,112,205,255); navy=(12,56,99,255); white=(255,255,255,255)
+    m=max(2,size//18)
+    d.ellipse((m,m,size-m-1,size-m-1), fill=white, outline=blue, width=max(2,size//15))
+    cx=size//2; cy=size//2; sw=max(2,size//13)
+    if kind == "location":
+        r=size*.16; d.ellipse((cx-r,cy-size*.24,cx+r,cy+size*.08),outline=blue,width=sw)
+        d.polygon([(cx-size*.14,cy),(cx+size*.14,cy),(cx,cy+size*.27)],fill=blue)
+        d.ellipse((cx-size*.05,cy-size*.18,cx+size*.05,cy-size*.08),fill=blue)
+    elif kind == "chainage":
+        r=size*.10
+        d.ellipse((cx-size*.23,cy-size*.16,cx-size*.03,cy+size*.04),outline=blue,width=sw)
+        d.ellipse((cx+size*.03,cy-size*.04,cx+size*.23,cy+size*.16),outline=blue,width=sw)
+        d.line((cx-size*.10,cy+size*.09,cx+size*.10,cy-size*.09),fill=blue,width=sw)
+    elif kind == "building":
+        x1=int(size*.28); x2=int(size*.72); y1=int(size*.28); y2=int(size*.73)
+        d.rectangle((x1,y1,x2,y2),outline=blue,width=sw)
+        for xx in (int(size*.38),int(size*.52),int(size*.64)):
+            for yy in (int(size*.38),int(size*.52)):
+                d.rectangle((xx,yy,xx+2,yy+2),fill=blue)
+        d.line((cx,y2,cx,y2-size*.12),fill=blue,width=sw)
+    elif kind == "compass":
+        d.ellipse((cx-size*.25,cy-size*.25,cx+size*.25,cy+size*.25),outline=blue,width=sw)
+        d.polygon([(cx,cy-size*.23),(cx-size*.08,cy+size*.06),(cx,cy),(cx+size*.08,cy+size*.06)],fill=blue)
+    elif kind == "weather":
+        d.ellipse((cx-size*.22,cy-size*.05,cx+size*.02,cy+size*.18),outline=blue,width=sw)
+        d.ellipse((cx-size*.06,cy-size*.17,cx+size*.18,cy+size*.14),outline=blue,width=sw)
+        d.line((cx-size*.20,cy+size*.14,cx+size*.20,cy+size*.14),fill=blue,width=sw)
+    return im
+
+
+def _draw_field_icon(draw, xy, kind: str, size: int):
+    """Vẽ icon từ hàm dựng PNG để giữ alpha và chất lượng nhất quán."""
+    icon = _make_field_icon(kind, size)
+    draw._image.paste(icon, xy, icon) if hasattr(draw, "_image") else None
+
+
 @app.post("/field-report-image")
 async def field_report_image(
     file: UploadFile = File(...),
@@ -6859,47 +6945,166 @@ async def field_report_image(
             else:
                 lines.append("Công trình/lý trình: Chưa xác định trong bán kính 200 m")
 
-        # Chừa vùng bản đồ bên phải, chữ phẳng ở phần dưới bên trái.
-        # Tăng khung bản đồ GIS lên 1,2 lần so với kích thước trước.
-        # Giữ tỷ lệ khung hình và chừa vùng chữ bên trái.
+        # ----------------------------------------------------
+        # METADATA: chuẩn hóa dữ liệu hiển thị trên ảnh
+        # ----------------------------------------------------
+        from datetime import datetime
+        try:
+            # Hỗ trợ cả ISO, "HH:MM DD/MM/YYYY" và "HH:MM:SS DD/MM/YYYY".
+            dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        except Exception:
+            dt = None
+            for fmt in ("%H:%M:%S %d/%m/%Y", "%H:%M %d/%m/%Y", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
+                try:
+                    dt = datetime.strptime(stamp, fmt)
+                    break
+                except Exception:
+                    continue
+            if dt is None:
+                dt = datetime.now()
+        weekdays = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ nhật"]
+        metadata = {
+            "time": dt.strftime("%H:%M"),
+            "date": dt.strftime("%d/%m/%Y"),
+            "weekday": weekdays[dt.weekday()],
+            "address": (address or "Chưa xác định địa chỉ").strip(),
+            "latitude": latitude,
+            "longitude": longitude,
+            "weather": "Chưa có dữ liệu thời tiết",
+            "gis_map": "GIS Master (nếu có dữ liệu)",
+            "details": lines[1:],
+        }
+        # Thời tiết chỉ hiển thị nếu frontend/API đã cung cấp; không tự bịa số liệu.
+        try:
+            context_obj = json.loads(gis_context) if gis_context else {}
+            if isinstance(context_obj, dict) and context_obj.get("weather"):
+                metadata["weather"] = str(context_obj["weather"])
+        except Exception:
+            pass
+
+        # ----------------------------------------------------
+        # ASSETS: nạp font Unicode và PNG icon nền trong suốt
+        # ----------------------------------------------------
+        scale = max(1.0, width / 1000)
+        title_font = _field_image_font(max(20, int(width * 0.032)), True)
+        subtitle_font = _field_image_font(max(13, int(width * 0.018)), False)
+        time_font = _field_image_font(max(34, int(width * 0.070)), True)
+        date_font = _field_image_font(max(17, int(width * 0.027)), False)
+        text_font = _field_image_font(max(16, int(width * 0.024)), False)
+        bold_font = _field_image_font(max(16, int(width * 0.024)), True)
+        pad = int(width * 0.028)
+        outline = max(1, int(width * 0.0017))
+        icon_size = max(28, int(width * 0.052))
+        line_gap = max(4, int(5 * scale))
+
+        def flat_text(x, y, text, font, fill=(255,255,255,255), stroke=(10,30,48,235), sw=None):
+            draw.text((x,y), str(text), font=font, fill=fill,
+                      stroke_width=outline if sw is None else sw, stroke_fill=stroke)
+
+        # ----------------------------------------------------
+        # A. BRANDING: logo giọt nước nếu có asset chính thức;
+        # nếu chưa có thì dùng icon giọt nước tối giản + tên thương hiệu.
+        # ----------------------------------------------------
+        assets_dir = BASE_DIR / "assets"
+        logo_candidates = [assets_dir / "thuyloi_ai_logo.png", assets_dir / "logo.png"]
+        logo = None
+        for logo_path in logo_candidates:
+            try:
+                if logo_path.is_file():
+                    logo = Image.open(logo_path).convert("RGBA")
+                    break
+            except Exception:
+                pass
+        if logo:
+            logo.thumbnail((int(width*.105), int(height*.105)), Image.Resampling.LANCZOS)
+            source_rgba = source.convert("RGBA")
+            source_rgba.alpha_composite(logo, (pad, pad))
+            source = source_rgba.convert("RGB")
+            brand_x = pad + logo.width + int(width*.015)
+        else:
+            # Icon giọt nước dạng vector, nền trong suốt.
+            droplet = Image.new("RGBA", (max(46,int(width*.075)), max(56,int(width*.09))), (0,0,0,0))
+            dd = ImageDraw.Draw(droplet); dw,dh=droplet.size
+            dd.polygon([(dw*.50,dh*.04),(dw*.18,dh*.55),(dw*.20,dh*.73),(dw*.35,dh*.91),(dw*.58,dh*.96),(dw*.80,dh*.80),(dw*.84,dh*.58)], fill=(20,151,225,255))
+            dd.arc((dw*.25,dh*.40,dw*.76,dh*.88), 15, 160, fill=(255,255,255,220), width=max(2,int(width*.003)))
+            source_rgba=source.convert("RGBA"); source_rgba.alpha_composite(droplet,(pad,pad)); source=source_rgba.convert("RGB")
+            brand_x = pad + droplet.width + int(width*.014)
+        draw = ImageDraw.Draw(source)
+        flat_text(brand_x, pad+int(width*.004), "THỦY LỢI AI", title_font, stroke=(255,255,255,170), sw=1)
+        brand_box=draw.textbbox((brand_x,pad+int(width*.004)),"THỦY LỢI AI",font=title_font)
+        flat_text(brand_x, brand_box[3]+int(3*scale), "VU GIA – THU BỒN", subtitle_font, stroke=(255,255,255,150), sw=1)
+
+        # ----------------------------------------------------
+        # B. GÓC DƯỚI TRÁI: giờ lớn, ngày/thứ và các dòng có icon.
+        # Không phủ nền đen; viền chữ mảnh tạo tương phản trên ảnh thật.
+        # ----------------------------------------------------
         map_w = int(width * 0.432)
         map_h = int(height * 0.36)
         map_x = width - map_w - pad
         map_y = height - map_h - pad
-        text_x = pad
-        line_gap = max(4, int(5 * scale))
-        time_line = lines[0]
-        flat_text(text_x, height - pad - int(len(lines) * (text_font.size * 1.45)) - time_font.size,
-                  time_line, time_font)
-        y = height - pad - int(len(lines) * (text_font.size * 1.45))
-        for line in lines[1:]:
-            # Cắt theo vùng chữ trái để không đè lên bản đồ góc phải.
-            max_width = max(100, map_x - text_x - int(16 * scale))
-            while line and draw.textlength(line, font=text_font) > max_width:
-                line = line[:-2].rstrip() + "…"
-            flat_text(text_x, y, line, text_font)
-            y += text_font.size + line_gap
+        left_max = max(int(width*.36), map_x-pad-text_x if 'text_x' in locals() else map_x-pad*2)
+        time_y = height - pad - int((len(lines)-1)*(text_font.size+line_gap)) - time_font.size - date_font.size - int(12*scale)
+        time_y = max(int(height*.57), time_y)
+        flat_text(pad, time_y, metadata["time"], time_font, sw=max(1,outline))
+        time_box=draw.textbbox((pad,time_y),metadata["time"],font=time_font,stroke_width=outline)
+        date_x=time_box[2]+int(width*.025)
+        flat_text(date_x,time_y+int(time_font.size*.15),metadata["date"],date_font,sw=1)
+        weekday_y=time_y+date_font.size+int(6*scale)
+        flat_text(date_x,weekday_y,metadata["weekday"],date_font,sw=1)
 
-        # Ghép bản đồ GIS thực trực tiếp, không vẽ viền trắng bao quanh.
+        # Các nhãn được chia loại để gắn icon riêng: công trình, lý trình, địa chỉ, tọa độ, thời tiết.
+        detail_items=[]
+        for line in lines[1:]:
+            low=line.lower()
+            if low.startswith(("công trình", "đối tượng gần nhất")):
+                kind="building"
+            elif low.startswith("lý trình") or "lý trình" in low:
+                kind="chainage"
+            elif low.startswith("địa điểm"):
+                kind="location"
+            elif low.startswith("tọa độ"):
+                kind="compass"
+            elif low.startswith(("thời tiết", "weather")):
+                kind="weather"
+            else:
+                kind="chainage" if "khoảng cách" in low else "location"
+            detail_items.append((kind,line))
+        detail_y = max(time_y+time_font.size+int(12*scale), height-pad-len(detail_items)*(text_font.size+line_gap))
+        for kind, line in detail_items:
+            icon=_make_field_icon(kind,icon_size)
+            iy=detail_y+max(0,int((text_font.size-icon_size)/2))
+            source_rgba=source.convert("RGBA"); source_rgba.alpha_composite(icon,(pad,iy)); source=source_rgba.convert("RGB")
+            draw=ImageDraw.Draw(source)
+            tx=pad+icon_size+int(width*.014)
+            max_width=max(80,map_x-tx-int(width*.012))
+            # Cắt chữ theo giới hạn cột trái, tránh đè lên bản đồ.
+            shown=line
+            while shown and draw.textlength(shown,font=text_font) > max_width:
+                shown=shown[:-2].rstrip()+"…"
+            flat_text(tx,detail_y,shown,text_font)
+            detail_y += text_font.size+line_gap
+
+        # Metadata JSON có thể ghi ra log để kiểm tra; không nhúng dữ liệu giả vào ảnh.
+        logger.info("[FIELD IMAGE METADATA] %s", json.dumps(metadata, ensure_ascii=False, default=str))
+
+        # ----------------------------------------------------
+        # C. GIS WINDOW: crop lề trắng, phóng to và ghép không viền.
+        # ----------------------------------------------------
         if gis_map_bytes:
             try:
                 map_image = ImageOps.exif_transpose(Image.open(BytesIO(gis_map_bytes))).convert("RGB")
-                map_image.thumbnail((map_w, map_h), Image.Resampling.LANCZOS)
-                map_x = width - map_image.width - pad
-                map_y = height - map_image.height - pad
-                base = source.convert("RGBA")
-                base.alpha_composite(overlay)
-                source = base.convert("RGB")
-                source.paste(map_image, (map_x, map_y))
+                map_image = _crop_gis_whitespace(map_image, threshold=247, padding=2)
+                # Kích thước khung GIS lớn hơn, không vẽ khung trắng bao quanh.
+                target_w, target_h = map_w, map_h
+                ratio=min(target_w/map_image.width, target_h/map_image.height)
+                new_size=(max(1,int(map_image.width*ratio)),max(1,int(map_image.height*ratio)))
+                map_image=map_image.resize(new_size,Image.Resampling.LANCZOS)
+                map_x=width-map_image.width-pad
+                map_y=height-map_image.height-pad
+                source.paste(map_image,(map_x,map_y))
             except Exception as exc:
-                logger.warning("[FIELD IMAGE] GIS inset composition failed: %r", exc)
-                base = source.convert("RGBA")
-                base.alpha_composite(overlay)
-                source = base.convert("RGB")
-        else:
-            base = source.convert("RGBA")
-            base.alpha_composite(overlay)
-            source = base.convert("RGB")
+                logger.warning("[FIELD IMAGE] GIS inset composition failed: %r",exc)
+        # Chỉ xuất ảnh sau khi tất cả lớp phủ và GIS đã được ghép.
 
         out = BytesIO()
         source.save(out, format="JPEG", quality=94, optimize=True, subsampling=0)
