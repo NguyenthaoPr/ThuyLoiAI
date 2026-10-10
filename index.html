@@ -4036,6 +4036,7 @@
           window.gpsAccuracy = location.accuracy;
           address = await reverseGeocode(location.lat, location.lng);
           currentAddress = address;
+          window.currentAddress = address;
           qrAvailable = true;
           kmlGpsResult = await checkGpsAgainstKml(location);
           window.kmlGpsResult = kmlGpsResult;
@@ -4043,6 +4044,7 @@
           currentLocation = null;
           window.currentLocation = null;
           currentAddress = '';
+          window.currentAddress = '';
           qrAvailable = false;
           window.kmlGpsResult = { success: false, message: "Không có GPS để kiểm tra tuyến." };
         }
