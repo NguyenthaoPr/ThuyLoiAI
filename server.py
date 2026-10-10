@@ -4667,6 +4667,14 @@ async def kml_gps_test(
                 }
 
         # === TRẢ VỀ KẾT QUẢ CHO MỌI TRƯỜNG HỢP ===
+        # Quét ứng viên trong bán kính 200 m để hỗ trợ người dùng chọn đúng tuyến.
+        # Không tự xác nhận công trình chỉ vì nó nằm trong bán kính tìm kiếm.
+        scan_radius_m = 200.0
+        nearby_candidates = [
+            item for item in results
+            if float(item.get("distance_m", 999999)) <= scan_radius_m
+        ][:20]
+
         return {
             "success": True,
             "file": file_path.name,
@@ -4674,10 +4682,16 @@ async def kml_gps_test(
                 "latitude": latitude,
                 "longitude": longitude
             },
+            "scan_radius_m": scan_radius_m,
+            "nearby_count": len(nearby_candidates),
+            "nearby_candidates": nearby_candidates,
             "gis_identification": gis_identification,
             "linestring_count": len(lines),
             "nearest": results[:10] if results else [],
-            "message": "Đã kiểm tra GPS với hệ thống tuyến LineString."
+            "message": (
+                f"Đã quét tuyến kênh trong bán kính {int(scan_radius_m)} m; "
+                "công trình chỉ được xác nhận tự động khi đạt ngưỡng định vị hiện có."
+            )
         }
 
     except Exception as e:
@@ -6717,7 +6731,7 @@ async def field_report_image(
         overlay = Image.new("RGBA", source.size, (0, 0, 0, 0))
         from PIL import ImageDraw, ImageFont
         draw = ImageDraw.Draw(overlay)
-        draw.rectangle((0, panel_y, width, height), fill=(5, 18, 32, 190))
+        draw.rectangle((0, panel_y, width, height), fill=(248, 250, 252, 218), outline=(255, 255, 255, 235), width=max(1, int(width * 0.002)))
 
         try:
             font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -6727,28 +6741,6 @@ async def field_report_image(
             bold = ImageFont.truetype(bold_path, max(18, int(width * 0.026)))
         except Exception:
             font = small = bold = ImageFont.load_default()
-
-        stamp = (capture_time or time.strftime("%H:%M %d/%m/%Y")).strip()
-        lines = [
-            ("THỦY LỢI AI • VU GIA – THU BỒN", bold),
-            ("Thời gian: " + stamp, font),
-            ("Địa điểm: " + ((address or "Chưa xác định").strip()), small),
-        ]
-        if latitude is not None and longitude is not None:
-            lines.append((f"Tọa độ: {latitude:.6f}°N, {longitude:.6f}°E", small))
-        else:
-            lines.append(("Tọa độ: Chưa xác định GPS", small))
-
-        pad = int(width * 0.025)
-        text_x = pad
-        text_y = panel_y + pad
-        max_text_width = int(width * 0.57)
-        for text_line, fnt in lines:
-            # Cắt dòng dài để không tràn sang bản đồ góc phải.
-            while text_line and draw.textlength(text_line, font=fnt) > max_text_width:
-                text_line = text_line[:-2].rstrip() + "…"
-            draw.text((text_x, text_y), text_line, font=fnt, fill=(255, 255, 255, 255), stroke_width=0)
-            text_y += int(getattr(fnt, "size", 16) * 1.55)
 
         # Tạo bản đồ từ GIS Master hiện có; nếu không có GPS/GIS thì không giả lập bản đồ.
         gis_map_bytes = None
@@ -6766,6 +6758,45 @@ async def field_report_image(
                 )
             except Exception as exc:
                 print("[FIELD IMAGE] GIS map unavailable:", repr(exc))
+
+
+        stamp = (capture_time or time.strftime("%H:%M %d/%m/%Y")).strip()
+        lines = [
+            ("THỦY LỢI AI • VU GIA – THU BỒN", bold),
+            ("Thời gian: " + stamp, font),
+            ("Địa điểm: " + ((address or "Chưa xác định").strip()), small),
+        ]
+        if latitude is not None and longitude is not None:
+            lines.append((f"Tọa độ: {latitude:.6f}°N, {longitude:.6f}°E", small))
+            if gis_identification and gis_identification.get("identified"):
+                nearest_name = str(gis_identification.get("name") or "Tuyến thủy lợi")
+                nearest_dist = gis_identification.get("distance_m")
+                along = gis_identification.get("distance_along_line_m")
+                chainage_text = format_chainage(along) if along is not None else ""
+                detail = f"Công trình: {nearest_name}"
+                if chainage_text:
+                    detail += f" • Lý trình dữ liệu: {chainage_text}"
+                if nearest_dist is not None:
+                    detail += f" • cách {float(nearest_dist):.0f} m"
+                lines.append((detail, small))
+            elif gis_identification and gis_identification.get("distance_m") is not None and float(gis_identification.get("distance_m")) <= 200:
+                lines.append((f"Tuyến gần nhất: {gis_identification.get('distance_m'):.0f} m; cần xác nhận công trình/lý trình", small))
+            else:
+                lines.append(("Công trình/lý trình: Chưa xác định trong 200 m", small))
+        else:
+            lines.append(("Tọa độ: Chưa xác định GPS", small))
+            lines.append(("Công trình/lý trình: Chưa xác định", small))
+
+        pad = int(width * 0.025)
+        text_x = pad
+        text_y = panel_y + pad
+        max_text_width = int(width * 0.57)
+        for text_line, fnt in lines:
+            # Cắt dòng dài để không tràn sang bản đồ góc phải.
+            while text_line and draw.textlength(text_line, font=fnt) > max_text_width:
+                text_line = text_line[:-2].rstrip() + "…"
+            draw.text((text_x, text_y), text_line, font=fnt, fill=(20, 43, 61, 255), stroke_width=0)
+            text_y += int(getattr(fnt, "size", 16) * 1.55)
 
         if gis_map_bytes:
             try:
