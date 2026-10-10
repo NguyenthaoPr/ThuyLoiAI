@@ -6913,15 +6913,8 @@ async def field_report_image(
                 pass
 
         stamp = (capture_time or time.strftime("%H:%M %d/%m/%Y")).strip()
+        # Không in dòng địa điểm và tọa độ; dùng QR để mở chỉ đường đến GPS chụp ảnh.
         lines = [stamp]
-        if address and address.strip() and address.strip().lower() not in {"chưa xác định địa chỉ", "chưa xác định"}:
-            lines.append("Địa điểm: " + address.strip())
-        else:
-            lines.append("Địa điểm: Chưa xác định địa chỉ")
-        if latitude is not None and longitude is not None:
-            lines.append(f"Tọa độ: {latitude:.6f}°N, {longitude:.6f}°E")
-        else:
-            lines.append("Tọa độ: Chưa xác định GPS")
         if isinstance(gis_identification, dict) and gis_identification.get("identified"):
             name = str(gis_identification.get("name") or gis_identification.get("display_name") or "").strip()
             distance = gis_identification.get("distance_m")
@@ -7006,6 +6999,31 @@ async def field_report_image(
         # nếu chưa có thì dùng icon giọt nước tối giản + tên thương hiệu.
         # ----------------------------------------------------
         assets_dir = BASE_DIR / "assets"
+        # QR góc trên bên trái mở Google Maps chỉ đường đến tọa độ GPS của ảnh.
+        # Chỉ tạo khi có tọa độ hợp lệ, tránh chỉ đường đến vị trí suy đoán.
+        qr_size = max(112, int(width * 0.155)) if latitude is not None and longitude is not None else 0
+        qr_x, qr_y = pad, pad
+        brand_x = pad
+        if qr_size:
+            try:
+                destination = urllib.parse.quote(f"{float(latitude):.7f},{float(longitude):.7f}", safe=",")
+                directions_url = f"https://www.google.com/maps/dir/?api=1&destination={destination}"
+                qr_obj = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
+                qr_obj.add_data(directions_url)
+                qr_obj.make(fit=True)
+                qr_image = qr_obj.make_image(fill_color="black", back_color="white").convert("RGBA")
+                qr_image.thumbnail((qr_size, qr_size), Image.Resampling.NEAREST)
+                qr_canvas = Image.new("RGBA", (qr_size + 8, qr_size + 8), (255,255,255,255))
+                qr_canvas.alpha_composite(qr_image, (4,4))
+                source_rgba = source.convert("RGBA")
+                source_rgba.alpha_composite(qr_canvas, (qr_x, qr_y))
+                source = source_rgba.convert("RGB")
+                brand_x = qr_x + qr_canvas.width + int(width * 0.018)
+            except Exception as qr_exc:
+                logger.warning("[FIELD IMAGE] QR creation failed: %r", qr_exc)
+                qr_size = 0
+                brand_x = pad
+
         logo_candidates = [assets_dir / "thuyloi_ai_logo.png", assets_dir / "logo.png"]
         logo = None
         for logo_path in logo_candidates:
@@ -7015,23 +7033,25 @@ async def field_report_image(
                     break
             except Exception:
                 pass
+        brand_y = pad
         if logo:
-            logo.thumbnail((int(width*.105), int(height*.105)), Image.Resampling.LANCZOS)
+            logo.thumbnail((int(width*.075), int(height*.075)), Image.Resampling.LANCZOS)
             source_rgba = source.convert("RGBA")
-            source_rgba.alpha_composite(logo, (pad, pad))
+            source_rgba.alpha_composite(logo, (brand_x, brand_y))
             source = source_rgba.convert("RGB")
-            brand_x = pad + logo.width + int(width*.015)
+            brand_x += logo.width + int(width*.012)
         else:
-            # Icon giọt nước dạng vector, nền trong suốt.
-            droplet = Image.new("RGBA", (max(46,int(width*.075)), max(56,int(width*.09))), (0,0,0,0))
+            droplet = Image.new("RGBA", (max(38,int(width*.060)), max(46,int(height*.075))), (0,0,0,0))
             dd = ImageDraw.Draw(droplet); dw,dh=droplet.size
             dd.polygon([(dw*.50,dh*.04),(dw*.18,dh*.55),(dw*.20,dh*.73),(dw*.35,dh*.91),(dw*.58,dh*.96),(dw*.80,dh*.80),(dw*.84,dh*.58)], fill=(20,151,225,255))
             dd.arc((dw*.25,dh*.40,dw*.76,dh*.88), 15, 160, fill=(255,255,255,220), width=max(2,int(width*.003)))
-            source_rgba=source.convert("RGBA"); source_rgba.alpha_composite(droplet,(pad,pad)); source=source_rgba.convert("RGB")
-            brand_x = pad + droplet.width + int(width*.014)
+            source_rgba=source.convert("RGBA")
+            source_rgba.alpha_composite(droplet,(brand_x,brand_y))
+            source=source_rgba.convert("RGB")
+            brand_x += droplet.width + int(width*.012)
         draw = ImageDraw.Draw(source)
-        flat_text(brand_x, pad+int(width*.004), "THỦY LỢI AI", title_font, stroke=(255,255,255,170), sw=1)
-        brand_box=draw.textbbox((brand_x,pad+int(width*.004)),"THỦY LỢI AI",font=title_font)
+        flat_text(brand_x, brand_y+int(width*.004), "THỦY LỢI AI", title_font, stroke=(255,255,255,170), sw=1)
+        brand_box=draw.textbbox((brand_x,brand_y+int(width*.004)),"THỦY LỢI AI",font=title_font)
         flat_text(brand_x, brand_box[3]+int(3*scale), "VU GIA – THU BỒN", subtitle_font, stroke=(255,255,255,150), sw=1)
 
         # ----------------------------------------------------
@@ -7052,7 +7072,7 @@ async def field_report_image(
         weekday_y=time_y+date_font.size+int(6*scale)
         flat_text(date_x,weekday_y,metadata["weekday"],date_font,sw=1)
 
-        # Các nhãn được chia loại để gắn icon riêng: công trình, lý trình, địa chỉ, tọa độ, thời tiết.
+        # Chỉ phân loại các dòng công trình/lý trình/thời tiết; địa điểm và tọa độ không in thành dòng.
         detail_items=[]
         for line in lines[1:]:
             low=line.lower()
