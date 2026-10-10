@@ -3566,6 +3566,8 @@
         <input id="fieldReportImage" type="file" accept="image/*" capture="environment" hidden>
         <button id="fieldReportCamera" class="field-report-camera" type="button">📷 Chụp ảnh hiện trường</button>
         <div id="fieldReportPreview" class="field-report-preview" hidden></div>
+        <button id="saveStampedFieldImage" class="field-report-camera" type="button" disabled>🖼️ Lưu ảnh gốc có đóng dấu + bản đồ thủy lợi</button>
+        <div id="stampedImageStatus" class="field-report-status" hidden></div>
         <textarea id="fieldReportQuestion" class="field-report-question" placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"></textarea>
         <button id="createFieldReport" class="create-field-report" type="button" disabled>📄 Phân tích và lập báo cáo</button>
         <div id="fieldReportStatus" class="field-report-status" hidden></div>
@@ -3760,6 +3762,10 @@
         window.THULYLOI_GIS_API || 'https://thuyloiai.onrender.com'
       ).replace(/\/$/, '');
       const GIS_DATA_URL = GIS_API_BASE + '/gis/data';
+      // Endpoint ảnh hiện trường mới, tách biệt với luồng lập báo cáo PDF hiện có.
+      const FIELD_IMAGE_API_BASE = String(
+        window.THULYLOI_FIELD_IMAGE_API || GIS_API_BASE
+      ).replace(/\/$/, '');
 
       // Technical Module chạy độc lập trên Vercel.
       // Chỉ dùng cho API quan trắc thực tế; không thay đổi GIS API trên Render.
@@ -7053,6 +7059,8 @@ closeMapAi.addEventListener('click', function() {
         fieldReportImage.addEventListener('change', async function() {
           const file = fieldReportImage.files?.[0];
           if (!file) return;
+          const imageSaveButton = document.getElementById('saveStampedFieldImage');
+          if (imageSaveButton) imageSaveButton.disabled = false;
           fieldReportFile = null;
           fieldReportPreview.hidden = false;
           fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy GPS & đóng dấu + QR)...';
@@ -7083,6 +7091,58 @@ closeMapAi.addEventListener('click', function() {
             updateFieldReportButton();
           }
         });
+
+        // Chức năng độc lập: xuất ảnh gốc đã đóng dấu và bản đồ GIS thủy lợi.
+        const saveStampedFieldImage = document.getElementById('saveStampedFieldImage');
+        const stampedImageStatus = document.getElementById('stampedImageStatus');
+        function showStampedImageStatus(message, error) {
+          if (!stampedImageStatus) return;
+          stampedImageStatus.hidden = false;
+          stampedImageStatus.textContent = message;
+          stampedImageStatus.classList.toggle('error', !!error);
+        }
+        if (saveStampedFieldImage) {
+          saveStampedFieldImage.addEventListener('click', async function() {
+            const originalFile = fieldReportImage.files && fieldReportImage.files[0];
+            if (!originalFile) {
+              showStampedImageStatus('⚠️ Vui lòng chụp hoặc chọn ảnh trước.', true);
+              return;
+            }
+            saveStampedFieldImage.disabled = true;
+            showStampedImageStatus('🗺️ Đang tạo ảnh đóng dấu và bản đồ công trình thủy lợi...');
+            try {
+              const formData = new FormData();
+              formData.append('file', originalFile, originalFile.name || 'anh-hien-truong.jpg');
+              formData.append('capture_time', window.captureTimestamp || new Date().toLocaleString('vi-VN'));
+              formData.append('address', window.currentAddress || 'Chưa xác định địa chỉ');
+              if (window.currentLocation) {
+                formData.append('latitude', String(window.currentLocation.lat));
+                formData.append('longitude', String(window.currentLocation.lng));
+              }
+              const response = await fetch(FIELD_IMAGE_API_BASE + '/field-report-image', { method: 'POST', body: formData });
+              const type = (response.headers.get('content-type') || '').toLowerCase();
+              if (!response.ok || !type.startsWith('image/')) {
+                let detail = 'Máy chủ không tạo được ảnh.';
+                try { const err = await response.json(); detail = err.detail || err.error || detail; } catch (_) {}
+                throw new Error(detail);
+              }
+              const blob = await response.blob();
+              if (!blob.size) throw new Error('Ảnh xuất ra rỗng.');
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'thuy-loi-ai-hien-truong-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+              document.body.appendChild(a); a.click(); a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 30000);
+              showStampedImageStatus('✅ Đã tạo và lưu ảnh hiện trường có đóng dấu. Bản đồ được lấy từ GIS Master nếu GPS khả dụng.');
+            } catch (err) {
+              console.error('FIELD IMAGE EXPORT ERROR:', err);
+              showStampedImageStatus('❌ ' + (err.message || 'Không thể xuất ảnh.'), true);
+            } finally {
+              saveStampedFieldImage.disabled = false;
+            }
+          });
+        }
 
         fieldReportQuestion.addEventListener('input', updateFieldReportButton);
 

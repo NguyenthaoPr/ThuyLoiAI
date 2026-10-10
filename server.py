@@ -1838,8 +1838,8 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = "rag-v6-4-exact-person-record-date-scope"  # File Search first + exact person/unit/date verification
-CACHE_NAMESPACE = CHATBOT_ROUTER_VERSION  # New namespace invalidates responses from older router versions
+CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v6-chatbook").strip() or "rag-v6-chatbook"
+CACHE_NAMESPACE = os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION
 
 _answer_cache = OrderedDict()
 _cache_lock = asyncio.Lock()
@@ -1905,16 +1905,6 @@ I. NGUYÊN TẮC CHUNG
 
 10. Với số liệu:
     giữ nguyên số liệu và đơn vị theo tài liệu.
-
-11. QUY TẮC BẮT BUỘC KHI CÂU HỎI HỎI "TỔNG", "TỔNG CỘNG", "TOÀN CHI NHÁNH", "TỔNG SỐ NGƯỜI":
-    - Trước tiên tìm dòng tổng kết/tổng cộng được ghi trực tiếp trong tài liệu, ví dụ
-      "Tổng cộng (người): 79", "Tổng diện tích cả năm: ..." hoặc dòng tổng của bảng.
-    - Nếu tìm thấy dòng tổng phù hợp đúng phạm vi câu hỏi, phải dùng chính số liệu đó làm câu trả lời chính.
-    - Không thay thế tổng đã ghi sẵn bằng cách cộng một vài nhóm/đơn vị được trích xuất riêng lẻ.
-    - Không coi một nhóm con (Văn phòng, Phòng Kỹ thuật, một Cụm Thủy nông...) là tổng toàn Chi nhánh.
-    - Chỉ tự cộng các nhóm khi tài liệu không có tổng được ghi sẵn và các nhóm được xác định đầy đủ, không chồng lặp, cùng phạm vi và cùng thời điểm.
-    - Nếu tài liệu có tổng và các số liệu thành phần không khớp, nêu rõ tổng được ghi trong tài liệu và cảnh báo cần đối chiếu; không tự sửa số liệu nguồn.
-    - Phân biệt câu hỏi tổng toàn đơn vị với câu hỏi riêng từng phòng/cụm; không cộng trùng các nhóm cha và nhóm con.
 
 ==================================================
 II. KHI NGƯỜI DÙNG GỬI HÌNH ẢNH
@@ -2372,7 +2362,6 @@ OPERATIONAL_PARAMETER_TERMS = (
     "luu luong",
     "do man",
     "luong mua",
-    "mua",
     "do mo",
     "q ve",
     "q ra",
@@ -2438,18 +2427,9 @@ def classify_query_route(question: str) -> dict:
     has_current_operation = _has_current_time_context(text)
     has_operation_parameter = bool(parameter_hits)
     has_plan_context = bool(plan_hits)
-    # Nhận diện câu hỏi diện tích/kế hoạch bằng cấu trúc câu, kể cả khi
-    # người dùng không nói rõ "Phụ lục 09" hoặc "kế hoạch 2027".
-    # Không áp dụng khi câu hỏi có tín hiệu văn bản/quy định mạnh.
-    has_plan_area_intent = bool(re.search(
-        r"\b(?:tuoi|phuc vu|cap nuoc|nuoi thuy san)\b.*\b(?:bao nhieu|dien tich|ha)\b"
-        r"|\bco bao nhieu ha\b"
-        r"|\b(?:top\s+\d+|lon nhat|nhieu nhat)\b",
-        text,
-    ))
     # Mọi tín hiệu PLAN_DATA đã được chọn đều đủ mạnh để tránh rơi vào
     # DOCUMENT chỉ vì các từ như "thủy sản" hoặc "phục vụ" xuất hiện.
-    plan_strong = has_plan_context or (has_plan_area_intent and not has_strong_document)
+    plan_strong = has_plan_context
 
     if has_plan_context and has_current_operation and has_operation_parameter:
         route = "hybrid_plan_operational"
@@ -2485,11 +2465,8 @@ def classify_query_route(question: str) -> dict:
 DOCUMENT_QUERY_ALIASES = {
     "pham vi bao ve": ["hanh lang bao ve", "gioi han bao ve", "khoang cach bao ve"],
     "cong trinh thuy loi": ["ho chua", "dap", "kenh", "tram bom", "cong trinh dau moi"],
-    "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su", "tong cong nguoi"],
-    "danh sach": ["danh sach nguoi lao dong", "ngay lap danh sach", "tong cong nguoi"],
+    "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su"],
     "chi nhanh": ["don vi", "bo phan", "cum", "phong ban"],
-    "vinh an": ["Cum Thuy nong Vinh An", "Cum TN Vinh An", "nhan su Vinh An", "so nguoi Vinh An"],
-    "vinh thanh": ["Cum Thuy nong Vinh Thanh", "Cum TN Vinh Thanh", "nhan su Vinh Thanh"],
     "quy dinh": ["quy pham", "quy che", "quy trinh", "dieu khoan"],
     "thong so ky thuat": ["thong so", "thiet ke", "quy mo", "kich thuoc", "dung tich"],
 }
@@ -2508,121 +2485,25 @@ def build_retrieval_query(question: str) -> str:
     return f"{question}\n\nThuật ngữ liên quan để tra cứu hồ sơ: {', '.join(aliases)}"
 
 
-def is_fresh_document_question(question: str) -> bool:
-    """Nhận diện câu hỏi cần tài liệu mới nhất; không dùng cache cũ cho các câu này."""
-    text = _normalize_router_text(question)
-    freshness_terms = (
-        "moi nhat", "cap nhat", "hien nay", "hien tai", "thoi diem",
-        "ngay ", "danh sach nguoi lao dong", "nhan su", "bao nhieu nguoi",
-        "tong so nguoi", "so luong nguoi", "toan chi nhanh", "cum vinh an",
-        "vinh an", "vinh thanh",
-    )
-    return any(term in text for term in freshness_terms)
-
-
-def _explicit_dates_in_text(text: str) -> list[str]:
-    """Extract explicit dates as DD/MM/YYYY without guessing ambiguous dates."""
-    found = []
-    for m in re.finditer(r"(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)", text or ""):
-        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if 1 <= d <= 31 and 1 <= mo <= 12:
-            found.append(f"{d:02d}/{mo:02d}/{y:04d}")
-    return list(dict.fromkeys(found))
-
-
-def _answer_misses_explicit_date(question: str, answer: str) -> str | None:
-    """Return the requested date if an explicit-date question was answered from another/undated source."""
-    requested = _explicit_dates_in_text(question)
-    if not requested:
-        return None
-    normalized_answer_dates = set(_explicit_dates_in_text(answer))
-    # Require the answer to explicitly ground itself in the requested date.
-    # This deliberately fails closed rather than treating an older list as current.
-    for date in requested:
-        if date not in normalized_answer_dates:
-            return date
-    return None
-
-
-PERSONNEL_IDENTITY_TERMS = (
-    "ly lich", "la ai", "ho so can bo", "can bo ten",
-)
-PERSONNEL_CONTEXT_TERMS = ("nhan su", "can bo", "nhan vien", "nguoi lao dong")
-
-PERSONNEL_NO_EVIDENCE_TERMS = (
-    "chua tim thay", "khong tim thay", "khong co ho so", "khong co du lieu",
-    "khong ghi nhan", "chua co tai lieu", "chua tim duoc", "chua du can cu",
-)
-
-
-def is_personnel_question(question: str) -> bool:
-    """Detect staff identity, staff-list and unit headcount queries for cross-check retrieval."""
-    text = _normalize_router_text(question)
-    has_identity_intent = any(term in text for term in PERSONNEL_IDENTITY_TERMS) or bool(re.search(r"\b(ong|ba|dong chi)\b", text))
-    has_person_context = any(term in text for term in PERSONNEL_CONTEXT_TERMS)
-    has_headcount_intent = any(term in text for term in ("bao nhieu nguoi", "tong cong nguoi", "so luong nguoi", "danh sach nguoi lao dong"))
-    has_unit_context = any(term in text for term in ("vinh an", "vinh thanh", "vinh thach", "dong quang", "phu dong", "chi nhanh", "cum tn", "cum thuy nong"))
-    has_name_shape = bool(re.search(r"\b[\wÀ-ỹĐđ]+(?:\s+[\wÀ-ỹĐđ]+){1,4}\b", question or ""))
-    return (has_name_shape and has_identity_intent) or (has_headcount_intent and (has_person_context or has_unit_context)) or (has_person_context and has_unit_context)
-
-
-def _personnel_answer_needs_retry(question: str, answer: str) -> bool:
-    """Retry when an identity query is answered with a no-record claim or similar-name fallback."""
-    if not is_personnel_question(question):
-        return False
-    normalized = _normalize_router_text(answer)
-    return any(term in normalized for term in PERSONNEL_NO_EVIDENCE_TERMS)
-
-
-def build_exact_personnel_retry(question: str, attempt: int = 2) -> str:
-    """Force a second File Search using exact-name and table/list terminology."""
-    return (
-        "TRA CỨU ĐỐI CHIẾU LẦN HAI ĐỐI VỚI HỒ SƠ NHÂN SỰ. "
-        "Bắt buộc gọi Gemini File Search trong store đã cấu hình; không trả lời từ trí nhớ. "
-        "Nếu câu hỏi nêu họ tên, tìm nguyên văn đúng họ tên trong các tài liệu 'danh sách người lao động', "
-        "'danh sách cán bộ', 'hồ sơ cán bộ' và bảng có cột Họ và tên/Chức vụ/Đơn vị. "
-        "Nếu câu hỏi hỏi số người của đơn vị, tìm đúng tên đơn vị và dòng tổng số của chính đơn vị đó; "
-        "không lấy số của đơn vị gần tên hoặc tổng toàn Chi nhánh. Nếu câu hỏi nêu ngày, chỉ dùng tài liệu "
-        "đúng ngày yêu cầu. Không thay người được hỏi bằng người có tên gần giống. "
-        "Đối chiếu nguồn và ngày trước khi trả lời; nếu không có đoạn nguồn xác nhận đúng tên/đơn vị/ngày, "
-        "nói chưa truy xuất được bằng chứng chính xác và không suy đoán. "
-        f"\nCÂU HỎI GỐC: {question}"
-    )
-
-
 def build_document_prompt(question: str, attempt: int = 1) -> str:
-    """Tạo chỉ dẫn retrieval; ưu tiên đúng phạm vi đơn vị và xác minh ngày yêu cầu."""
+    """Tạo chỉ dẫn retrieval ngắn, rõ và có mở rộng truy vấn khi retry."""
     retrieval_query = build_retrieval_query(question)
-    explicit_dates = _explicit_dates_in_text(question)
-    date_rule = ""
-    if explicit_dates:
-        date_rule = (
-            f" CÂU HỎI YÊU CẦU NGÀY CỤ THỂ: {', '.join(explicit_dates)}. "
-            "Chỉ kết luận số liệu cho ngày này nếu đoạn nguồn xác nhận đúng ngày. "
-            "Không thay bằng danh sách ngày khác; nếu không tìm thấy đúng ngày, "
-            "phải nói chưa truy xuất được bằng chứng đúng ngày và không nêu số cũ như đáp án."
-        )
-    common_rules = (
-        "BẮT BUỘC sử dụng Gemini File Search trong kho THỦY LỢI AI trước mọi nguồn phụ. "
-        "Chỉ trả lời dựa trên các đoạn tài liệu thực sự tìm được; nêu tên tài liệu và ngày/thời điểm. "
-        "Với dữ liệu nhân sự hoặc dữ liệu thay đổi theo thời gian, phải đối chiếu ngày ghi trong tài liệu. "
-        "Phải khớp chính xác tên đơn vị: Vĩnh An không phải Vĩnh Thạnh; số liệu một cụm không phải toàn Chi nhánh. "
-        "Nếu có dòng tổng cộng được ghi trực tiếp, dùng đúng dòng đó; không cộng nhóm con hoặc nhóm cha/con. "
-        "Nếu không truy xuất đủ danh sách hoặc không có bằng chứng đúng phạm vi/ngày, hãy nói rõ chưa đủ căn cứ; không đoán."
-    )
     if attempt <= 1:
-        instruction = "TRA CỨU TÀI LIỆU LẦN ĐẦU. " + common_rules + date_rule
+        instruction = (
+            "ĐÂY LÀ CÂU HỎI ƯU TIÊN TÀI LIỆU. BẮT BUỘC sử dụng Gemini "
+            "File Search trong kho THỦY LỢI AI trước khi trả lời. Chỉ dùng "
+            "căn cứ từ kết quả tìm kiếm; nếu có tài liệu phù hợp, nêu tên "
+            "tài liệu và Điều/Khoản/Trang nếu có. Không dùng Data Engine để "
+            "thay thế việc tra cứu hồ sơ."
+        )
     else:
         instruction = (
-            "TRA CỨU LẠI CÓ MỤC TIÊU, KHÔNG LẶP LẠI KẾT LUẬN CŨ. " + common_rules + date_rule +
-            " Tìm riêng cụm tên đơn vị chính xác, ngày trong câu hỏi, ngày trong tên file/nội dung, "
-            "các cụm 'danh sách người lao động', 'tổng cộng (người)', 'ngày cập nhật'. "
-            "Nếu kết quả đầu là tài liệu cũ, không dùng nó để trả lời thay cho ngày được yêu cầu."
+            "TÌM KIẾM LẠI TRONG KHO THỦY LỢI AI. Bắt buộc dùng File Search; "
+            "mở rộng theo từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn "
+            "đạt khác nhau. Không trả lời theo trí nhớ nếu chưa có căn cứ."
         )
-    return (
-        f"{instruction}\n\nCÂU HỎI GỐC:\n{question}"
-        f"\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
-    )
+    return f"{instruction}\n\nCÂU HỎI GỐC:\n{question}\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
+
 
 class DocumentRetrievalRequiredError(RuntimeError):
     """File Search không được gọi hoặc không trả về kết quả truy xuất."""
@@ -2680,7 +2561,7 @@ async def set_cached_answer(question: str, answer: str, sources=None, route: str
     if not CACHE_ENABLED:
         return
     normalized = normalize_question(question)
-    key = f"{CACHE_NAMESPACE}:{route}:{normalized}"
+    key = f"{route}:{normalized}"
     if not normalized or not answer:
         return
     async with _cache_lock:
@@ -2990,60 +2871,6 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
                 attempt=attempt + 1,
             )
 
-            # Semantic guard: if the user specified a date but the answer cites
-            # another/undated period, force one targeted File Search retry.
-            missing_date = _answer_misses_explicit_date(question, answer)
-            if missing_date and attempt < MAX_RETRIES - 1:
-                targeted_question = (
-                    f"TRA CỨU LẠI BẮT BUỘC: chỉ trả lời theo tài liệu xác nhận ngày {missing_date}. "
-                    f"Nếu không có bằng chứng đúng ngày {missing_date}, hãy nói rõ không tìm thấy tài liệu đúng ngày; "
-                    f"không dùng số liệu ngày khác. Câu hỏi gốc: {question}"
-                )
-                print("DATE MISMATCH - retry File Search with exact date:", missing_date)
-                answer, sources = await _gemini_once(
-                    targeted_question,
-                    route=route,
-                    attempt=attempt + 2,
-                )
-                missing_date = _answer_misses_explicit_date(question, answer)
-                if missing_date:
-                    answer = (
-                        f"Chưa truy xuất được bằng chứng xác nhận đúng ngày {missing_date} trong kho hồ sơ THỦY LỢI AI. "
-                        "Kết quả tìm được không xác nhận đúng ngày yêu cầu nên hệ thống không sử dụng số liệu ở ngày khác. "
-                        "Vui lòng kiểm tra file đã tải lên, trạng thái lập chỉ mục và đúng Gemini File Search Store."
-                    )
-                    sources = [src for src in sources if isinstance(src, dict)]
-
-            # Exact-person guard: Gemini can retrieve a nearby name or claim no record
-            # even when the same store contains a matching personnel list. Retry once with
-            # an explicit exact-name/table search before accepting that conclusion.
-            if is_personnel_question(question):
-                targeted_personnel_question = build_exact_personnel_retry(question, attempt=attempt + 2)
-                print("PERSONNEL EXACT-NAME RETRY - search exact record and list/table context")
-                retry_answer, retry_sources = await _gemini_once(
-                    targeted_personnel_question,
-                    route=route,
-                    attempt=attempt + 2,
-                )
-                # Do not replace a useful original answer with a retry that merely repeats
-                # an unsupported denial. Prefer the retry only when it no longer asserts
-                # that the record is missing.
-                if not _personnel_answer_needs_retry(question, retry_answer):
-                    answer, sources = retry_answer, retry_sources
-                else:
-                    answer = (
-                        "Chưa truy xuất được đoạn hồ sơ xác nhận chính xác người được hỏi. "
-                        "Hệ thống đã tìm lại Gemini File Search theo họ tên và danh sách nhân sự, "
-                        "nhưng kết quả chưa đủ căn cứ để kết luận. Không sử dụng người có tên gần giống "
-                        "thay cho người được hỏi. Vui lòng kiểm tra tài liệu nhân sự đã được lập chỉ mục "
-                        "trong đúng File Search Store."
-                    )
-                    sources = list(dict.fromkeys(
-                        [str(src.get("file_name", "")) for src in (sources + retry_sources)
-                         if isinstance(src, dict) and src.get("file_name")]
-                    ))
-                    sources = [{"file_name": name} for name in sources]
-
             elapsed = time.monotonic() - started
             print(
                 f"GEMINI SUCCESS attempt={attempt + 1}/{MAX_RETRIES} "
@@ -3082,10 +2909,7 @@ async def ask_gemini_with_retry(question: str, route: str = "document"):
 
 async def ask_with_singleflight(question: str, route: str = "document"):
     key = f"{CACHE_NAMESPACE}:{route}:{normalize_question(question)}"
-    force_refresh = is_fresh_document_question(question)
-    cached = None if force_refresh else await get_cached_answer(question, route=route)
-    if force_refresh:
-        print("FRESH DOCUMENT QUERY - bỏ qua cache để tra cứu tài liệu mới nhất")
+    cached = await get_cached_answer(question, route=route)
     if cached:
         print("CACHE HIT -", f"age={cached['age_seconds']}s", f"route={route}")
         return cached["answer"], cached["sources"], True
@@ -3123,13 +2947,12 @@ async def ask_with_singleflight(question: str, route: str = "document"):
             question,
             route=route,
         )
-        if not force_refresh:
-            await set_cached_answer(
-                question,
-                answer,
-                sources,
-                route=route,
-            )
+        await set_cached_answer(
+            question,
+            answer,
+            sources,
+            route=route,
+        )
         if not future.done():
             future.set_result((answer, sources))
         print("CACHE SAVED - CÂU TRẢ LỜI ĐÃ ĐƯỢC LƯU")
@@ -3272,19 +3095,14 @@ def build_plan_direct_answer(plan_result: dict) -> str:
         return text
     if operation == "lookup":
         construction = plan_result.get("construction", "Công trình")
-        parent = plan_result.get("parent")
         value = format_plan_number(plan_result.get("value"))
-        subject = f"{construction} thuộc {parent}" if parent else construction
         if crop == "tong":
-            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {subject} có tổng diện tích cấp nước {season_label} là **{value} ha**."
+            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có tổng diện tích cấp nước {season_label} là **{value} ha**."
         else:
-            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {subject} có diện tích {crop_label} {season_label} là **{value} ha**."
+            text = f"Theo Phụ lục 09 (VG-TB) năm {year}, {construction} có diện tích {crop_label} {season_label} là **{value} ha**."
         method = plan_result.get("method")
         if method and method != "Tổng":
             text += f" (Biện pháp: {method}.)"
-        source = plan_result.get("source", {})
-        if source.get("excel_row"):
-            text += f" Nguồn: dòng {source.get('excel_row')} của Phụ lục 09."
         return text
     if operation == "sum":
         return f"Theo Phụ lục 09 (VG-TB) năm {year}, tổng {crop_label} {season_label} là **{format_plan_number(plan_result.get('value'))} ha**."
@@ -3292,17 +3110,8 @@ def build_plan_direct_answer(plan_result: dict) -> str:
         lines = [f"{i}. {x.get('cong_trinh')}: **{format_plan_number(x.get('value'))} ha**" for i, x in enumerate(plan_result.get("items", []), 1)]
         return f"Các công trình có {crop_label} {season_label} lớn nhất theo Phụ lục 09 năm {year}:\n" + "\n".join(lines)
     if operation == "list":
-        lines = []
-        for x in plan_result.get("items", []):
-            name = x.get("construction") or x.get("cong_trinh") or "Công trình chưa rõ tên"
-            parent = x.get("parent")
-            address = x.get("address")
-            qualifiers = [f"thuộc {parent}" if parent else None, f"địa điểm {address}" if address else None,
-                          f"nhóm {x.get('nhom')}" if x.get("nhom") else None,
-                          f"dòng Excel {x.get('excel_row')}" if x.get("excel_row") else None]
-            qualifier_text = " — " + "; ".join(z for z in qualifiers if z) if any(qualifiers) else ""
-            lines.append(f"- {name}{qualifier_text}: **{format_plan_number(x.get('value'))} ha**")
-        return f"Có nhiều bản ghi trùng tên trong PLAN_DATA năm {year}; cần phân biệt theo công trình cha/địa điểm:\n" + "\n".join(lines)
+        lines = [f"- {x.get('construction')}: **{format_plan_number(x.get('value'))} ha**" for x in plan_result.get("items", [])]
+        return f"Dữ liệu PLAN_DATA năm {year}:\n" + "\n".join(lines)
     return "Đã tìm thấy dữ liệu PLAN_DATA nhưng chưa có mẫu diễn giải phù hợp."
 
 def run_plan_query(question: str) -> dict:
@@ -3320,237 +3129,412 @@ def run_plan_query(question: str) -> dict:
 # ============================================================
 @app.post("/ask")
 async def ask(data: Question):
-    """Mọi câu hỏi đều qua Gemini File Search TRƯỚC, rồi mới gọi các engine khác."""
+
     question = (data.question or "").strip()
+
     print("=" * 60)
     print("CÂU HỎI:", question)
     print("=" * 60)
 
+    # --------------------------------------------------------
+    # KIỂM TRA CÂU HỎI
+    # --------------------------------------------------------
+
     if not question:
-        return {"status": "error", "answer": "Vui lòng nhập câu hỏi."}
+        return {
+            "status": "error",
+            "answer": "Vui lòng nhập câu hỏi."
+        }
+
     if len(question) > MAX_QUESTION_LENGTH:
-        return {"status": "error", "answer": f"Câu hỏi quá dài. Vui lòng nhập tối đa {MAX_QUESTION_LENGTH} ký tự."}
+        return {
+            "status": "error",
+            "answer": (
+                f"Câu hỏi quá dài. "
+                f"Vui lòng nhập tối đa "
+                f"{MAX_QUESTION_LENGTH} ký tự."
+            )
+        }
 
-    # PHASE 1: bắt buộc gọi File Search trước mọi Data Engine.
-    if not GEMINI_API_KEY:
-        return {"status": "error", "answer": "THỦY LỢI AI chưa được cấu hình Gemini API; chưa thể thực hiện bước File Search bắt buộc."}
-    if gemini_client is None:
-        return {"status": "error", "answer": "THỦY LỢI AI chưa kết nối được Gemini API; chưa thể thực hiện bước File Search bắt buộc."}
-    if not GEMINI_FILE_SEARCH_STORE:
-        return {"status": "error", "answer": "THỦY LỢI AI chưa có kho Gemini File Search; chưa thể thực hiện bước tra cứu bắt buộc."}
+    # ========================================================
+    # 1. QUERY ROUTER - DOCUMENT FIRST
+    # ========================================================
 
-    document_answer = None
-    document_sources = []
-    document_cache = False
-    document_error = None
-    try:
-        document_answer, document_sources, document_cache = await ask_with_singleflight(
-            question, route="document"
-        )
-    except DocumentRetrievalRequiredError as exc:
-        document_error = "no_document_evidence"
-        print("FILE SEARCH NO EVIDENCE:", repr(exc))
-    except Exception as exc:
-        document_error = "file_search_error"
-        print("FILE SEARCH ERROR:", repr(exc))
-
-    # PHASE 2: sau khi File Search đã chạy xong mới phân loại và gọi nguồn phụ.
     route_info = classify_query_route(question)
     route = route_info["route"]
-    print("QUERY ROUTE AFTER FILE SEARCH:", route_info)
-    print("FILE SEARCH STATUS:", {
-        "has_answer": bool(document_answer),
-        "source_count": len(document_sources),
-        "cache": document_cache,
-        "error": document_error,
-    })
 
-    def attach_document_metadata(response):
-        response.setdefault("router_version", CHATBOT_ROUTER_VERSION)
-        response["file_search_first"] = True
-        response["file_search_status"] = "found" if document_answer else (document_error or "no_document_evidence")
-        if document_sources:
-            response["sources"] = document_sources
-        return response
+    print("QUERY ROUTE:", route_info)
 
-    # Luồng 1: câu hỏi tài liệu/kiến thức — trả lời từ File Search.
-    if route == "document":
-        if document_answer:
-            return attach_document_metadata({
-                "status": "ok", "answer": document_answer,
-                "engine": "Gemini File Search", "model": GEMINI_MODEL,
-                "cache": document_cache, "query_route": "document",
-            })
-        message = (
-            "Chưa tìm thấy đủ căn cứ trong kho hồ sơ THỦY LỢI AI để trả lời chính xác câu hỏi này."
-            if document_error == "no_document_evidence" else
-            "Đã thử truy xuất Gemini File Search nhưng hiện chưa lấy được kết quả. Vui lòng thử lại sau."
-        )
-        return attach_document_metadata({
-            "status": "ok" if document_error == "no_document_evidence" else "error",
-            "answer": message, "engine": "Gemini File Search", "model": GEMINI_MODEL,
-            "cache": False, "query_route": "document", "sources": [],
-        })
-
-    # Luồng 2: PLAN_DATA. Số liệu có cấu trúc là nguồn có thẩm quyền cho kết quả diện tích.
+    # ========================================================
+    # 2. PLAN_DATA QUERY
+    # ========================================================
     if route == "plan_data":
         plan_result = run_plan_query(question)
-        if plan_result.get("found"):
-            answer = build_plan_direct_answer(plan_result)
-            if document_answer:
-                answer += "\n\n### Đối chiếu hồ sơ Gemini File Search\n" + document_answer
-            return attach_document_metadata({
-                "status": "ok", "answer": answer,
-                "engine": "Gemini File Search + PLAN_DATA Structured Engine",
-                "model": f"{GEMINI_MODEL} + PLAN_DATA", "cache": False,
-                "query_route": "plan_data", "data_source": "Phụ lục 09 (VG-TB)(2027)",
-                "data": plan_result,
-            })
-        if document_answer:
-            return attach_document_metadata({
-                "status": "ok",
-                "answer": document_answer + "\n\n*Lưu ý: PLAN_DATA chưa tìm thấy bản ghi phù hợp để xác nhận số liệu cấu trúc.*",
-                "engine": "Gemini File Search + PLAN_DATA", "model": GEMINI_MODEL,
-                "cache": False, "query_route": "plan_data", "data": plan_result,
-            })
-        return attach_document_metadata({
-            "status": "ok", "answer": "Chưa tìm thấy bản ghi phù hợp trong PLAN_DATA và chưa có đủ căn cứ tài liệu trong Gemini File Search.",
-            "engine": "Gemini File Search + PLAN_DATA", "model": GEMINI_MODEL,
-            "cache": False, "query_route": "plan_data", "data": plan_result,
-        })
+        return {
+            "status": "ok",
+            "answer": build_plan_direct_answer(plan_result),
+            "engine": "PLAN_DATA Structured Engine",
+            "model": "PLAN_DATA",
+            "cache": False,
+            "query_route": "plan_data",
+            "data_source": "Phụ lục 09 (VG-TB)(2027)",
+            "data": plan_result,
+            "router_version": CHATBOT_ROUTER_VERSION,
+        }
 
-    # Luồng 3: số liệu vận hành. Chỉ gọi Google Data Engine sau File Search.
-    if route == "operational":
-        operational_data = await get_operational_data(question)
-        parsed = operational_data.get("parsed", {})
-        if operational_data.get("found") and operational_data.get("data"):
-            answer = build_operational_direct_answer(operational_data["data"])
-            if document_answer:
-                answer = "### Số liệu vận hành\n" + answer + "\n\n### Căn cứ hồ sơ Gemini File Search\n" + document_answer
-            return attach_document_metadata({
-                "status": "ok", "answer": answer,
-                "engine": "Gemini File Search + Google Data Engine", "model": f"{GEMINI_MODEL} + AI_DATA",
-                "cache": False, "query_route": "operational", "data_source": "Google Data API / AI_DATA",
-                "data": operational_data["data"],
-            })
-        if document_answer:
-            answer = document_answer + "\n\n*Chưa lấy được số liệu vận hành phù hợp từ Google Data Engine.*"
-        else:
-            answer = "Đã kiểm tra Gemini File Search nhưng chưa tìm thấy đủ căn cứ; Google Data Engine cũng chưa trả về số liệu vận hành phù hợp."
-        return attach_document_metadata({
-            "status": "ok", "answer": answer,
-            "engine": "Gemini File Search + Google Data Engine", "model": GEMINI_MODEL,
-            "cache": False, "query_route": "operational", "data": operational_data.get("data", []),
-        })
-
-    # Luồng 4a: PLAN_DATA + số liệu vận hành. Thứ tự tuần tự: File Search -> PLAN_DATA -> Google Data.
+    # ========================================================
+    # 3. HYBRID PLAN + OPERATIONAL
+    # ========================================================
     if route == "hybrid_plan_operational":
         plan_result = run_plan_query(question)
         operational_data = await get_operational_data(question)
         plan_answer = build_plan_direct_answer(plan_result) if plan_result.get("found") else None
         operational_answer = build_operational_direct_answer(operational_data.get("data", [])) if operational_data.get("found") else None
-        sections = []
-        if plan_answer:
-            sections.append("### Kế hoạch\n" + plan_answer)
-        if operational_answer:
-            sections.append("### Số liệu vận hành\n" + operational_answer)
-        if document_answer:
-            sections.append("### Căn cứ hồ sơ Gemini File Search\n" + document_answer)
-        if not sections:
-            sections.append("Chưa tìm thấy đủ dữ liệu phù hợp trong PLAN_DATA, Google Data Engine và Gemini File Search.")
-        elif not plan_answer:
-            sections.append("*Chưa tìm thấy dữ liệu kế hoạch phù hợp trong PLAN_DATA.*")
-        elif not operational_answer:
-            sections.append("*Chưa lấy được số liệu vận hành hiện tại phù hợp.*")
-        return attach_document_metadata({
-            "status": "ok", "answer": "\n\n".join(sections),
-            "engine": "Gemini File Search + PLAN_DATA + Google Data Engine",
-            "model": f"{GEMINI_MODEL} + PLAN_DATA + AI_DATA", "cache": False,
+        if plan_answer and operational_answer:
+            answer = f"### Kế hoạch\n{plan_answer}\n\n### Số liệu vận hành\n{operational_answer}"
+        elif plan_answer:
+            answer = plan_answer + "\n\n*Chưa lấy được số liệu vận hành hiện tại cho phần kết hợp.*"
+        elif operational_answer:
+            answer = operational_answer + "\n\n*Chưa tìm thấy dữ liệu kế hoạch phù hợp trong PLAN_DATA.*"
+        else:
+            answer = "Chưa tìm thấy đủ dữ liệu kế hoạch và số liệu vận hành phù hợp."
+        return {
+            "status": "ok",
+            "answer": answer,
+            "engine": "PLAN_DATA Structured Engine + Google Data Engine",
+            "model": "PLAN_DATA + AI_DATA",
+            "cache": False,
             "query_route": "hybrid_plan_operational",
-            "data_source": "Gemini File Search + Phụ lục 09 (VG-TB)(2027) + Google Data API",
-            "plan_data": plan_result, "operational_data": operational_data.get("data", []),
-        })
+            "data_source": "Phụ lục 09 (VG-TB)(2027) + AI_DATA",
+            "plan_data": plan_result,
+            "operational_data": operational_data.get("data", []),
+            "router_version": CHATBOT_ROUTER_VERSION,
+        }
 
-    # Luồng 4b: HYBRID tài liệu + vận hành. File Search đã hoàn thành trước khi gọi Data Engine.
-    if route == "hybrid":
-        operational_data = await get_operational_data(question)
-        sections = []
-        if document_answer:
-            sections.append("### Căn cứ hồ sơ Gemini File Search\n" + document_answer)
-        if operational_data.get("found") and operational_data.get("data"):
-            sections.append("### Số liệu vận hành\n" + build_operational_direct_answer(operational_data["data"]))
-        if not sections:
-            sections.append("Chưa tìm thấy đủ căn cứ trong Gemini File Search và chưa có số liệu vận hành phù hợp.")
-        return attach_document_metadata({
-            "status": "ok", "answer": "\n\n".join(sections),
-            "engine": "Gemini File Search + Google Data Engine", "model": f"{GEMINI_MODEL} + AI_DATA",
-            "cache": False, "query_route": "hybrid", "data": operational_data.get("data", []),
-        })
+    # ========================================================
+    # 4. DOCUMENT / KNOWLEDGE QUERY
+    # ========================================================
+    #
+    # Đây là nhánh ưu tiên cho câu hỏi về văn bản, quy định,
+    # hồ sơ, nhân sự, thông số tĩnh và kiến thức chuyên ngành.
+    # Không gọi Data Engine trước.
+    # ========================================================
 
-    # Fail-safe: không cho route lạ gọi nguồn phụ trước File Search.
-    return attach_document_metadata({
-        "status": "error", "answer": "Router trả về loại câu hỏi chưa được hỗ trợ; chưa thực hiện truy vấn nguồn dữ liệu phụ.",
-        "engine": "Gemini File Search", "model": GEMINI_MODEL, "cache": False,
-        "query_route": str(route),
-    })
+    if route == "document":
 
-def _sdk_value(obj, *names, default=None):
-    """Đọc thuộc tính từ object Google GenAI SDK hoặc dict, không phụ thuộc kiểu model."""
-    for name in names:
+        if not GEMINI_API_KEY:
+            return {
+                "status": "error",
+                "answer": "THỦY LỢI AI chưa được cấu hình Gemini API."
+            }
+
+        if gemini_client is None:
+            return {
+                "status": "error",
+                "answer": (
+                    "THỦY LỢI AI chưa kết nối được Gemini API. "
+                    "Vui lòng thử lại sau."
+                )
+            }
+
+        if not GEMINI_FILE_SEARCH_STORE:
+            return {
+                "status": "error",
+                "answer": "THỦY LỢI AI chưa có kho dữ liệu Gemini File Search."
+            }
+
         try:
-            if isinstance(obj, dict) and name in obj:
-                value = obj[name]
-            else:
-                value = getattr(obj, name, None)
-            if value is not None:
-                return value
-        except Exception:
-            continue
-    return default
+            answer, sources, was_cache = await ask_with_singleflight(
+                question,
+                route="document",
+            )
+
+            response = {
+                "status": "ok",
+                "answer": answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": was_cache,
+                "query_route": "document",
+                "router_version": CHATBOT_ROUTER_VERSION,
+            }
+
+            if sources:
+                response["sources"] = sources
+
+            return response
+
+        except DocumentRetrievalRequiredError:
+            # Không có căn cứ tài liệu: tuyệt đối không chuyển sang
+            # Data Engine và không tự bịa câu trả lời.
+            return {
+                "status": "ok",
+                "answer": (
+                    "Chưa tìm thấy đủ căn cứ trong kho hồ sơ "
+                    "THỦY LỢI AI để trả lời chính xác câu hỏi này."
+                ),
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "document",
+                "sources": [],
+            }
+        except Exception as e:
+            print("DOCUMENT QUERY ERROR:", repr(e))
+            return {
+                "status": "error",
+                "answer": (
+                    "THỦY LỢI AI tạm thời chưa lấy được câu trả lời "
+                    "từ kho dữ liệu Gemini. Hệ thống đã tự kiểm tra "
+                    "và thử lại. Vui lòng thử lại sau ít giây."
+                ),
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "document",
+                "router_version": CHATBOT_ROUTER_VERSION,
+            }
+
+    # ========================================================
+    # 3. HYBRID QUERY
+    # ========================================================
+    #
+    # HYBRID vẫn phải tìm hồ sơ trước/đồng thời với Data Engine.
+    # Không để Data Engine chặn phần căn cứ tài liệu.
+    # ========================================================
+
+    if route == "hybrid":
+
+        document_answer = None
+        document_sources = []
+
+        # Hai nguồn độc lập nên chạy song song để giảm latency của HYBRID.
+        operational_task = asyncio.create_task(get_operational_data(question))
+        document_task = None
+        if GEMINI_API_KEY and gemini_client is not None and GEMINI_FILE_SEARCH_STORE:
+            document_task = asyncio.create_task(
+                ask_with_singleflight(question, route="hybrid")
+            )
+
+        operational_result, document_result = await asyncio.gather(
+            operational_task,
+            document_task if document_task is not None else asyncio.sleep(0, result=None),
+            return_exceptions=True,
+        )
+
+        if isinstance(operational_result, Exception):
+            print("HYBRID OPERATIONAL ERROR:", repr(operational_result))
+            operational_data = {"found": False, "parsed": {"is_operational": False}, "data": []}
+        else:
+            operational_data = operational_result
+
+        if isinstance(document_result, tuple):
+            document_answer, document_sources, _ = document_result
+        elif isinstance(document_result, Exception):
+            print("HYBRID DOCUMENT ERROR:", repr(document_result))
+
+        print("HYBRID OPERATIONAL DATA:", operational_data)
+
+        parsed = operational_data.get("parsed", {})
+        is_operational = parsed.get("is_operational", False)
+
+        if document_answer and operational_data.get("found"):
+            operational_rows = operational_data.get("data", [])
+            operational_answer = build_operational_direct_answer(operational_rows)
+            combined = (
+                "### Căn cứ hồ sơ\n"
+                f"{document_answer}\n\n"
+                "### Số liệu vận hành\n"
+                f"{operational_answer}"
+            )
+            response = {
+                "status": "ok",
+                "answer": combined,
+                "engine": "Gemini File Search + Google Data Engine",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "hybrid",
+                "data": operational_rows,
+            }
+            if document_sources:
+                response["sources"] = document_sources
+            return response
+
+        if document_answer:
+            response = {
+                "status": "ok",
+                "answer": document_answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": False,
+                "query_route": "hybrid",
+            }
+            if document_sources:
+                response["sources"] = document_sources
+            return response
+
+        if is_operational and operational_data.get("found"):
+            operational_rows = operational_data.get("data", [])
+            return {
+                "status": "ok",
+                "answer": build_operational_direct_answer(operational_rows),
+                "engine": "Google Data Engine",
+                "model": "AI_DATA",
+                "cache": False,
+                "query_route": "hybrid",
+                "data_source": "File trực 2026 GG.xlsx",
+                "data": operational_rows,
+            }
+
+        return {
+            "status": "ok",
+            "answer": (
+                "Chưa tìm thấy đủ căn cứ trong kho hồ sơ THỦY LỢI AI "
+                "và chưa tìm thấy số liệu vận hành phù hợp."
+            ),
+            "engine": "Hybrid",
+            "model": GEMINI_MODEL,
+            "cache": False,
+            "query_route": "hybrid",
+            "data": [],
+        }
+
+    # ========================================================
+    # 4. OPERATIONAL QUERY - GOOGLE DATA ENGINE
+    # ========================================================
+
+    operational_data = await get_operational_data(question)
+
+    print(
+        "OPERATIONAL DATA:",
+        operational_data
+    )
+
+    parsed = operational_data.get(
+        "parsed",
+        {}
+    )
+
+    is_operational = parsed.get(
+        "is_operational",
+        False
+    )
+
+    if is_operational and operational_data.get("found"):
+
+        operational_rows = operational_data.get(
+            "data",
+            []
+        )
+
+        print(
+            "OPERATIONAL ROWS DETAIL:",
+            [
+                {
+                    "ngay": item.get("ngay"),
+                    "gio": item.get("gio"),
+                    "thong_so": item.get("thong_so"),
+                    "gia_tri": item.get("gia_tri"),
+                    "don_vi_do": item.get("don_vi_do"),
+                }
+                for item in operational_rows
+            ]
+        )
+
+        print(
+            "OPERATIONAL DATA FOUND:",
+            len(operational_rows)
+        )
+
+        if operational_rows:
+            return {
+                "status": "ok",
+                "answer": build_operational_direct_answer(
+                    operational_rows
+                ),
+                "engine": "Google Data Engine",
+                "model": "AI_DATA",
+                "cache": False,
+                "query_route": "operational",
+                "data_source": "File trực 2026 GG.xlsx",
+                "data": operational_rows,
+            }
+
+    # ========================================================
+    # 5. OPERATIONAL KHÔNG CÓ DỮ LIỆU -> FALLBACK DOCUMENT
+    # ========================================================
+    #
+    # Đây là lớp bảo vệ cuối cùng cho các câu hỏi bị parser vận hành
+    # nhận nhầm. Không còn trả ngay thông báo Data Engine như phiên bản
+    # cũ; hệ thống chuyển sang File Search để kiểm tra kho hồ sơ.
+    # ========================================================
+
+    print("OPERATIONAL DATA NOT FOUND - FALLBACK TO DOCUMENT SEARCH")
+
+    if GEMINI_API_KEY and gemini_client is not None and GEMINI_FILE_SEARCH_STORE:
+        try:
+            answer, sources, was_cache = await ask_with_singleflight(
+                question,
+                route="document",
+            )
+
+            response = {
+                "status": "ok",
+                "answer": answer,
+                "engine": "Gemini File Search",
+                "model": GEMINI_MODEL,
+                "cache": was_cache,
+                "query_route": "document_fallback",
+            }
+
+            if sources:
+                response["sources"] = sources
+
+            return response
+
+        except Exception as e:
+            print("DOCUMENT FALLBACK ERROR:", repr(e))
+
+    # Chỉ trả thông báo Data Engine khi đã xác định đây thực sự là
+    # câu hỏi vận hành và cả fallback tài liệu cũng không có căn cứ.
+    return {
+        "status": "ok",
+        "answer": (
+            "THỦY LỢI AI chưa tìm thấy số liệu vận hành phù hợp "
+            "với yêu cầu trong Data Engine và chưa tìm thấy đủ "
+            "căn cứ trong kho hồ sơ THỦY LỢI AI."
+        ),
+        "engine": "Google Data Engine + Gemini File Search",
+        "model": "AI_DATA",
+        "cache": False,
+        "query_route": "operational_fallback",
+        "data": []
+    }
 
 
-def _iso_value(value):
-    if value is None:
-        return None
-    try:
-        return value.isoformat()
-    except Exception:
-        return str(value)
-
-
+# ============================================================
+# STORE / DOCUMENT HELPERS
+# ============================================================
 def serialize_store(store):
-    """Chuyển FileSearchStore SDK thành dict JSON-safe cho endpoint /stores."""
-    raw_name = _sdk_value(store, "name", default="")
     return {
-        "name": str(raw_name or ""),
-        "display_name": str(_sdk_value(store, "display_name", "displayName", default="") or ""),
-        "create_time": _iso_value(_sdk_value(store, "create_time", "createTime")),
-        "update_time": _iso_value(_sdk_value(store, "update_time", "updateTime")),
+        "name": str(getattr(store, "name", "") or ""),
+        "display_name": str(getattr(store, "display_name", None) or getattr(store, "displayName", None) or ""),
     }
 
-
-def serialize_document(document):
-    """Chuyển FileSearchDocument SDK thành dict JSON-safe."""
-    return {
-        "name": str(_sdk_value(document, "name", default="") or ""),
-        "display_name": str(_sdk_value(document, "display_name", "displayName", default="") or ""),
-        "mime_type": str(_sdk_value(document, "mime_type", "mimeType", default="") or ""),
-        "size_bytes": _sdk_value(document, "size_bytes", "sizeBytes"),
-        "create_time": _iso_value(_sdk_value(document, "create_time", "createTime")),
-        "update_time": _iso_value(_sdk_value(document, "update_time", "updateTime")),
-        "state": str(_sdk_value(document, "state", default="") or ""),
-    }
-
+def serialize_document(doc):
+    name = str(getattr(doc, "name", "") or "")
+    display_name = str(getattr(doc, "display_name", None) or getattr(doc, "displayName", None) or "")
+    state = str(getattr(doc, "state", "") or "")
+    mime_type = str(getattr(doc, "mime_type", None) or getattr(doc, "mimeType", None) or "")
+    return {"name": name, "display_name": display_name, "mime_type": mime_type, "state": state}
 
 def list_documents_sync():
-    """Liệt kê tài liệu trong đúng Gemini File Search Store đã cấu hình."""
     require_gemini()
     documents = []
-    pager = gemini_client.file_search_stores.documents.list(parent=store_name())
-    for document in pager:
-        documents.append(serialize_document(document))
+    pager = gemini_client.file_search_stores.documents.list(parent=store_name(), config={"page_size": 20})
+    for doc in pager:
+        documents.append(serialize_document(doc))
     return documents
-
 
 @app.get("/stores")
 async def list_stores():
@@ -3599,140 +3583,6 @@ async def list_pdf_documents():
     except Exception as e:
         print("PDF LIST ERROR:", repr(e))
         return {"success": False, "count": 0, "documents": [], "error": str(e)}
-
-
-# ============================================================
-# GEMINI FILE SEARCH - DUPLICATE REVIEW (ADDITIVE, SAFE BY DEFAULT)
-# ============================================================
-def _normalize_document_name(value):
-    """Chuẩn hóa tên để phát hiện ứng viên trùng; không chứng minh nội dung giống hệt."""
-    import unicodedata
-    value = str(value or "").strip().lower()
-    value = unicodedata.normalize("NFKC", value)
-    value = re.sub(r"\s+", " ", value)
-    value = re.sub(r"\s*\(\s*(?:copy|bản sao|\d+)\s*\)(?=\.[^.]+$|$)", "", value)
-    value = re.sub(r"[\s_-]+", "_", value)
-    return value
-
-
-def find_duplicate_document_candidates(documents):
-    """Nhóm ứng viên theo tên chuẩn hóa + kích thước; không tự động xóa."""
-    groups = {}
-    for doc in documents or []:
-        name = doc.get("display_name") or ""
-        if not name:
-            continue
-        normalized = _normalize_document_name(name)
-        size = doc.get("size_bytes")
-        key = (normalized, str(size) if size is not None else "unknown")
-        groups.setdefault(key, []).append(doc)
-
-    result = []
-    for (normalized, size), items in groups.items():
-        if len(items) < 2:
-            continue
-        result.append({
-            "normalized_name": normalized,
-            "size_bytes": None if size == "unknown" else size,
-            "content_verified_identical": False,
-            "review_required": True,
-            "documents": items,
-            "recommended_keep": max(
-                items,
-                key=lambda d: (str(d.get("update_time") or ""), str(d.get("create_time") or ""))
-            ),
-            "suggested_review_delete": [
-                d for d in items
-                if d.get("name") != max(
-                    items,
-                    key=lambda x: (str(x.get("update_time") or ""), str(x.get("create_time") or ""))
-                ).get("name")
-            ],
-        })
-    return result
-
-
-class DuplicateDeleteRequest(BaseModel):
-    document_names: list[str]
-    confirm: str
-    store: str
-
-
-@app.get("/documents/duplicates/preview")
-async def preview_duplicate_documents():
-    """Chỉ xem trước ứng viên trùng. Endpoint này tuyệt đối không xóa."""
-    if gemini_client is None:
-        return {"success": False, "error": "Gemini API chưa được kết nối."}
-    if not GEMINI_FILE_SEARCH_STORE:
-        return {"success": False, "error": "Chưa cấu hình GEMINI_FILE_SEARCH_STORE."}
-    try:
-        docs = await asyncio.to_thread(list_documents_sync)
-        groups = find_duplicate_document_candidates(docs)
-        return {
-            "success": True,
-            "mode": "dry_run",
-            "store": store_name(),
-            "document_count": len(docs),
-            "duplicate_group_count": len(groups),
-            "candidate_delete_count": sum(len(g["suggested_review_delete"]) for g in groups),
-            "warning": "Tên và kích thước giống nhau chỉ là dấu hiệu ứng viên, không chứng minh nội dung giống hệt. Chưa xóa tài liệu nào.",
-            "groups": groups,
-        }
-    except Exception as exc:
-        logger.exception("DUPLICATE PREVIEW ERROR")
-        return {"success": False, "store": store_name(), "error": str(exc)}
-
-
-@app.post("/documents/duplicates/delete-selected")
-async def delete_selected_duplicate_documents(request: DuplicateDeleteRequest):
-    """Xóa đúng các resource name do người vận hành chọn sau khi xem preview."""
-    if gemini_client is None:
-        raise HTTPException(status_code=503, detail="Gemini API chưa được kết nối.")
-    if not GEMINI_FILE_SEARCH_STORE:
-        raise HTTPException(status_code=503, detail="Chưa cấu hình GEMINI_FILE_SEARCH_STORE.")
-    if request.confirm != "DELETE_SELECTED_DOCUMENTS":
-        raise HTTPException(status_code=400, detail="Thiếu xác nhận DELETE_SELECTED_DOCUMENTS.")
-    if request.store != store_name():
-        raise HTTPException(status_code=409, detail="Store xác nhận không khớp store đang cấu hình.")
-    names = list(dict.fromkeys(str(n).strip() for n in request.document_names if str(n).strip()))
-    if not names:
-        raise HTTPException(status_code=400, detail="Chưa chọn document_names.")
-    if len(names) > 100:
-        raise HTTPException(status_code=400, detail="Mỗi lần chỉ được xóa tối đa 100 tài liệu.")
-    try:
-        current = await asyncio.to_thread(list_documents_sync)
-        current_by_name = {d.get("name"): d for d in current if d.get("name")}
-        missing = [name for name in names if name not in current_by_name]
-        if missing:
-            raise HTTPException(status_code=409, detail={"message": "Có mã tài liệu không còn tồn tại trong store; chưa xóa tài liệu nào.", "missing": missing})
-        deleted, failed = [], []
-        def do_delete():
-            for name in names:
-                try:
-                    gemini_client.file_search_stores.documents.delete(
-                        name=name, config={"force": True}
-                    )
-                    deleted.append({"name": name, "display_name": current_by_name[name].get("display_name")})
-                except Exception as exc:
-                    failed.append({"name": name, "error": str(exc)})
-        await asyncio.to_thread(do_delete)
-        if deleted:
-            await clear_answer_cache()
-        return {
-            "success": not failed,
-            "store": store_name(),
-            "deleted_count": len(deleted),
-            "failed_count": len(failed),
-            "deleted": deleted,
-            "failed": failed,
-            "message": "Đã xử lý đúng các mã tài liệu được chọn; cache đã làm mới nếu có tài liệu bị xóa."
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("DUPLICATE DELETE SELECTED ERROR")
-        raise HTTPException(status_code=500, detail=str(exc))
-
 
 def delete_pdf_documents_sync():
     require_gemini()
@@ -6832,6 +6682,143 @@ async def field_report_pdf(
     except Exception as e:
         print("❌ FIELD REPORT PDF ERROR:", repr(e))
         return {"success": False, "error": str(e)}
+
+# ============================================================
+# FIELD REPORT IMAGE - ẢNH HIỆN TRƯỜNG ĐÓNG DẤU + BẢN ĐỒ GIS
+# Endpoint độc lập; không thay đổi luồng /field-report-pdf hiện có.
+# ============================================================
+@app.post("/field-report-image")
+async def field_report_image(
+    file: UploadFile = File(...),
+    capture_time: str = Form(""),
+    address: str = Form(""),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
+):
+    """Xuất JPG độc lập từ ảnh gốc, thông tin hiện trường và bản đồ GIS Master."""
+    try:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="Ảnh đầu vào rỗng.")
+        if len(raw) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Ảnh vượt quá giới hạn 15 MB.")
+        try:
+            source = Image.open(BytesIO(raw))
+            source = ImageOps.exif_transpose(source).convert("RGB")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Tệp tải lên không phải ảnh hợp lệ.")
+
+        # Giới hạn kích thước đầu ra để ổn định trên điện thoại và máy chủ.
+        source.thumbnail((2200, 2200), Image.Resampling.LANCZOS)
+        width, height = source.size
+        scale = max(1.0, width / 1200)
+        panel_h = int(max(180, min(height * 0.34, 330 * scale)))
+        panel_y = height - panel_h
+        overlay = Image.new("RGBA", source.size, (0, 0, 0, 0))
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(overlay)
+        draw.rectangle((0, panel_y, width, height), fill=(5, 18, 32, 190))
+
+        try:
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            font = ImageFont.truetype(font_path, max(16, int(width * 0.022)))
+            small = ImageFont.truetype(font_path, max(13, int(width * 0.017)))
+            bold = ImageFont.truetype(bold_path, max(18, int(width * 0.026)))
+        except Exception:
+            font = small = bold = ImageFont.load_default()
+
+        stamp = (capture_time or time.strftime("%H:%M %d/%m/%Y")).strip()
+        lines = [
+            ("THỦY LỢI AI • VU GIA – THU BỒN", bold),
+            ("Thời gian: " + stamp, font),
+            ("Địa điểm: " + ((address or "Chưa xác định").strip()), small),
+        ]
+        if latitude is not None and longitude is not None:
+            lines.append((f"Tọa độ: {latitude:.6f}°N, {longitude:.6f}°E", small))
+        else:
+            lines.append(("Tọa độ: Chưa xác định GPS", small))
+
+        pad = int(width * 0.025)
+        text_x = pad
+        text_y = panel_y + pad
+        max_text_width = int(width * 0.57)
+        for text_line, fnt in lines:
+            # Cắt dòng dài để không tràn sang bản đồ góc phải.
+            while text_line and draw.textlength(text_line, font=fnt) > max_text_width:
+                text_line = text_line[:-2].rstrip() + "…"
+            draw.text((text_x, text_y), text_line, font=fnt, fill=(255, 255, 255, 255), stroke_width=0)
+            text_y += int(getattr(fnt, "size", 16) * 1.55)
+
+        # Tạo bản đồ từ GIS Master hiện có; nếu không có GPS/GIS thì không giả lập bản đồ.
+        gis_map_bytes = None
+        gis_identification = None
+        if latitude is not None and longitude is not None:
+            try:
+                gis_result = await kml_gps_test(latitude=latitude, longitude=longitude)
+                if isinstance(gis_result, dict):
+                    gis_identification = gis_result.get("gis_identification")
+            except Exception as exc:
+                print("[FIELD IMAGE] GIS identification unavailable:", repr(exc))
+            try:
+                gis_map_bytes = await asyncio.to_thread(
+                    create_gis_location_map, latitude, longitude, gis_identification
+                )
+            except Exception as exc:
+                print("[FIELD IMAGE] GIS map unavailable:", repr(exc))
+
+        if gis_map_bytes:
+            try:
+                map_image = Image.open(BytesIO(gis_map_bytes)).convert("RGB")
+                map_w = int(width * 0.34)
+                map_h = int(panel_h * 0.84)
+                map_image.thumbnail((map_w, map_h), Image.Resampling.LANCZOS)
+                map_x = width - map_image.width - pad
+                map_y = height - map_image.height - int((panel_h - map_image.height) / 2)
+                # Khung sáng bo góc quanh bản đồ.
+                border = int(max(3, width * 0.004))
+                draw.rounded_rectangle(
+                    (map_x - border, map_y - border, map_x + map_image.width + border, map_y + map_image.height + border),
+                    radius=int(width * 0.012), fill=(255, 255, 255, 255)
+                )
+                overlay.alpha_composite(Image.new("RGBA", source.size, (0, 0, 0, 0)))
+                source_rgba = source.convert("RGBA")
+                source_rgba.alpha_composite(overlay)
+                source = source_rgba.convert("RGB")
+                source.paste(map_image, (map_x, map_y))
+                # Nhãn nhỏ chỉ dùng tên được trả về từ GIS; không tự suy đoán lý trình.
+                if isinstance(gis_identification, dict):
+                    gis_name = str(gis_identification.get("name") or "").strip()
+                    chainage = str(gis_identification.get("chainage") or gis_identification.get("ly_trinh") or "").strip()
+                    label = " • ".join(x for x in [gis_name, chainage] if x)
+                    if label:
+                        label_y = max(panel_y, map_y - int(getattr(small, "size", 14) * 1.5))
+                        label = label[:90]
+                        draw2 = ImageDraw.Draw(source)
+                        draw2.text((map_x, label_y), label, font=small, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
+            except Exception as exc:
+                print("[FIELD IMAGE] Could not composite GIS inset:", repr(exc))
+                source_rgba = source.convert("RGBA")
+                source_rgba.alpha_composite(overlay)
+                source = source_rgba.convert("RGB")
+        else:
+            source_rgba = source.convert("RGBA")
+            source_rgba.alpha_composite(overlay)
+            source = source_rgba.convert("RGB")
+
+        out = BytesIO()
+        source.save(out, format="JPEG", quality=91, optimize=True)
+        out.seek(0)
+        return StreamingResponse(
+            out,
+            media_type="image/jpeg",
+            headers={"Content-Disposition": 'attachment; filename="thuy-loi-ai-hien-truong.jpg"', "Cache-Control": "no-store"},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logging.exception("FIELD REPORT IMAGE ERROR")
+        raise HTTPException(status_code=500, detail="Không thể tạo ảnh hiện trường: " + str(exc))
 
 # ============================================================
 # MAIN
