@@ -6708,8 +6708,10 @@ async def field_report_image(
     address: str = Form(""),
     latitude: float | None = Form(None),
     longitude: float | None = Form(None),
+    gps_accuracy: float | None = Form(None),
+    gis_context: str = Form(""),
 ):
-    """Xuất JPG độc lập từ ảnh gốc, thông tin hiện trường và bản đồ GIS Master."""
+    """Tạo bản sao JPEG có đóng dấu trực tiếp, không phủ nền/mảng màu lên ảnh."""
     try:
         raw = await file.read()
         if not raw:
@@ -6717,138 +6719,182 @@ async def field_report_image(
         if len(raw) > 15 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="Ảnh vượt quá giới hạn 15 MB.")
         try:
-            source = Image.open(BytesIO(raw))
-            source = ImageOps.exif_transpose(source).convert("RGB")
+            source = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
         except Exception:
             raise HTTPException(status_code=400, detail="Tệp tải lên không phải ảnh hợp lệ.")
-
-        # Giới hạn kích thước đầu ra để ổn định trên điện thoại và máy chủ.
-        source.thumbnail((2200, 2200), Image.Resampling.LANCZOS)
+        source.thumbnail((3000, 3000), Image.Resampling.LANCZOS)
         width, height = source.size
-        scale = max(1.0, width / 1200)
-        panel_h = int(max(180, min(height * 0.34, 330 * scale)))
-        panel_y = height - panel_h
-        overlay = Image.new("RGBA", source.size, (0, 0, 0, 0))
         from PIL import ImageDraw, ImageFont
+        overlay = Image.new("RGBA", source.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
-        draw.rectangle((0, panel_y, width, height), fill=(248, 250, 252, 218), outline=(255, 255, 255, 235), width=max(1, int(width * 0.002)))
 
-        try:
-            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-            bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-            font = ImageFont.truetype(font_path, max(16, int(width * 0.022)))
-            small = ImageFont.truetype(font_path, max(13, int(width * 0.017)))
-            bold = ImageFont.truetype(bold_path, max(18, int(width * 0.026)))
-        except Exception:
-            font = small = bold = ImageFont.load_default()
+        # Font Unicode tiếng Việt; thử các font có sẵn trên môi trường Render.
+        regular_candidates = [
+            str(BASE_DIR / "assets" / "DejaVuSans.ttf"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        ]
+        bold_candidates = [
+            str(BASE_DIR / "assets" / "DejaVuSans-Bold.ttf"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+        ]
+        def load_font(paths, size):
+            for candidate in paths:
+                try:
+                    if Path(candidate).exists():
+                        return ImageFont.truetype(candidate, size)
+                except Exception:
+                    pass
+            return ImageFont.load_default()
 
-        # Tạo bản đồ từ GIS Master hiện có; nếu không có GPS/GIS thì không giả lập bản đồ.
-        gis_map_bytes = None
+        scale = max(1.0, width / 1000)
+        title_font = load_font(bold_candidates, max(20, int(width * 0.032)))
+        time_font = load_font(bold_candidates, max(28, int(width * 0.055)))
+        text_font = load_font(regular_candidates, max(16, int(width * 0.024)))
+        small_font = load_font(regular_candidates, max(14, int(width * 0.019)))
+        pad = int(width * 0.028)
+        outline = max(1, int(width * 0.0018))
+        # Chữ phẳng, không shadow/glow, không mảng nền; viền mảnh giúp đọc trên ảnh thật.
+        def flat_text(x, y, text, font, fill=(255, 255, 255, 255), stroke=(20, 35, 45, 220)):
+            draw.text((x, y), text, font=font, fill=fill, stroke_width=outline, stroke_fill=stroke)
+
+        # Branding dạng chữ để không giả mạo/biến dạng logo chính thức khi chưa có asset logo.
+        flat_text(pad, pad, "THỦY LỢI AI", title_font, fill=(255, 255, 255, 255), stroke=(12, 43, 70, 235))
+        title_box = draw.textbbox((pad, pad), "THỦY LỢI AI", font=title_font, stroke_width=outline)
+        flat_text(pad, title_box[3] + int(5 * scale), "VU GIA – THU BỒN", small_font,
+                  fill=(255, 255, 255, 255), stroke=(12, 43, 70, 230))
+
         gis_identification = None
+        nearby_candidates = []
+        gis_map_bytes = None
         if latitude is not None and longitude is not None:
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                raise HTTPException(status_code=400, detail="Tọa độ GPS không hợp lệ.")
             try:
                 gis_result = await kml_gps_test(latitude=latitude, longitude=longitude)
                 if isinstance(gis_result, dict):
                     gis_identification = gis_result.get("gis_identification")
+                    nearby_candidates = gis_result.get("nearby_candidates") or []
+                    # Một số phiên bản API trả trường nhận diện trực tiếp.
+                    if gis_identification is None and gis_result.get("name"):
+                        gis_identification = gis_result
+                    # Nếu chưa đủ điều kiện xác nhận tự động, vẫn nêu ứng viên gần nhất trong 200 m,
+                    # nhưng gắn nhãn cần xác minh, không tự coi đó là công trình tại điểm chụp.
+                    if (not isinstance(gis_identification, dict) or not gis_identification.get("identified")) and nearby_candidates:
+                        candidate = nearby_candidates[0]
+                        gis_identification = {
+                            "identified": False,
+                            "name": candidate.get("name", ""),
+                            "distance_m": candidate.get("distance_m"),
+                            "geometry_type": candidate.get("geometry_type"),
+                            "source": "GIS MASTER KMZ; ứng viên cần xác minh",
+                        }
             except Exception as exc:
-                print("[FIELD IMAGE] GIS identification unavailable:", repr(exc))
+                logger.warning("[FIELD IMAGE] GIS identification unavailable: %r", exc)
+            # Bản đồ chỉ tạo từ GIS Master thực; không tạo map minh họa nếu GIS lỗi.
             try:
-                gis_map_bytes = await asyncio.to_thread(
-                    create_gis_location_map, latitude, longitude, gis_identification
-                )
+                gis_map_bytes = await asyncio.to_thread(create_gis_location_map, latitude, longitude, gis_identification)
             except Exception as exc:
-                print("[FIELD IMAGE] GIS map unavailable:", repr(exc))
+                logger.warning("[FIELD IMAGE] GIS map unavailable: %r", exc)
 
+        # Nếu GIS trả tuyến gần nhất nhưng cách >200m, không gán làm công trình của điểm chụp.
+        if isinstance(gis_identification, dict):
+            try:
+                distance = float(gis_identification.get("distance_m"))
+                if distance > 200:
+                    gis_identification = {"identified": False, "distance_m": distance}
+                    gis_map_bytes = await asyncio.to_thread(create_gis_location_map, latitude, longitude, gis_identification) if latitude is not None and longitude is not None else None
+            except (TypeError, ValueError):
+                pass
 
         stamp = (capture_time or time.strftime("%H:%M %d/%m/%Y")).strip()
-        lines = [
-            ("THỦY LỢI AI • VU GIA – THU BỒN", bold),
-            ("Thời gian: " + stamp, font),
-            ("Địa điểm: " + ((address or "Chưa xác định").strip()), small),
-        ]
-        if latitude is not None and longitude is not None:
-            lines.append((f"Tọa độ: {latitude:.6f}°N, {longitude:.6f}°E", small))
-            if gis_identification and gis_identification.get("identified"):
-                nearest_name = str(gis_identification.get("name") or "Tuyến thủy lợi")
-                nearest_dist = gis_identification.get("distance_m")
-                along = gis_identification.get("distance_along_line_m")
-                chainage_text = format_chainage(along) if along is not None else ""
-                detail = f"Công trình: {nearest_name}"
-                if chainage_text:
-                    detail += f" • Lý trình dữ liệu: {chainage_text}"
-                if nearest_dist is not None:
-                    detail += f" • cách {float(nearest_dist):.0f} m"
-                lines.append((detail, small))
-            elif gis_identification and gis_identification.get("distance_m") is not None and float(gis_identification.get("distance_m")) <= 200:
-                lines.append((f"Tuyến gần nhất: {gis_identification.get('distance_m'):.0f} m; cần xác nhận công trình/lý trình", small))
-            else:
-                lines.append(("Công trình/lý trình: Chưa xác định trong 200 m", small))
+        lines = [stamp]
+        if address and address.strip() and address.strip().lower() not in {"chưa xác định địa chỉ", "chưa xác định"}:
+            lines.append("Địa điểm: " + address.strip())
         else:
-            lines.append(("Tọa độ: Chưa xác định GPS", small))
-            lines.append(("Công trình/lý trình: Chưa xác định", small))
+            lines.append("Địa điểm: Chưa xác định địa chỉ")
+        if latitude is not None and longitude is not None:
+            lines.append(f"Tọa độ: {latitude:.6f}°N, {longitude:.6f}°E")
+        else:
+            lines.append("Tọa độ: Chưa xác định GPS")
+        if isinstance(gis_identification, dict) and gis_identification.get("identified"):
+            name = str(gis_identification.get("name") or gis_identification.get("display_name") or "").strip()
+            distance = gis_identification.get("distance_m")
+            chainage = str(gis_identification.get("chainage") or gis_identification.get("ly_trinh") or "").strip()
+            along = gis_identification.get("distance_along_line_m")
+            # Chỉ ghi lý trình chính thức khi API có thuộc tính lý trình rõ ràng.
+            if not chainage and along is not None and gis_identification.get("chainage_reference_verified") is True:
+                chainage = format_chainage(along) or ""
+            lines.append("Công trình: " + (name or "Đã tìm thấy đối tượng GIS"))
+            if chainage:
+                lines.append("Lý trình: " + chainage)
+            if distance is not None:
+                lines.append(f"Khoảng cách GPS: {float(distance):.0f} m")
+        else:
+            distance = gis_identification.get("distance_m") if isinstance(gis_identification, dict) else None
+            candidate_name = str(gis_identification.get("name") or "").strip() if isinstance(gis_identification, dict) else ""
+            if distance is not None and float(distance) <= 200:
+                if candidate_name:
+                    lines.append(f"Đối tượng gần nhất: {candidate_name} (cần xác nhận)")
+                lines.append(f"Khoảng cách: {float(distance):.0f} m; chưa xác minh lý trình")
+            else:
+                lines.append("Công trình/lý trình: Chưa xác định trong bán kính 200 m")
 
-        pad = int(width * 0.025)
+        # Chừa vùng bản đồ bên phải, chữ phẳng ở phần dưới bên trái.
+        map_w = int(width * 0.36)
+        map_h = int(height * 0.30)
+        map_x = width - map_w - pad
+        map_y = height - map_h - pad
         text_x = pad
-        text_y = panel_y + pad
-        max_text_width = int(width * 0.57)
-        for text_line, fnt in lines:
-            # Cắt dòng dài để không tràn sang bản đồ góc phải.
-            while text_line and draw.textlength(text_line, font=fnt) > max_text_width:
-                text_line = text_line[:-2].rstrip() + "…"
-            draw.text((text_x, text_y), text_line, font=fnt, fill=(20, 43, 61, 255), stroke_width=0)
-            text_y += int(getattr(fnt, "size", 16) * 1.55)
+        line_gap = max(4, int(5 * scale))
+        time_line = lines[0]
+        flat_text(text_x, height - pad - int(len(lines) * (text_font.size * 1.45)) - time_font.size,
+                  time_line, time_font)
+        y = height - pad - int(len(lines) * (text_font.size * 1.45))
+        for line in lines[1:]:
+            # Cắt theo vùng chữ trái để không đè lên bản đồ góc phải.
+            max_width = max(100, map_x - text_x - int(16 * scale))
+            while line and draw.textlength(line, font=text_font) > max_width:
+                line = line[:-2].rstrip() + "…"
+            flat_text(text_x, y, line, text_font)
+            y += text_font.size + line_gap
 
+        # Ghép bản đồ GIS thực bằng viền trắng mảnh; không có nền tối/hiệu ứng.
         if gis_map_bytes:
             try:
-                map_image = Image.open(BytesIO(gis_map_bytes)).convert("RGB")
-                map_w = int(width * 0.34)
-                map_h = int(panel_h * 0.84)
+                map_image = ImageOps.exif_transpose(Image.open(BytesIO(gis_map_bytes))).convert("RGB")
                 map_image.thumbnail((map_w, map_h), Image.Resampling.LANCZOS)
                 map_x = width - map_image.width - pad
-                map_y = height - map_image.height - int((panel_h - map_image.height) / 2)
-                # Khung sáng bo góc quanh bản đồ.
-                border = int(max(3, width * 0.004))
-                draw.rounded_rectangle(
-                    (map_x - border, map_y - border, map_x + map_image.width + border, map_y + map_image.height + border),
-                    radius=int(width * 0.012), fill=(255, 255, 255, 255)
-                )
-                overlay.alpha_composite(Image.new("RGBA", source.size, (0, 0, 0, 0)))
-                source_rgba = source.convert("RGBA")
-                source_rgba.alpha_composite(overlay)
-                source = source_rgba.convert("RGB")
+                map_y = height - map_image.height - pad
+                border = max(2, int(width * 0.004))
+                draw.rounded_rectangle((map_x-border, map_y-border, map_x+map_image.width+border, map_y+map_image.height+border),
+                                       radius=max(4, int(width * 0.008)), fill=(255,255,255,255))
+                base = source.convert("RGBA")
+                base.alpha_composite(overlay)
+                source = base.convert("RGB")
                 source.paste(map_image, (map_x, map_y))
-                # Nhãn nhỏ chỉ dùng tên được trả về từ GIS; không tự suy đoán lý trình.
-                if isinstance(gis_identification, dict):
-                    gis_name = str(gis_identification.get("name") or "").strip()
-                    chainage = str(gis_identification.get("chainage") or gis_identification.get("ly_trinh") or "").strip()
-                    label = " • ".join(x for x in [gis_name, chainage] if x)
-                    if label:
-                        label_y = max(panel_y, map_y - int(getattr(small, "size", 14) * 1.5))
-                        label = label[:90]
-                        draw2 = ImageDraw.Draw(source)
-                        draw2.text((map_x, label_y), label, font=small, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
             except Exception as exc:
-                print("[FIELD IMAGE] Could not composite GIS inset:", repr(exc))
-                source_rgba = source.convert("RGBA")
-                source_rgba.alpha_composite(overlay)
-                source = source_rgba.convert("RGB")
+                logger.warning("[FIELD IMAGE] GIS inset composition failed: %r", exc)
+                base = source.convert("RGBA")
+                base.alpha_composite(overlay)
+                source = base.convert("RGB")
         else:
-            source_rgba = source.convert("RGBA")
-            source_rgba.alpha_composite(overlay)
-            source = source_rgba.convert("RGB")
+            base = source.convert("RGBA")
+            base.alpha_composite(overlay)
+            source = base.convert("RGB")
 
         out = BytesIO()
-        source.save(out, format="JPEG", quality=91, optimize=True)
+        source.save(out, format="JPEG", quality=94, optimize=True, subsampling=0)
         out.seek(0)
-        return StreamingResponse(
-            out,
-            media_type="image/jpeg",
-            headers={"Content-Disposition": 'attachment; filename="thuy-loi-ai-hien-truong.jpg"', "Cache-Control": "no-store"},
-        )
+        return StreamingResponse(out, media_type="image/jpeg", headers={
+            "Content-Disposition": 'attachment; filename="thuy-loi-ai-hien-truong.jpg"',
+            "Cache-Control": "no-store",
+        })
     except HTTPException:
         raise
     except Exception as exc:
-        logging.exception("FIELD REPORT IMAGE ERROR")
+        logger.exception("FIELD REPORT IMAGE ERROR")
         raise HTTPException(status_code=500, detail="Không thể tạo ảnh hiện trường: " + str(exc))
 
 # ============================================================

@@ -3566,8 +3566,12 @@
         <input id="fieldReportImage" type="file" accept="image/*" capture="environment" hidden>
         <button id="fieldReportCamera" class="field-report-camera" type="button">📷 Chụp ảnh hiện trường</button>
         <div id="fieldReportPreview" class="field-report-preview" hidden></div>
-        <button id="saveStampedFieldImage" class="field-report-camera" type="button" disabled>🖼️ Lưu ảnh gốc có đóng dấu + bản đồ thủy lợi</button>
+        <div class="field-image-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <button id="saveStampedFieldImage" class="field-report-camera" type="button" disabled>🖼️ Tạo ảnh đóng dấu</button>
+          <button id="shareStampedFieldImage" class="field-report-camera" type="button" disabled>📤 Lưu Ảnh / Gửi Zalo</button>
+        </div>
         <div id="stampedImageStatus" class="field-report-status" hidden></div>
+        <div id="stampedImagePreview" class="field-report-preview" hidden></div>
         <textarea id="fieldReportQuestion" class="field-report-question" placeholder="Ghi chú thêm nếu cần... Ví dụ: kiểm tra khu vực cuối kênh N4"></textarea>
         <button id="createFieldReport" class="create-field-report" type="button" disabled>📄 Phân tích và lập báo cáo</button>
         <div id="fieldReportStatus" class="field-report-status" hidden></div>
@@ -3778,6 +3782,8 @@
       window.reportTitle = '';
       window.reportAnswer = '';
       window.captureTimestamp = null;
+      window.stampedFieldImageBlob = null;
+      window.stampedFieldImageName = 'thuy-loi-ai-hien-truong.jpg';
 
       let isCooldown = false;
       let currentLocation = null;
@@ -7061,6 +7067,9 @@ closeMapAi.addEventListener('click', function() {
           if (!file) return;
           const imageSaveButton = document.getElementById('saveStampedFieldImage');
           if (imageSaveButton) imageSaveButton.disabled = false;
+          const shareImageButton = document.getElementById('shareStampedFieldImage');
+          if (shareImageButton) shareImageButton.disabled = true;
+          window.stampedFieldImageBlob = null;
           fieldReportFile = null;
           fieldReportPreview.hidden = false;
           fieldReportPreview.innerHTML = '📷 Đang chuẩn bị ảnh (lấy GPS & đóng dấu + QR)...';
@@ -7092,24 +7101,30 @@ closeMapAi.addEventListener('click', function() {
           }
         });
 
-        // Chức năng độc lập: xuất ảnh gốc đã đóng dấu và bản đồ GIS thủy lợi.
+        // Chức năng ảnh độc lập. Tạo ảnh trước; sau đó người dùng chọn tải/lưu/chia sẻ.
         const saveStampedFieldImage = document.getElementById('saveStampedFieldImage');
+        const shareStampedFieldImage = document.getElementById('shareStampedFieldImage');
         const stampedImageStatus = document.getElementById('stampedImageStatus');
+        const stampedImagePreview = document.getElementById('stampedImagePreview');
         function showStampedImageStatus(message, error) {
           if (!stampedImageStatus) return;
           stampedImageStatus.hidden = false;
           stampedImageStatus.textContent = message;
           stampedImageStatus.classList.toggle('error', !!error);
         }
+        function downloadStampedImage(blob, filename) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
         if (saveStampedFieldImage) {
           saveStampedFieldImage.addEventListener('click', async function() {
             const originalFile = fieldReportImage.files && fieldReportImage.files[0];
-            if (!originalFile) {
-              showStampedImageStatus('⚠️ Vui lòng chụp hoặc chọn ảnh trước.', true);
-              return;
-            }
+            if (!originalFile) { showStampedImageStatus('Vui lòng chụp hoặc chọn ảnh trước.', true); return; }
             saveStampedFieldImage.disabled = true;
-            showStampedImageStatus('🗺️ Đang tạo ảnh đóng dấu và bản đồ công trình thủy lợi...');
+            showStampedImageStatus('Đang xác định công trình và tạo ảnh đóng dấu…');
             try {
               const formData = new FormData();
               formData.append('file', originalFile, originalFile.name || 'anh-hien-truong.jpg');
@@ -7118,7 +7133,9 @@ closeMapAi.addEventListener('click', function() {
               if (window.currentLocation) {
                 formData.append('latitude', String(window.currentLocation.lat));
                 formData.append('longitude', String(window.currentLocation.lng));
+                if (window.currentLocation.accuracy != null) formData.append('gps_accuracy', String(window.currentLocation.accuracy));
               }
+              if (window.kmlGpsResult) formData.append('gis_context', JSON.stringify(window.kmlGpsResult));
               const response = await fetch(FIELD_IMAGE_API_BASE + '/field-report-image', { method: 'POST', body: formData });
               const type = (response.headers.get('content-type') || '').toLowerCase();
               if (!response.ok || !type.startsWith('image/')) {
@@ -7127,19 +7144,41 @@ closeMapAi.addEventListener('click', function() {
                 throw new Error(detail);
               }
               const blob = await response.blob();
-              if (!blob.size) throw new Error('Ảnh xuất ra rỗng.');
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'thuy-loi-ai-hien-truong-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
-              document.body.appendChild(a); a.click(); a.remove();
-              setTimeout(() => URL.revokeObjectURL(url), 30000);
-              showStampedImageStatus('✅ Đã tạo và lưu ảnh hiện trường có đóng dấu. Bản đồ được lấy từ GIS Master nếu GPS khả dụng.');
+              if (!blob.size || !type.includes('jpeg')) throw new Error('Dữ liệu trả về không phải ảnh JPEG hợp lệ.');
+              const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const filename = 'thuy-loi-ai-hien-truong-' + stamp + '.jpg';
+              window.stampedFieldImageBlob = blob;
+              window.stampedFieldImageName = filename;
+              if (shareStampedFieldImage) shareStampedFieldImage.disabled = false;
+              if (stampedImagePreview) {
+                const previewUrl = URL.createObjectURL(blob);
+                stampedImagePreview.hidden = false;
+                stampedImagePreview.innerHTML = '<div class="field-report-preview-inner"><img class="thumb" alt="Ảnh hiện trường đã đóng dấu" src="' + previewUrl + '"><div><strong>Ảnh hiện trường đã sẵn sàng</strong><br>JPEG · ' + Math.round(blob.size / 1024) + ' KB<br>Chọn “Lưu Ảnh / Gửi Zalo” để mở bảng chia sẻ của thiết bị.</div></div>';
+              }
+              // Tạo ảnh xong không tự khởi chạy báo cáo; người dùng chủ động chọn bước tiếp theo.
+              showStampedImageStatus('Đã tạo ảnh đóng dấu và hiển thị bản xem trước. Nhấn “Lưu Ảnh / Gửi Zalo” để mở bảng chia sẻ; sau đó có thể chọn “Phân tích và lập báo cáo” nếu cần.');
             } catch (err) {
               console.error('FIELD IMAGE EXPORT ERROR:', err);
-              showStampedImageStatus('❌ ' + (err.message || 'Không thể xuất ảnh.'), true);
-            } finally {
-              saveStampedFieldImage.disabled = false;
+              showStampedImageStatus('Không thể tạo ảnh: ' + (err.message || 'Lỗi không xác định.'), true);
+            } finally { saveStampedFieldImage.disabled = false; }
+          });
+        }
+        if (shareStampedFieldImage) {
+          shareStampedFieldImage.addEventListener('click', async function() {
+            const blob = window.stampedFieldImageBlob;
+            if (!blob) { showStampedImageStatus('Trước tiên hãy nhấn “Tạo ảnh đóng dấu”.', true); return; }
+            const file = new File([blob], window.stampedFieldImageName || 'thuy-loi-ai-hien-truong.jpg', { type: 'image/jpeg' });
+            try {
+              if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+                await navigator.share({ files: [file], title: 'Ảnh hiện trường - Thủy Lợi AI', text: 'Ảnh hiện trường đã đóng dấu và gắn bản đồ GIS.' });
+                showStampedImageStatus('Đã mở/chia sẻ ảnh qua bảng chia sẻ của thiết bị. Nếu chọn Zalo, hoàn tất gửi trong Zalo.');
+              } else {
+                downloadStampedImage(blob, window.stampedFieldImageName || 'thuy-loi-ai-hien-truong.jpg');
+                showStampedImageStatus('Trình duyệt chưa hỗ trợ chia sẻ file trực tiếp. Ảnh đã được tải xuống; mở Ảnh/Tệp rồi chia sẻ qua Zalo.');
+              }
+            } catch (err) {
+              if (err && err.name === 'AbortError') showStampedImageStatus('Đã hủy chia sẻ. Ảnh vẫn được giữ để thử lại.');
+              else { console.error(err); showStampedImageStatus('Không mở được bảng chia sẻ. Hãy tải ảnh xuống rồi gửi qua Zalo.', true); }
             }
           });
         }
