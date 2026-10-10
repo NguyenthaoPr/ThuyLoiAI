@@ -6731,7 +6731,7 @@ async def field_report_image(
                   "filename=", getattr(file, "filename", None))
             raise HTTPException(
                 status_code=400,
-                detail="Máy chủ không đọc được định dạng ảnh này. Hãy chọn lại ảnh JPG/PNG hoặc cập nhật giao diện để tự chuyển ảnh sang JPEG."
+                detail="Backend không giải mã được dữ liệu ảnh. Nếu đang dùng iPhone, hãy cập nhật lại frontend và backend cùng phiên bản; ảnh HEIC phải được chuyển thành JPEG trước khi gửi."
             )
         source.thumbnail((3000, 3000), Image.Resampling.LANCZOS)
         width, height = source.size

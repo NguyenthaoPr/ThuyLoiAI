@@ -7129,24 +7129,52 @@ closeMapAi.addEventListener('click', function() {
               // Chuẩn hóa ảnh đầu vào trên trình duyệt để tránh lỗi Pillow
               // với ảnh HEIC/HEIF hoặc MIME không đúng từ camera iPhone.
               // Chỉ tạo bản sao phục vụ đóng dấu; file gốc không bị thay đổi.
-              let uploadFile = originalFile;
-              try {
-                const decoded = await createImageBitmap(originalFile, { imageOrientation: 'from-image' });
-                const maxSide = 3000;
-                const ratio = Math.min(1, maxSide / Math.max(decoded.width, decoded.height));
-                const canvas = document.createElement('canvas');
-                canvas.width = Math.max(1, Math.round(decoded.width * ratio));
-                canvas.height = Math.max(1, Math.round(decoded.height * ratio));
-                const ctx = canvas.getContext('2d', { alpha: false });
-                if (!ctx) throw new Error('Không tạo được vùng xử lý ảnh.');
-                ctx.drawImage(decoded, 0, 0, canvas.width, canvas.height);
-                decoded.close && decoded.close();
-                const normalizedBlob = await new Promise((resolve, reject) => {
-                  canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Không chuyển đổi được ảnh.')), 'image/jpeg', 0.94);
-                });
-                uploadFile = new File([normalizedBlob], 'anh-hien-truong.jpg', { type: 'image/jpeg', lastModified: Date.now() });
-              } catch (normalizeError) {
-                console.warn('Không chuẩn hóa được ảnh trên trình duyệt, thử gửi tệp gốc:', normalizeError);
+              // Luôn chuẩn hóa thành JPEG trước khi gửi. Không gửi HEIC/HEIF hoặc tệp
+              // không giải mã được lên backend vì sẽ gây lỗi "Tệp tải lên không phải ảnh hợp lệ".
+              async function blobToJpeg(blob) {
+                let drawable = null;
+                let width = 0, height = 0, cleanup = () => {};
+                if ('createImageBitmap' in window) {
+                  try {
+                    drawable = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+                    width = drawable.width; height = drawable.height;
+                    cleanup = () => { try { drawable.close && drawable.close(); } catch (_) {} };
+                  } catch (_) { drawable = null; }
+                }
+                if (!drawable) {
+                  const objectUrl = URL.createObjectURL(blob);
+                  try {
+                    const img = new Image();
+                    img.decoding = 'async';
+                    img.src = objectUrl;
+                    await new Promise((resolve, reject) => {
+                      img.onload = resolve;
+                      img.onerror = () => reject(new Error('Trình duyệt không đọc được ảnh này. Hãy mở ảnh trong Ảnh và lưu/xuất thành JPEG rồi chọn lại.'));
+                    });
+                    drawable = img; width = img.naturalWidth; height = img.naturalHeight;
+                    cleanup = () => URL.revokeObjectURL(objectUrl);
+                  } catch (e) { URL.revokeObjectURL(objectUrl); throw e; }
+                }
+                try {
+                  if (!width || !height) throw new Error('Ảnh không có kích thước hợp lệ.');
+                  const maxSide = 3000;
+                  const ratio = Math.min(1, maxSide / Math.max(width, height));
+                  const canvas = document.createElement('canvas');
+                  canvas.width = Math.max(1, Math.round(width * ratio));
+                  canvas.height = Math.max(1, Math.round(height * ratio));
+                  const ctx = canvas.getContext('2d', { alpha: false });
+                  if (!ctx) throw new Error('Không tạo được vùng xử lý ảnh.');
+                  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(drawable, 0, 0, canvas.width, canvas.height);
+                  const jpeg = await new Promise((resolve, reject) => canvas.toBlob(
+                    b => b && b.size > 0 ? resolve(b) : reject(new Error('Không chuyển đổi được ảnh sang JPEG.')),
+                    'image/jpeg', 0.92));
+                  return new File([jpeg], 'anh-hien-truong.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+                } finally { cleanup(); }
+              }
+              const uploadFile = await blobToJpeg(originalFile);
+              if (!uploadFile || uploadFile.type !== 'image/jpeg' || uploadFile.size < 100) {
+                throw new Error('Không thể chuyển ảnh sang JPEG. Hãy chọn ảnh JPG/PNG hoặc lưu ảnh từ iPhone dưới dạng Tương thích nhất.');
               }
               const formData = new FormData();
               formData.append('file', uploadFile, uploadFile.name || 'anh-hien-truong.jpg');
