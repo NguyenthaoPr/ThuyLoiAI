@@ -3568,7 +3568,8 @@
         <div id="fieldReportPreview" class="field-report-preview" hidden></div>
         <div class="field-image-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
           <button id="saveStampedFieldImage" class="field-report-camera" type="button" disabled>🖼️ Tạo ảnh đóng dấu</button>
-          <button id="shareStampedFieldImage" class="field-report-camera" type="button" disabled>📤 Lưu Ảnh / Gửi Zalo</button>
+          <button id="saveToAlbumStampedFieldImage" class="field-report-camera" type="button" disabled>💾 Lưu ảnh</button>
+          <button id="shareStampedFieldImage" class="field-report-camera" type="button" disabled>📤 Gửi Zalo</button>
         </div>
         <div id="stampedImageStatus" class="field-report-status" hidden></div>
         <div id="stampedImagePreview" class="field-report-preview" hidden></div>
@@ -7068,7 +7069,9 @@ closeMapAi.addEventListener('click', function() {
           const imageSaveButton = document.getElementById('saveStampedFieldImage');
           if (imageSaveButton) imageSaveButton.disabled = false;
           const shareImageButton = document.getElementById('shareStampedFieldImage');
+          const albumImageButton = document.getElementById('saveToAlbumStampedFieldImage');
           if (shareImageButton) shareImageButton.disabled = true;
+          if (albumImageButton) albumImageButton.disabled = true;
           window.stampedFieldImageBlob = null;
           fieldReportFile = null;
           fieldReportPreview.hidden = false;
@@ -7103,6 +7106,7 @@ closeMapAi.addEventListener('click', function() {
 
         // Chức năng ảnh độc lập. Tạo ảnh trước; sau đó người dùng chọn tải/lưu/chia sẻ.
         const saveStampedFieldImage = document.getElementById('saveStampedFieldImage');
+        const saveToAlbumStampedFieldImage = document.getElementById('saveToAlbumStampedFieldImage');
         const shareStampedFieldImage = document.getElementById('shareStampedFieldImage');
         const stampedImageStatus = document.getElementById('stampedImageStatus');
         const stampedImagePreview = document.getElementById('stampedImagePreview');
@@ -7200,35 +7204,62 @@ closeMapAi.addEventListener('click', function() {
               window.stampedFieldImageBlob = blob;
               window.stampedFieldImageName = filename;
               if (shareStampedFieldImage) shareStampedFieldImage.disabled = false;
+              if (saveToAlbumStampedFieldImage) saveToAlbumStampedFieldImage.disabled = false;
               if (stampedImagePreview) {
                 const previewUrl = URL.createObjectURL(blob);
                 stampedImagePreview.hidden = false;
-                stampedImagePreview.innerHTML = '<div class="field-report-preview-inner"><img class="thumb" alt="Ảnh hiện trường đã đóng dấu" src="' + previewUrl + '"><div><strong>Ảnh hiện trường đã sẵn sàng</strong><br>JPEG · ' + Math.round(blob.size / 1024) + ' KB<br>Chọn “Lưu Ảnh / Gửi Zalo” để mở bảng chia sẻ của thiết bị.</div></div>';
+                stampedImagePreview.innerHTML = '<div class="field-report-preview-inner"><img class="thumb" alt="Ảnh hiện trường đã đóng dấu" src="' + previewUrl + '"><div><strong>Ảnh hiện trường đã sẵn sàng</strong><br>JPEG · ' + Math.round(blob.size / 1024) + ' KB<br>Dùng riêng nút “Lưu ảnh” hoặc “Gửi Zalo” bên dưới.</div></div>';
               }
               // Tạo ảnh xong không tự khởi chạy báo cáo; người dùng chủ động chọn bước tiếp theo.
-              showStampedImageStatus('Đã tạo ảnh đóng dấu và hiển thị bản xem trước. Nhấn “Lưu Ảnh / Gửi Zalo” để mở bảng chia sẻ; sau đó có thể chọn “Phân tích và lập báo cáo” nếu cần.');
+              showStampedImageStatus('Đã tạo ảnh đóng dấu. Chọn “Lưu ảnh” để lưu vào thư viện Ảnh (trên iPhone chọn “Lưu hình ảnh” trong bảng chia sẻ), hoặc chọn “Gửi Zalo”. Có thể chọn “Phân tích và lập báo cáo” riêng nếu cần.');
             } catch (err) {
               console.error('FIELD IMAGE EXPORT ERROR:', err);
               showStampedImageStatus('Không thể tạo ảnh: ' + (err.message || 'Lỗi không xác định.'), true);
             } finally { saveStampedFieldImage.disabled = false; }
           });
         }
+        // Lưu ảnh là thao tác riêng. Trên iOS, trình duyệt không được phép ghi thẳng
+        // vào thư viện Photos; mở bảng chia sẻ để người dùng chọn “Lưu hình ảnh”.
+        if (saveToAlbumStampedFieldImage) {
+          saveToAlbumStampedFieldImage.addEventListener('click', async function() {
+            const blob = window.stampedFieldImageBlob;
+            if (!blob) { showStampedImageStatus('Trước tiên hãy nhấn “Tạo ảnh đóng dấu”.', true); return; }
+            const filename = window.stampedFieldImageName || 'thuy-loi-ai-hien-truong.jpg';
+            const file = new File([blob], filename, { type: 'image/jpeg' });
+            try {
+              if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+                await navigator.share({ files: [file], title: 'Lưu ảnh hiện trường - Thủy Lợi AI' });
+                showStampedImageStatus('Đã mở bảng chia sẻ. Trên iPhone, chọn “Lưu hình ảnh” để lưu vào album Ảnh.');
+              } else {
+                downloadStampedImage(blob, filename);
+                showStampedImageStatus('Ảnh đã tải xuống. Nếu trình duyệt không lưu thẳng vào album Ảnh, hãy mở ảnh đã tải và chọn lưu vào Ảnh.');
+              }
+            } catch (err) {
+              if (err && err.name === 'AbortError') showStampedImageStatus('Đã đóng bảng lưu ảnh. Ảnh vẫn sẵn sàng để lưu lại.');
+              else { console.error(err); showStampedImageStatus('Không mở được chức năng lưu ảnh. Hãy thử tải ảnh xuống rồi lưu vào album Ảnh.', true); }
+            }
+          });
+        }
+
+        // Gửi Zalo mở bảng chia sẻ của hệ điều hành; người dùng chọn Zalo,
+        // chọn người nhận và tự xác nhận gửi. Trình duyệt không thể tự gửi âm thầm.
         if (shareStampedFieldImage) {
           shareStampedFieldImage.addEventListener('click', async function() {
             const blob = window.stampedFieldImageBlob;
             if (!blob) { showStampedImageStatus('Trước tiên hãy nhấn “Tạo ảnh đóng dấu”.', true); return; }
-            const file = new File([blob], window.stampedFieldImageName || 'thuy-loi-ai-hien-truong.jpg', { type: 'image/jpeg' });
+            const filename = window.stampedFieldImageName || 'thuy-loi-ai-hien-truong.jpg';
+            const file = new File([blob], filename, { type: 'image/jpeg' });
             try {
               if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
                 await navigator.share({ files: [file], title: 'Ảnh hiện trường - Thủy Lợi AI', text: 'Ảnh hiện trường đã đóng dấu và gắn bản đồ GIS.' });
-                showStampedImageStatus('Đã mở/chia sẻ ảnh qua bảng chia sẻ của thiết bị. Nếu chọn Zalo, hoàn tất gửi trong Zalo.');
+                showStampedImageStatus('Đã mở bảng chia sẻ. Chọn Zalo, chọn người nhận và xác nhận gửi trong ứng dụng Zalo.');
               } else {
-                downloadStampedImage(blob, window.stampedFieldImageName || 'thuy-loi-ai-hien-truong.jpg');
-                showStampedImageStatus('Trình duyệt chưa hỗ trợ chia sẻ file trực tiếp. Ảnh đã được tải xuống; mở Ảnh/Tệp rồi chia sẻ qua Zalo.');
+                downloadStampedImage(blob, filename);
+                showStampedImageStatus('Thiết bị chưa hỗ trợ chia sẻ ảnh trực tiếp. Ảnh đã tải xuống; mở Zalo và đính kèm ảnh để gửi.');
               }
             } catch (err) {
               if (err && err.name === 'AbortError') showStampedImageStatus('Đã hủy chia sẻ. Ảnh vẫn được giữ để thử lại.');
-              else { console.error(err); showStampedImageStatus('Không mở được bảng chia sẻ. Hãy tải ảnh xuống rồi gửi qua Zalo.', true); }
+              else { console.error(err); showStampedImageStatus('Không mở được bảng chia sẻ. Hãy lưu ảnh rồi đính kèm trong Zalo.', true); }
             }
           });
         }
