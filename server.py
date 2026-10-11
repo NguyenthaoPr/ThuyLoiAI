@@ -1838,8 +1838,9 @@ CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes
 CACHE_TTL = max(60, int(os.getenv("CACHE_TTL", "3600")))
 CACHE_MAX_ENTRIES = max(100, int(os.getenv("CACHE_MAX_ENTRIES", "1000")))
 # Version hóa cache riêng cho Chatbot để không dùng lại câu trả lời của Router/RAG cũ.
-CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v6-chatbook").strip() or "rag-v6-chatbook"
-CACHE_NAMESPACE = os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION
+CHATBOT_ROUTER_VERSION = os.getenv("CHATBOT_ROUTER_VERSION", "rag-v6-chatbook-expert-answer-v1").strip() or "rag-v6-chatbook-expert-answer-v1"
+# Namespace riêng cho bộ quy tắc trả lời mới để không tái sử dụng câu trả lời cache của phiên bản trước.
+CACHE_NAMESPACE = (os.getenv("CACHE_NAMESPACE", CHATBOT_ROUTER_VERSION).strip() or CHATBOT_ROUTER_VERSION) + ":expert-answer-v1"
 
 _answer_cache = OrderedDict()
 _cache_lock = asyncio.Lock()
@@ -2414,6 +2415,25 @@ def _has_current_time_context(text: str) -> bool:
     ))
 
 
+HYDRAULIC_ANALYSIS_TERMS = (
+    "quan he thuy luc", "duong quan he", "w-z", "q-z", "w z", "q z",
+    "dung tich theo cao trinh", "cao trinh dung tich", "luu luong xa theo muc nuoc",
+    "quan he dung tich", "quan he xa", "tinh duong quan he", "lap duong quan he",
+    "duong dac tinh ho chua", "dac tinh xa lu", "quan he luu luong muc nuoc",
+)
+
+
+def is_hydraulic_analysis_question(question: str) -> bool:
+    """Nhận diện yêu cầu phân tích/tính toán thủy lực để tránh định tuyến nhầm sang PLAN_DATA."""
+    text = _normalize_router_text(question)
+    has_hydraulic_term = any(term in text for term in HYDRAULIC_ANALYSIS_TERMS)
+    has_wz_qz = bool(re.search(r"\b(?:w|q)\s*[-–—/]?\s*z\b", text))
+    has_calculation_verb = any(term in text for term in (
+        "tinh", "tinh toan", "xay dung", "lap", "phan tich", "noi suy", "ngoai suy"
+    ))
+    return has_hydraulic_term or (has_wz_qz and has_calculation_verb)
+
+
 def classify_query_route(question: str) -> dict:
     """Router: DOCUMENT / PLAN_DATA / OPERATIONAL / HYBRID_PLAN_OPERATIONAL / HYBRID."""
     text = _normalize_router_text(question)
@@ -2427,6 +2447,25 @@ def classify_query_route(question: str) -> dict:
     has_current_operation = _has_current_time_context(text)
     has_operation_parameter = bool(parameter_hits)
     has_plan_context = bool(plan_hits)
+    hydraulic_intent = is_hydraulic_analysis_question(question)
+    # Câu hỏi tính toán/đường quan hệ thủy lực không được định tuyến sang PLAN_DATA
+    # chỉ vì cùng nhắc tên hồ hoặc mực nước; ưu tiên nhánh chuyên môn/tài liệu.
+    if hydraulic_intent:
+        route = "document"
+        return {
+            "route": route,
+            "document_score": len(set(document_hits)) + 2,
+            "plan_score": len(set(plan_hits)),
+            "operational_score": len(set(operational_hits)) + len(set(explicit_operational_hits)),
+            "document_hits": document_hits,
+            "plan_hits": plan_hits,
+            "operational_hits": operational_hits,
+            "parameter_hits": parameter_hits,
+            "explicit_operational_hits": explicit_operational_hits,
+            "hydraulic_intent": True,
+            "router_reason": "hydraulic_analysis_priority",
+            "router_version": CHATBOT_ROUTER_VERSION,
+        }
     # Mọi tín hiệu PLAN_DATA đã được chọn đều đủ mạnh để tránh rơi vào
     # DOCUMENT chỉ vì các từ như "thủy sản" hoặc "phục vụ" xuất hiện.
     plan_strong = has_plan_context
@@ -2458,11 +2497,17 @@ def classify_query_route(question: str) -> dict:
         "operational_hits": operational_hits,
         "parameter_hits": parameter_hits,
         "explicit_operational_hits": explicit_operational_hits,
+        "hydraulic_intent": False,
+        "router_reason": "keyword_context_router",
         "router_version": CHATBOT_ROUTER_VERSION,
     }
 
 
 DOCUMENT_QUERY_ALIASES = {
+    "quan he thuy luc": ["duong quan he W-Z", "duong quan he Q-Z", "cao trinh dung tich", "dung tich ho chua theo cao trinh", "quan he luu luong xa va muc nuoc"],
+    "w-z": ["cao trinh Z", "dung tich W", "bang quan he cao trinh dung tich", "duong quan he W-Z"],
+    "q-z": ["luu luong xa Q", "muc nuoc Z", "duong dac tinh xa", "duong quan he Q-Z", "cong thuc xa qua cong/cua van"],
+    "duong quan he": ["bang quan he thuy luc", "duong dac tinh ho chua", "cao trinh muc nuoc", "dung tich", "luu luong xa"],
     "pham vi bao ve": ["hanh lang bao ve", "gioi han bao ve", "khoang cach bao ve"],
     "cong trinh thuy loi": ["ho chua", "dap", "kenh", "tram bom", "cong trinh dau moi"],
     "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su"],
@@ -2488,6 +2533,17 @@ def build_retrieval_query(question: str) -> str:
 def build_document_prompt(question: str, attempt: int = 1) -> str:
     """Tạo chỉ dẫn retrieval ngắn, rõ và có mở rộng truy vấn khi retry."""
     retrieval_query = build_retrieval_query(question)
+    hydraulic_rule = ""
+    if is_hydraulic_analysis_question(question):
+        hydraulic_rule = (
+            "\n\nCHẾ ĐỘ PHÂN TÍCH THỦY LỰC: Đây là yêu cầu kỹ thuật về quan hệ/công thức, "
+            "không phải câu hỏi diện tích kế hoạch. Tra cứu hồ sơ công trình đúng tên trước. "
+            "Tìm bảng/đường quan hệ W-Z, Q-Z, quy trình vận hành, thông số cửa van/cống/tràn, "
+            "cao trình ngưỡng, kích thước, hệ số xả, điều kiện thượng-hạ lưu nếu có. "
+            "Phân biệt dữ liệu có trong hồ sơ với nguyên lý thủy lực tổng quát. "
+            "Nếu chỉ có một mực nước Z thì không được dựng toàn bộ đường quan hệ; nêu công thức/đầu vào còn thiếu. "
+            "Không trả lời bằng diện tích cấp nước, diện tích tưới hoặc số liệu PLAN_DATA trừ khi người dùng hỏi rõ."
+        )
     if attempt <= 1:
         instruction = (
             "ĐÂY LÀ CÂU HỎI ƯU TIÊN TÀI LIỆU. BẮT BUỘC sử dụng Gemini "
@@ -2502,7 +2558,7 @@ def build_document_prompt(question: str, attempt: int = 1) -> str:
             "mở rộng theo từ đồng nghĩa, thuật ngữ chuyên ngành và cách diễn "
             "đạt khác nhau. Không trả lời theo trí nhớ nếu chưa có căn cứ."
         )
-    return f"{instruction}\n\nCÂU HỎI GỐC:\n{question}\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
+    return f"{instruction}{hydraulic_rule}\n\nCÂU HỎI GỐC:\n{question}\n\nTRUY VẤN MỞ RỘNG:\n{retrieval_query}"
 
 
 class DocumentRetrievalRequiredError(RuntimeError):
@@ -2747,6 +2803,47 @@ def is_retryable_error(error: Exception) -> bool:
     retryable = ["408", "409", "429", "500", "502", "503", "504", "rate limit", "resource exhausted", "unavailable", "timeout", "deadline", "temporarily", "internal", "connection", "reset", "server error"]
     return any(x in text for x in retryable)
 
+CHATBOOK_EXPERT_ANSWER_PROTOCOL = r"""
+CHATBOOK — QUY TRÌNH TRẢ LỜI CHUYÊN GIA, CÓ KIỂM CHỨNG
+
+1. XÁC ĐỊNH ĐÚNG NHIỆM VỤ
+- Trước khi trả lời, xác định người dùng đang hỏi định nghĩa, quy định, tra cứu số liệu, so sánh, tính toán, chẩn đoán kỹ thuật hay đề xuất phương án.
+- Trả lời trực tiếp đúng yêu cầu chính. Không thay câu hỏi tính toán bằng một thông tin khác chỉ vì thông tin đó có trong dữ liệu.
+- Giữ đúng đối tượng, công trình, thông số, thời điểm, đơn vị và phạm vi người dùng nêu.
+
+2. PHÂN TẦNG CĂN CỨ
+- [HỒ SƠ]: nội dung thực sự tìm được trong Gemini File Search; nêu tên tài liệu/điều khoản/trang nếu metadata có.
+- [DỮ LIỆU ĐẦU VÀO]: số liệu do người dùng cung cấp hoặc dữ liệu có cấu trúc được trả về.
+- [TÍNH TOÁN]: phép tính có công thức, thay số, đơn vị và kết quả.
+- [NHẬN ĐỊNH KỸ THUẬT]: kết luận suy ra từ căn cứ; nêu giả thiết và giới hạn.
+Không gán cho hồ sơ điều gì mà kết quả truy xuất không chứng minh.
+
+3. QUY TẮC TÍNH TOÁN KỸ THUẬT
+- Trước khi tính, liệt kê dữ liệu đã biết, dữ liệu còn thiếu, công thức/mô hình cần dùng và đơn vị.
+- Kiểm tra tính nhất quán thứ nguyên, điều kiện áp dụng, phạm vi hiệu lực và tính hợp lý của kết quả.
+- Không tạo ra hệ số, đường quan hệ, thông số công trình hoặc số liệu trung gian không có căn cứ.
+- Nếu dữ liệu chưa đủ, vẫn giải thích phương pháp và chỉ rõ chính xác bảng số liệu/thông số cần bổ sung; không giả vờ đã tính xong.
+
+4. RIÊNG VỚI HỒ CHỨA VÀ QUAN HỆ THỦY LỰC
+- W–Z là quan hệ dung tích W với cao trình mực nước Z; muốn lập/tính chính xác cần bảng hoặc đường quan hệ W–Z của đúng hồ, hoặc dữ liệu địa hình/dung tích đã được kiểm chứng.
+- Q–Z không có một công thức chung áp dụng cho mọi hồ. Cần xác định loại công trình xả/cửa van, kích thước và cao trình, trạng thái vận hành, mực nước thượng/hạ lưu và chế độ chảy; ưu tiên đường quan hệ Q–Z được phê duyệt nếu có.
+- Một giá trị Z đơn lẻ (ví dụ Z = 23,00 m) không đủ để suy ra toàn bộ đường W–Z hay Q–Z. Không tự nội suy/ngoại suy nếu chưa có các điểm dữ liệu hoặc mô hình hợp lệ.
+- Phải phân biệt “giải thích nguyên lý”, “tính một điểm từ dữ liệu đủ”, và “lập đường quan hệ”. Không đánh tráo các nhiệm vụ này.
+
+5. TỰ KIỂM TRA TRƯỚC KHI GỬI
+- Câu trả lời có trả lời đúng động từ yêu cầu (tính, giải thích, so sánh, tra cứu) không?
+- Có đúng công trình/thông số/thời điểm không?
+- Mọi con số có nguồn hoặc phép tính truy vết được không?
+- Có mâu thuẫn giữa kết luận và căn cứ không?
+- Nếu thiếu dữ liệu, đã nêu rõ phần nào chắc chắn, phần nào chưa thể kết luận và cần bổ sung gì chưa?
+Nếu câu trả lời đang lạc đề, hãy sửa lại trước khi gửi.
+
+6. CẤU TRÚC ĐẦU RA
+Ưu tiên: (a) Kết luận trực tiếp; (b) Căn cứ/dữ liệu; (c) Phân tích hoặc phép tính; (d) Giới hạn/độ tin cậy; (e) Dữ liệu cần bổ sung hoặc bước tiếp theo.
+Không phô trương độ chắc chắn. Chính xác, sắc sảo, có thể kiểm tra lại quan trọng hơn câu trả lời dài.
+"""
+
+
 def call_gemini(question: str, route: str = "document", attempt: int = 1):
     require_gemini()
 
@@ -2764,6 +2861,10 @@ def call_gemini(question: str, route: str = "document", attempt: int = 1):
     else:
         prompt = question
         system_instruction = SYSTEM_PROMPT
+
+    # Lớp kiểm soát chất lượng trả lời: bổ sung vào chỉ dẫn hiện có, không thay thế SYSTEM_PROMPT.
+    # Mục tiêu: bám sát ý định câu hỏi, phân biệt dữ kiện/căn cứ/suy luận và không trả lời lạc đề.
+    system_instruction += "\n\n" + CHATBOOK_EXPERT_ANSWER_PROTOCOL
 
     return gemini_client.interactions.create(
         model=GEMINI_MODEL,
