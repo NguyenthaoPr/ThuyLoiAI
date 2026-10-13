@@ -3764,7 +3764,7 @@
 
       // Backend GIS chạy trên Render. Có thể ghi đè bằng window.THULYLOI_GIS_API nếu sau này đổi server.
       const GIS_API_BASE = String(
-        window.THULYLOI_GIS_API || 'https://thuyloiai.onrender.com'
+        window.THULYLOI_GIS_API || 'https://ban-do-thuy-loi.thaotltb.workers.dev'
       ).replace(/\/$/, '');
       const GIS_DATA_URL = GIS_API_BASE + '/gis/data';
       // Endpoint ảnh hiện trường mới, tách biệt với luồng lập báo cáo PDF hiện có.
@@ -3775,7 +3775,7 @@
       // Technical Module chạy độc lập trên Vercel.
       // Chỉ dùng cho API quan trắc thực tế; không thay đổi GIS API trên Render.
       const TL_TECHNICAL_API_BASE = String(
-        window.THULYLOI_TECHNICAL_API || 'https://thuyloiai-technical-vercel.vercel.app'
+        window.THULYLOI_TECHNICAL_API || 'https://cap-nhat-dl-test.vercel.app'
       ).replace(/\/$/, '');
 
       window.preparedImageBlob = null;
