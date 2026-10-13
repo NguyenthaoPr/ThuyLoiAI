@@ -6992,20 +6992,9 @@ if (description) {
       // =========================================================
       // 15. SỰ KIỆN MỞ/ĐÓNG BẢN ĐỒ, FIELD REPORT (giữ nguyên)
       // =========================================================
-      mapAiBtn.addEventListener('click', async function() {
-    mapAiPanel.classList.remove('hidden');
-
-    // Khóa cuộn giao diện Chat AI khi mở Bản đồ AI
-    document.body.style.overflow = 'hidden';
-
-    await initAiMap();
-
-    // Tự động đưa con trỏ vào ô tìm kiếm
-    if (mapSearch) {
-        setTimeout(function() {
-            mapSearch.focus();
-        }, 500);
-    }
+      mapAiBtn.addEventListener('click', function() {
+    // Mở ứng dụng Bản đồ Thủy lợi độc lập
+    window.location.href = 'https://ban-do-thuy-loi.thaotltb.workers.dev';
 });
 
 closeMapAi.addEventListener('click', function() {
