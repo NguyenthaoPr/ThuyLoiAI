@@ -1858,7 +1858,7 @@ Bạn là THỦY LỢI AI, trợ lý chuyên ngành Thủy lợi của
 Chi nhánh Thủy lợi Vu Gia - Thu Bồn.
 
 MỤC TIÊU:
-Trả lời chính xác, ngắn gọn, có căn cứ dựa trên:
+Trả lời chính xác, đầy đủ, chi tiết và có căn cứ dựa trên:
 - Hồ sơ, tài liệu, quy định, quy trình trong kho THỦY LỢI AI.
 - Dữ liệu được cung cấp trong câu hỏi.
 - Hình ảnh do người dùng gửi.
@@ -2420,6 +2420,11 @@ HYDRAULIC_ANALYSIS_TERMS = (
     "dung tich theo cao trinh", "cao trinh dung tich", "luu luong xa theo muc nuoc",
     "quan he dung tich", "quan he xa", "tinh duong quan he", "lap duong quan he",
     "duong dac tinh ho chua", "dac tinh xa lu", "quan he luu luong muc nuoc",
+    # Các cách hỏi tự nhiên về cân bằng nước hồ chứa và lưu lượng đến.
+    "luong nuoc den", "nuoc den ho", "luu luong den", "can bang nuoc",
+    "muc nuoc tang", "muc nuoc ha", "tinh luong nuoc", "luong nuoc vao ho",
+    "qua tran", "luu luong tran", "xa tran", "mndbt", "muc nuoc dang binh thuong",
+    "luu luong xa", "luu luong qua cong",
 )
 
 
@@ -2504,6 +2509,34 @@ def classify_query_route(question: str) -> dict:
 
 
 DOCUMENT_QUERY_ALIASES = {
+    "thach ban": [
+        "hồ chứa nước Thạch Bàn", "thông số kỹ thuật hồ Thạch Bàn",
+        "MNDBT hồ Thạch Bàn", "quan hệ mực nước dung tích W-Z",
+        "quan hệ mực nước lưu lượng tràn Q-Z", "bảng quan hệ lưu lượng qua tràn",
+        "quan hệ mực nước độ mở cống lưu lượng qua cống",
+        "quy trình vận hành điều tiết hồ Thạch Bàn", "cân bằng nước hồ chứa",
+    ],
+    "luong nuoc den": [
+        "cân bằng nước hồ chứa", "dung tích đầu kỳ cuối kỳ",
+        "lưu lượng qua tràn", "lưu lượng qua cống", "lượng nước lấy",
+        "lưu lượng đến trung bình", "tổn thất và bốc hơi hồ chứa",
+    ],
+    "nuoc den ho": [
+        "cân bằng nước hồ chứa", "quan hệ W-Z", "lưu lượng xả tràn",
+        "lưu lượng qua cống", "lưu lượng đến trung bình",
+    ],
+    "qua tran": [
+        "cao trình ngưỡng tràn", "quan hệ Q-Z tràn", "lưu lượng qua tràn",
+        "chế độ cửa van", "mực nước thượng lưu hạ lưu",
+    ],
+    "mndbt": [
+        "mực nước dâng bình thường", "cao trình ngưỡng tràn",
+        "điều kiện xả tràn", "quan hệ lưu lượng tràn Q-Z",
+    ],
+    "can bang nuoc": [
+        "dung tích đầu kỳ cuối kỳ", "lưu lượng đến", "lưu lượng qua tràn",
+        "lưu lượng qua cống", "lượng nước lấy", "tổn thất hồ chứa",
+    ],
     "quan he thuy luc": ["duong quan he W-Z", "duong quan he Q-Z", "cao trinh dung tich", "dung tich ho chua theo cao trinh", "quan he luu luong xa va muc nuoc"],
     "w-z": ["cao trinh Z", "dung tich W", "bang quan he cao trinh dung tich", "duong quan he W-Z"],
     "q-z": ["luu luong xa Q", "muc nuoc Z", "duong dac tinh xa", "duong quan he Q-Z", "cong thuc xa qua cong/cua van"],
@@ -2536,12 +2569,18 @@ def build_document_prompt(question: str, attempt: int = 1) -> str:
     hydraulic_rule = ""
     if is_hydraulic_analysis_question(question):
         hydraulic_rule = (
-            "\n\nCHẾ ĐỘ PHÂN TÍCH THỦY LỰC: Đây là yêu cầu kỹ thuật về quan hệ/công thức, "
-            "không phải câu hỏi diện tích kế hoạch. Tra cứu hồ sơ công trình đúng tên trước. "
-            "Tìm bảng/đường quan hệ W-Z, Q-Z, quy trình vận hành, thông số cửa van/cống/tràn, "
-            "cao trình ngưỡng, kích thước, hệ số xả, điều kiện thượng-hạ lưu nếu có. "
-            "Phân biệt dữ liệu có trong hồ sơ với nguyên lý thủy lực tổng quát. "
-            "Nếu chỉ có một mực nước Z thì không được dựng toàn bộ đường quan hệ; nêu công thức/đầu vào còn thiếu. "
+            "\n\nCHẾ ĐỘ TRUY CỨU VÀ PHÂN TÍCH KỸ THUẬT: Đây là câu hỏi kỹ thuật; "
+            "không được chỉ tìm một bảng đơn lẻ rồi kết luận. Trước khi tính, phải truy cứu "
+            "các tài liệu liên quan của đúng công trình: thông số kỹ thuật; MNDBT/MNC/MNLTK "
+            "nếu có; bảng W-Z; bảng Q-Z hoặc quan hệ mực nước-lưu lượng tràn; quan hệ độ mở-cống-lưu lượng; "
+            "quy trình vận hành; cao trình ngưỡng tràn; trạng thái cửa van; và số liệu vận hành liên quan. "
+            "Với câu hỏi tính lượng nước đến hồ, phải kiểm tra điều kiện mực nước so với MNDBT và khả năng "
+            "xả qua tràn/cống, sau đó áp dụng cân bằng nước; không mặc định lưu lượng xả bằng 0. "
+            "Nếu kho có các tài liệu liên quan, phải tìm bằng tên công trình, tên bảng, ký hiệu thông số "
+            "và từ đồng nghĩa trước khi kết luận thiếu dữ liệu. Phân biệt rõ dữ liệu tìm thấy, dữ liệu đầu vào, "
+            "phép tính và nhận định kỹ thuật. Không tạo số liệu hoặc lưu lượng tràn nếu chưa có căn cứ. "
+            "Trả lời đầy đủ, chi tiết: nêu nguồn, thông số, công thức, thay số, đơn vị, kết quả, giả thiết, "
+            "giới hạn và dữ liệu còn thiếu; không tự ý tóm tắt hoặc cắt gọn. "
             "Không trả lời bằng diện tích cấp nước, diện tích tưới hoặc số liệu PLAN_DATA trừ khi người dùng hỏi rõ."
         )
     if attempt <= 1:
@@ -2840,7 +2879,7 @@ Nếu câu trả lời đang lạc đề, hãy sửa lại trước khi gửi.
 
 6. CẤU TRÚC ĐẦU RA
 Ưu tiên: (a) Kết luận trực tiếp; (b) Căn cứ/dữ liệu; (c) Phân tích hoặc phép tính; (d) Giới hạn/độ tin cậy; (e) Dữ liệu cần bổ sung hoặc bước tiếp theo.
-Không phô trương độ chắc chắn. Chính xác, sắc sảo, có thể kiểm tra lại quan trọng hơn câu trả lời dài.
+- Không phô trương độ chắc chắn. Phải trình bày đầy đủ các căn cứ và bước suy luận liên quan; không tự ý rút gọn hoặc tóm tắt khi người dùng chưa yêu cầu. Có thể dùng tiêu đề, bảng và công thức để nội dung dài vẫn dễ kiểm tra.
 """
 
 
