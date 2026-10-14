@@ -2518,11 +2518,14 @@ DOCUMENT_QUERY_ALIASES = {
     ],
     "luong nuoc den": [
         "cân bằng nước hồ chứa", "dung tích đầu kỳ cuối kỳ",
-        "lưu lượng qua tràn", "lưu lượng qua cống", "lượng nước lấy",
-        "lưu lượng đến trung bình", "tổn thất và bốc hơi hồ chứa",
+        "bảng quan hệ mực nước dung tích W-Z", "bảng quan hệ mực nước lưu lượng tràn Q-Z",
+        "lưu lượng qua tràn tại mực nước đầu kỳ", "lưu lượng qua tràn tại mực nước cuối kỳ",
+        "lưu lượng qua cống", "lượng nước lấy", "lưu lượng đến trung bình",
+        "tổn thất và bốc hơi hồ chứa",
     ],
     "nuoc den ho": [
-        "cân bằng nước hồ chứa", "quan hệ W-Z", "lưu lượng xả tràn",
+        "cân bằng nước hồ chứa", "quan hệ W-Z", "bảng quan hệ Q-Z tràn tự do",
+        "lưu lượng xả tràn ở cả mực nước đầu kỳ và cuối kỳ",
         "lưu lượng qua cống", "lưu lượng đến trung bình",
     ],
     "qua tran": [
@@ -2551,13 +2554,29 @@ DOCUMENT_QUERY_ALIASES = {
 
 
 def build_retrieval_query(question: str) -> str:
-    """Mở rộng truy vấn nhẹ, giữ nguyên câu hỏi gốc và thêm thuật ngữ đồng nghĩa."""
+    """Mở rộng truy vấn nhẹ, giữ nguyên câu hỏi gốc và ưu tiên đúng dữ liệu cần tính."""
     normalized = _normalize_router_text(question)
     aliases = []
+    # Với bài toán lượng nước đến/cân bằng nước, ưu tiên cả W-Z và Q-Z
+    # trước các từ khóa chung của công trình để tránh truy vấn bị cắt mất Q đầu kỳ.
+    water_balance_intent = any(term in normalized for term in (
+        "luong nuoc den", "nuoc den ho", "luu luong den", "luong nuoc vao ho",
+        "can bang nuoc", "muc nuoc tang",
+    ))
+    if water_balance_intent:
+        aliases.extend([
+            "bảng quan hệ mực nước dung tích W-Z của đúng hồ",
+            "bảng quan hệ mực nước lưu lượng tràn Q-Z của đúng hồ",
+            "lưu lượng tràn tại mực nước đầu kỳ và cuối kỳ",
+            "cao trình ngưỡng tràn và chế độ tràn tự do",
+            "lưu lượng qua cống hoặc các dòng xả khác",
+            "tổn thất bốc hơi và thấm nếu có dữ liệu",
+            "công thức cân bằng nước hồ chứa",
+        ])
     for key, values in DOCUMENT_QUERY_ALIASES.items():
         if key in normalized:
             aliases.extend(values)
-    aliases = list(dict.fromkeys(aliases))[:8]
+    aliases = list(dict.fromkeys(aliases))[:12]
     if not aliases:
         return question
     return f"{question}\n\nThuật ngữ liên quan để tra cứu hồ sơ: {', '.join(aliases)}"
@@ -2574,8 +2593,15 @@ def build_document_prompt(question: str, attempt: int = 1) -> str:
             "các tài liệu liên quan của đúng công trình: thông số kỹ thuật; MNDBT/MNC/MNLTK "
             "nếu có; bảng W-Z; bảng Q-Z hoặc quan hệ mực nước-lưu lượng tràn; quan hệ độ mở-cống-lưu lượng; "
             "quy trình vận hành; cao trình ngưỡng tràn; trạng thái cửa van; và số liệu vận hành liên quan. "
-            "Với câu hỏi tính lượng nước đến hồ, phải kiểm tra điều kiện mực nước so với MNDBT và khả năng "
-            "xả qua tràn/cống, sau đó áp dụng cân bằng nước; không mặc định lưu lượng xả bằng 0. "
+            "Với câu hỏi tính lượng nước đến hồ trong một khoảng thời gian, bắt buộc giải bài toán chứ không chỉ nêu phương pháp hoặc chỉ tính chênh lệch dung tích. "
+            "Trước hết lấy V đầu kỳ và V cuối kỳ từ bảng W-Z, rồi tính ΔV = Vcuối - Vđầu. "
+            "Kiểm tra cao trình ngưỡng tràn và loại tràn của đúng hồ. Với tràn tự do, nếu mực nước đầu/cuối kỳ vượt ngưỡng tràn thì phải xem xét dòng chảy qua tràn trong khoảng thời gian đó; không được mặc định Qtràn = 0 chỉ vì người dùng chưa nêu trạng thái cửa. "
+            "Bắt buộc tra cứu Qtràn tại CẢ mực nước đầu kỳ và cuối kỳ từ bảng Q-Z; không chỉ lấy Q ở mực nước cuối kỳ. "
+            "Nếu chỉ có Q đầu kỳ và Q cuối kỳ và không có chuỗi mực nước theo thời gian, ước tính thể tích qua tràn bằng phương pháp hình thang: Vtràn ≈ (Qđầu + Qcuối)/2 × Δt, đổi Δt sang giây; ghi rõ đây là ước tính theo giả định Q biến đổi tuyến tính, không phải kết quả chính xác nếu chưa có diễn biến mực nước theo thời gian. "
+            "Nếu có chuỗi mực nước theo thời gian, tra/interpolate Q-Z tại từng thời điểm rồi tích phân số theo thời gian. "
+            "Tính lượng nước đến theo cân bằng: Vđến = ΔV + Vtràn + Vcống + Vcác dòng nước ra khác + Vtổn_thất, với quy ước cộng các dòng nước ra/tổn thất vào lượng nước đến; chỉ cộng thành phần có căn cứ dữ liệu, không tự bịa. Nếu dữ liệu dòng xả qua cống, bốc hơi hoặc thấm không có, nêu rõ kết quả là phần xác định được/chưa bao gồm các thành phần đó. "
+            "Tính thêm lưu lượng đến trung bình Qđến,tb = Vđến/Δt nếu phù hợp câu hỏi. Trả lời bằng con số kết quả trực tiếp, công thức, thay số, đơn vị và mức độ chính xác; không dừng ở việc yêu cầu người dùng bổ sung dữ liệu nếu hồ sơ đã có các bảng cần thiết. "
+            "Nếu bảng Q-Z chỉ tìm thấy một đầu mút, phải tìm lại bằng tên tệp, cao trình chính xác và bước bảng; không được giả định Q không đổi suốt kỳ để thay thế khi chưa nói rõ giả định. "
             "Nếu kho có các tài liệu liên quan, phải tìm bằng tên công trình, tên bảng, ký hiệu thông số "
             "và từ đồng nghĩa trước khi kết luận thiếu dữ liệu. Phân biệt rõ dữ liệu tìm thấy, dữ liệu đầu vào, "
             "phép tính và nhận định kỹ thuật. Không tạo số liệu hoặc lưu lượng tràn nếu chưa có căn cứ. "
