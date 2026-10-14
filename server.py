@@ -2733,8 +2733,19 @@ async def set_cached_answer(question: str, answer: str, sources=None, route: str
     if not CACHE_ENABLED:
         return
     normalized = normalize_question(question)
-    key = f"{route}:{normalized}"
-    if not normalized or not answer:
+    key = f"{CACHE_NAMESPACE}:{route}:{normalized}"
+    if not normalized or not answer or not str(answer).strip():
+        return
+    # Do not persist obvious retrieval failures as authoritative answers.
+    answer_lower = str(answer).casefold()
+    failure_markers = (
+        "không lấy được kết quả truy xuất",
+        "không thể truy xuất dữ liệu",
+        "lỗi truy xuất",
+        "retrieval failed",
+        "no retrieved context",
+    )
+    if any(marker in answer_lower for marker in failure_markers):
         return
     async with _cache_lock:
         _answer_cache[key] = {
@@ -3079,16 +3090,105 @@ async def _gemini_once(question: str, route: str = "document", attempt: int = 1)
         request_semaphore.release()
 
 
+def build_hydraulic_retrieval_tasks(question: str) -> list[str]:
+    """Tạo các truy vấn truy xuất chuyên biệt, dùng chung cho mọi công trình/cao trình.
+
+    Không chứa tên hồ, tên tệp hay giá trị cao trình cố định. Khi có cặp cao trình,
+    yêu cầu lấy cả các hàng kề để xử lý trường hợp cao trình không trùng bước bảng.
+    """
+    structure = _extract_structure_name(question) or "công trình được nêu trong câu hỏi"
+    pair = _extract_level_pair(question)
+    levels = "các cao trình đầu kỳ và cuối kỳ được nêu trong câu hỏi"
+    if pair:
+        z1, z2 = pair
+        def fmt(v):
+            return ("{:.6f}".format(v)).rstrip("0").rstrip(".")
+        levels = f"Z đầu kỳ={fmt(z1)} m và Z cuối kỳ={fmt(z2)} m"
+    common = (
+        f"Công trình: {structure}. Câu hỏi gốc: {question}. "
+        f"Cần tra cứu dữ liệu cho {levels}."
+    )
+    return [
+        common + (
+            " CHỈ tập trung vào bảng quan hệ cao trình Z với dung tích W/V (W-Z, Z-W, Z-V, Z-V-Z). "
+            "Trích chính xác tên tệp, tiêu đề cột, hàng số liệu và đơn vị cho các cao trình yêu cầu. "
+            "Nếu cao trình không có hàng chính xác, trả về hai hàng bao quanh gần nhất để nội suy; "
+            "không tự ước đoán giá trị và không kết luận bảng thiếu khi chưa tìm các biến thể tên/cột. "
+            "Trả dữ liệu có cấu trúc: tên_tệp; cột_Z; cột_W/V; các_hàng_nguồn."
+        ),
+        common + (
+            " CHỈ tập trung vào bảng quan hệ mực nước Z với lưu lượng Q qua tràn/cống (Q-Z, Z-Q). "
+            "Trích chính xác tên tệp, tiêu đề cột, hàng số liệu và đơn vị cho các cao trình yêu cầu. "
+            "Nếu cao trình không có hàng chính xác, trả về hai hàng bao quanh gần nhất để nội suy; "
+            "nếu câu hỏi tính lượng nước đến hồ và khoảng thời gian có dòng qua tràn, cần Q ở cả đầu kỳ/cuối kỳ. "
+            "Không suy ra Q bằng 0 chỉ vì kết quả truy vấn không hiện hàng. Trả dữ liệu có cấu trúc: "
+            "tên_tệp; cột_Z; cột_Q; các_hàng_nguồn."
+        ),
+        common + (
+            " CHỈ tra cứu quy trình vận hành và thông số của đúng công trình: cao trình ngưỡng tràn, loại tràn, "
+            "cống lấy/xả nước, quy tắc vận hành, các dòng ra và tổn thất có được hồ sơ quy định. "
+            "Nêu đúng tài liệu và căn cứ; phân biệt thông số thiết kế với trạng thái vận hành thực tế. "
+            "Không tự giả định cửa cống đóng hoặc tổn thất bằng 0."
+        ),
+    ]
+
+
+async def ask_hydraulic_with_multisearch(question: str, attempt: int = 1) -> tuple[str, list]:
+    """Truy xuất đa lượt W-Z, Q-Z và quy trình trước khi tổng hợp bài toán thủy lực.
+
+    Đây là lớp dùng chung, chỉ kích hoạt với câu hỏi thủy lực; không đổi API hay router.
+    """
+    tasks = build_hydraulic_retrieval_tasks(question)
+    evidence = []
+    all_sources = []
+    for idx, task in enumerate(tasks, 1):
+        try:
+            answer, sources = await _gemini_once(task, route="document", attempt=1)
+            evidence.append(f"[LƯỢT TRUY XUẤT {idx}]\n{answer}")
+            for src in sources or []:
+                if src not in all_sources:
+                    all_sources.append(src)
+        except Exception as exc:
+            # Một lượt truy xuất lỗi không làm mất các dữ liệu lấy được ở lượt khác.
+            print(f"HYDRAULIC MULTI-SEARCH ERROR task={idx}: {exc!r}")
+            evidence.append(f"[LƯỢT TRUY XUẤT {idx}] Không lấy được kết quả: {type(exc).__name__}: {exc}")
+
+    evidence_text = "\n\n".join(evidence)
+    synthesis_prompt = (
+        "GIẢI BÀI TOÁN THỦY LỰC TỪ CÁC KẾT QUẢ TRUY XUẤT BÊN DƯỚI.\n"
+        "Câu hỏi gốc phải được trả lời trực tiếp bằng số liệu và phép tính, không chỉ mô tả phương pháp.\n"
+        "Không được khẳng định kho hồ sơ thiếu W-Z/Q-Z chỉ vì một lượt truy xuất không trả về hàng; "
+        "đối chiếu cả ba lượt, tận dụng mọi giá trị có căn cứ. Nếu cao trình không trùng bước bảng, nội suy tuyến tính "
+        "giữa hai hàng kề và ghi rõ. Tính ΔV = Wcuối − Wđầu. Với tràn, dùng chuỗi Q(t) nếu có; nếu chỉ có Q đầu/cuối, "
+        "ước tính Vtràn bằng trung bình hình thang nhân số giây và nêu giả định tuyến tính. Cộng các dòng ra/tổn thất "
+        "chỉ khi có căn cứ; phần không xác định phải tách riêng, không tự đặt bằng 0. Không lấy riêng Q cuối kỳ nhân 24 giờ.\n"
+        "Nếu kết quả truy xuất có các hàng số liệu thì phải sử dụng chúng. Nếu một truy xuất thất bại nhưng các bảng đã "
+        "được tìm thấy ở lượt khác, không được yêu cầu người dùng cung cấp lại bảng. Nếu không có giá trị Q hoặc W sau "
+        "cả ba lượt, hãy nêu chính xác trường dữ liệu nào không truy xuất được, không tuyên bố tài liệu không tồn tại.\n"
+        "Trình bày: kết luận; bảng dữ liệu/nguồn; công thức và thay số; tổng lượng nước đến (hoặc phần xác định được); "
+        "lưu lượng đến trung bình nếu phù hợp; giả định và giới hạn.\n\n"
+        f"CÂU HỎI GỐC:\n{question}\n\nKẾT QUẢ TRUY XUẤT ĐÃ THỰC HIỆN:\n{evidence_text}"
+    )
+    answer, sources = await _gemini_once(synthesis_prompt, route="document", attempt=2)
+    for src in sources or []:
+        if src not in all_sources:
+            all_sources.append(src)
+    return answer, all_sources
+
+
 async def ask_gemini_with_retry(question: str, route: str = "document"):
     last_error = None
     for attempt in range(MAX_RETRIES):
         started = time.monotonic()
         try:
-            answer, sources = await _gemini_once(
-                question,
-                route=route,
-                attempt=attempt + 1,
-            )
+            if route in {"document", "hybrid"} and is_hydraulic_analysis_question(question):
+                answer, sources = await ask_hydraulic_with_multisearch(question, attempt=attempt + 1)
+            else:
+                answer, sources = await _gemini_once(
+                    question,
+                    route=route,
+                    attempt=attempt + 1,
+                )
 
             elapsed = time.monotonic() - started
             print(
