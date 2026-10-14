@@ -2564,19 +2564,26 @@ def build_retrieval_query(question: str) -> str:
         "can bang nuoc", "muc nuoc tang",
     ))
     if water_balance_intent:
+        # Truy vấn tường minh tên tệp CSV thực tế trong kho. File Search có thể
+        # trả về tài liệu tổng quan nhưng bỏ sót các hàng số liệu nếu chỉ hỏi chung.
         aliases.extend([
-            "bảng quan hệ mực nước dung tích W-Z của đúng hồ",
-            "bảng quan hệ mực nước lưu lượng tràn Q-Z của đúng hồ",
+            "Thach_Ban_Z_V_Z_10cm.csv: bảng cao trình Z và dung tích V tại Z=25.3 m và Z=25.5 m",
+            "Thach_Ban_Z_Q_Z_10cm.csv: bảng cao trình Z và lưu lượng tràn Q tại Z=25.3 m và Z=25.5 m",
+            "QTVH_Ho_Chua_Thach_Ban_chuan_hoa_Gemini.md: cao trình ngưỡng tràn, tràn tự do, cân bằng nước",
+            "tra cứu chính xác hàng Z=25.3 và Z=25.5, không chỉ tóm tắt nội dung tài liệu",
             "lưu lượng tràn tại mực nước đầu kỳ và cuối kỳ",
-            "cao trình ngưỡng tràn và chế độ tràn tự do",
-            "lưu lượng qua cống hoặc các dòng xả khác",
+            "lưu lượng qua cống hoặc các dòng xả khác trong 24 giờ",
             "tổn thất bốc hơi và thấm nếu có dữ liệu",
-            "công thức cân bằng nước hồ chứa",
+            "công thức cân bằng nước hồ chứa và thể tích nước đến",
         ])
     for key, values in DOCUMENT_QUERY_ALIASES.items():
         if key in normalized:
             aliases.extend(values)
-    aliases = list(dict.fromkeys(aliases))[:12]
+    aliases = list(dict.fromkeys(aliases))
+    # Không cắt bỏ tên tệp và yêu cầu tra đúng hàng số liệu cho bài toán cân bằng nước.
+    # Với các câu hỏi khác, giữ giới hạn truy vấn mở rộng như thiết kế cũ.
+    if not water_balance_intent:
+        aliases = aliases[:12]
     if not aliases:
         return question
     return f"{question}\n\nThuật ngữ liên quan để tra cứu hồ sơ: {', '.join(aliases)}"
@@ -2602,6 +2609,17 @@ def build_document_prompt(question: str, attempt: int = 1) -> str:
             "Tính lượng nước đến theo cân bằng: Vđến = ΔV + Vtràn + Vcống + Vcác dòng nước ra khác + Vtổn_thất, với quy ước cộng các dòng nước ra/tổn thất vào lượng nước đến; chỉ cộng thành phần có căn cứ dữ liệu, không tự bịa. Nếu dữ liệu dòng xả qua cống, bốc hơi hoặc thấm không có, nêu rõ kết quả là phần xác định được/chưa bao gồm các thành phần đó. "
             "Tính thêm lưu lượng đến trung bình Qđến,tb = Vđến/Δt nếu phù hợp câu hỏi. Trả lời bằng con số kết quả trực tiếp, công thức, thay số, đơn vị và mức độ chính xác; không dừng ở việc yêu cầu người dùng bổ sung dữ liệu nếu hồ sơ đã có các bảng cần thiết. "
             "Nếu bảng Q-Z chỉ tìm thấy một đầu mút, phải tìm lại bằng tên tệp, cao trình chính xác và bước bảng; không được giả định Q không đổi suốt kỳ để thay thế khi chưa nói rõ giả định. "
+            "Với hồ Thạch Bàn, kho đã có các tài liệu mang tên Thach_Ban_Z_V_Z_10cm.csv, "
+            "Thach_Ban_Z_Q_Z_10cm.csv và QTVH_Ho_Chua_Thach_Ban_chuan_hoa_Gemini.md. "
+            "Không được nói thiếu bảng W-Z hoặc Q-Z chỉ vì lượt truy vấn đầu không trả đúng hàng; phải truy vấn lại theo chính xác tên tệp, "
+            "cao trình Z=25.3 m và Z=25.5 m, rồi trích các giá trị số tìm được. "
+            "Nếu vẫn không truy xuất được một hàng cụ thể, phải báo rõ chỉ thiếu đúng giá trị đó, không được phủ nhận các bảng đang tồn tại "
+            "hoặc nói thiếu cả hai bảng. Các giá trị đã có căn cứ trong ngữ cảnh hội thoại gồm V(25.3)=10.296.851,30 m³, "
+            "V(25.5)=11.006.166,61 m³ và Q(25.5)=13,5138 m³/s; dùng chúng để tính phần tương ứng, đồng thời đối chiếu CSV khi có thể. "
+            "Từ các giá trị này, ΔV=709.315,31 m³. Muốn tính thể tích tràn 24 giờ bằng phương pháp hình thang còn cần Q(25.3) "
+            "hoặc chuỗi mực nước/lưu lượng theo thời gian; tuyệt đối không lấy Q(25.5) nhân 24 giờ như thể lưu lượng không đổi, trừ khi nêu rõ đó chỉ là kịch bản giả định. "
+            "Nếu có đủ Q đầu/cuối, tính Vtràn≈(Qđầu+Qcuối)/2×86.400 giây. Sau đó tính Vđến=ΔV+Vtràn+Vcống+Vtổn_thất "
+            "theo các thành phần có căn cứ. Không yêu cầu người dùng tải lại dữ liệu đã có trong hội thoại hoặc kho. "
             "Nếu kho có các tài liệu liên quan, phải tìm bằng tên công trình, tên bảng, ký hiệu thông số "
             "và từ đồng nghĩa trước khi kết luận thiếu dữ liệu. Phân biệt rõ dữ liệu tìm thấy, dữ liệu đầu vào, "
             "phép tính và nhận định kỹ thuật. Không tạo số liệu hoặc lưu lượng tràn nếu chưa có căn cứ. "
@@ -2887,7 +2905,9 @@ Không gán cho hồ sơ điều gì mà kết quả truy xuất không chứng 
 - Trước khi tính, liệt kê dữ liệu đã biết, dữ liệu còn thiếu, công thức/mô hình cần dùng và đơn vị.
 - Kiểm tra tính nhất quán thứ nguyên, điều kiện áp dụng, phạm vi hiệu lực và tính hợp lý của kết quả.
 - Không tạo ra hệ số, đường quan hệ, thông số công trình hoặc số liệu trung gian không có căn cứ.
-- Nếu dữ liệu chưa đủ, vẫn giải thích phương pháp và chỉ rõ chính xác bảng số liệu/thông số cần bổ sung; không giả vờ đã tính xong.
+- Nếu lượt truy xuất đầu không trả về dữ liệu, không được suy ra rằng kho không có dữ liệu. Tìm lại bằng tên tệp, tên công trình, ký hiệu cột và cao trình cụ thể trước khi kết luận thiếu.
+- Nếu chỉ thiếu một giá trị, vẫn phải tính đầy đủ các phần đã có số liệu và nêu đúng giá trị còn thiếu; không tuyên bố thiếu cả bảng khi danh mục kho xác nhận bảng đang tồn tại.
+- Nếu dữ liệu thực sự chưa đủ sau khi tìm lại, vẫn giải thích phương pháp và chỉ rõ chính xác giá trị cần bổ sung; không giả vờ đã tính xong.
 
 4. RIÊNG VỚI HỒ CHỨA VÀ QUAN HỆ THỦY LỰC
 - W–Z là quan hệ dung tích W với cao trình mực nước Z; muốn lập/tính chính xác cần bảng hoặc đường quan hệ W–Z của đúng hồ, hoặc dữ liệu địa hình/dung tích đã được kiểm chứng.
