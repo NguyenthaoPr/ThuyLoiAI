@@ -2509,13 +2509,7 @@ def classify_query_route(question: str) -> dict:
 
 
 DOCUMENT_QUERY_ALIASES = {
-    "thach ban": [
-        "hồ chứa nước Thạch Bàn", "thông số kỹ thuật hồ Thạch Bàn",
-        "MNDBT hồ Thạch Bàn", "quan hệ mực nước dung tích W-Z",
-        "quan hệ mực nước lưu lượng tràn Q-Z", "bảng quan hệ lưu lượng qua tràn",
-        "quan hệ mực nước độ mở cống lưu lượng qua cống",
-        "quy trình vận hành điều tiết hồ Thạch Bàn", "cân bằng nước hồ chứa",
-    ],
+    # Các alias dùng chung cho mọi công trình; không gắn với một hồ/cao trình cụ thể.
     "luong nuoc den": [
         "cân bằng nước hồ chứa", "dung tích đầu kỳ cuối kỳ",
         "bảng quan hệ mực nước dung tích W-Z", "bảng quan hệ mực nước lưu lượng tràn Q-Z",
@@ -2540,53 +2534,98 @@ DOCUMENT_QUERY_ALIASES = {
         "dung tích đầu kỳ cuối kỳ", "lưu lượng đến", "lưu lượng qua tràn",
         "lưu lượng qua cống", "lượng nước lấy", "tổn thất hồ chứa",
     ],
-    "quan he thuy luc": ["duong quan he W-Z", "duong quan he Q-Z", "cao trinh dung tich", "dung tich ho chua theo cao trinh", "quan he luu luong xa va muc nuoc"],
-    "w-z": ["cao trinh Z", "dung tich W", "bang quan he cao trinh dung tich", "duong quan he W-Z"],
-    "q-z": ["luu luong xa Q", "muc nuoc Z", "duong dac tinh xa", "duong quan he Q-Z", "cong thuc xa qua cong/cua van"],
-    "duong quan he": ["bang quan he thuy luc", "duong dac tinh ho chua", "cao trinh muc nuoc", "dung tich", "luu luong xa"],
-    "pham vi bao ve": ["hanh lang bao ve", "gioi han bao ve", "khoang cach bao ve"],
-    "cong trinh thuy loi": ["ho chua", "dap", "kenh", "tram bom", "cong trinh dau moi"],
-    "nguoi lao dong": ["nhan su", "can bo", "nhan vien", "danh sach nhan su"],
-    "chi nhanh": ["don vi", "bo phan", "cum", "phong ban"],
-    "quy dinh": ["quy pham", "quy che", "quy trinh", "dieu khoan"],
-    "thong so ky thuat": ["thong so", "thiet ke", "quy mo", "kich thuoc", "dung tich"],
+    "quan he thuy luc": ["đường quan hệ W-Z", "đường quan hệ Q-Z", "cao trình dung tích", "dung tích hồ chứa theo cao trình", "quan hệ lưu lượng xả và mực nước"],
+    "w-z": ["cao trình Z", "dung tích W", "bảng quan hệ cao trình dung tích", "đường quan hệ W-Z"],
+    "q-z": ["lưu lượng xả Q", "mực nước Z", "đường đặc tính xả", "đường quan hệ Q-Z", "công thức xả qua cống/cửa van"],
+    "duong quan he": ["bảng quan hệ thủy lực", "đường đặc tính hồ chứa", "cao trình mực nước", "dung tích", "lưu lượng xả"],
+    "pham vi bao ve": ["hành lang bảo vệ", "giới hạn bảo vệ", "khoảng cách bảo vệ"],
+    "cong trinh thuy loi": ["hồ chứa", "đập", "kênh", "trạm bơm", "công trình đầu mối"],
+    "nguoi lao dong": ["nhân sự", "cán bộ", "nhân viên", "danh sách nhân sự"],
+    "chi nhanh": ["đơn vị", "bộ phận", "cụm", "phòng ban"],
+    "quy dinh": ["quy phạm", "quy chế", "quy trình", "điều khoản"],
+    "thong so ky thuat": ["thông số", "thiết kế", "quy mô", "kích thước", "dung tích"],
 }
 
 
+def _extract_level_pair(question: str):
+    """Lấy cặp cao trình từ cấu trúc tự nhiên 'từ Z1 đến Z2', không gắn giá trị cụ thể."""
+    text = str(question or "").replace("\\", " ")
+    pattern = r"(?:từ|tu)\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:m(?:ét|et)?\s*)?(?:đến|den|tới|toi|->|–|-)\s*([+-]?\d+(?:[.,]\d+)?)"
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return tuple(float(v.replace(",", ".")) for v in match.groups())
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_structure_name(question: str):
+    """Rút tên công trình khi câu hỏi có cụm định danh rõ; chỉ dùng để tăng độ chính xác truy vấn."""
+    text = str(question or "")
+    patterns = (
+        r"(?i)\b(?:hồ chứa nước|ho chua nuoc|hồ chứa|ho chua|hồ|ho|đập|dap|công trình|cong trinh)\s+(.+?)"
+        r"(?=\s+(?:khi|lúc|luc|mực nước|muc nuoc|từ|tu|tại|tai|trong|là|la|có|co)\b|[,;?\n]|$)"
+    )
+    m = re.search(patterns, text)
+    if not m:
+        return None
+    name = re.sub(r"\s+", " ", m.group(1)).strip(" .,:;-_")
+    return name[:100] or None
+
+
+def _filename_slug(value: str) -> str:
+    """Tạo biến thể tên tệp để tìm hồ sơ; không giả định một quy ước tên tệp duy nhất."""
+    normalized = _normalize_router_text(value)
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+
 def build_retrieval_query(question: str) -> str:
-    """Mở rộng truy vấn nhẹ, giữ nguyên câu hỏi gốc và ưu tiên đúng dữ liệu cần tính."""
+    """Mở rộng truy vấn dữ liệu kỹ thuật dùng chung cho mọi công trình và mọi cao trình."""
     normalized = _normalize_router_text(question)
     aliases = []
-    # Với bài toán lượng nước đến/cân bằng nước, ưu tiên cả W-Z và Q-Z
-    # trước các từ khóa chung của công trình để tránh truy vấn bị cắt mất Q đầu kỳ.
     water_balance_intent = any(term in normalized for term in (
         "luong nuoc den", "nuoc den ho", "luu luong den", "luong nuoc vao ho",
-        "can bang nuoc", "muc nuoc tang",
+        "can bang nuoc", "muc nuoc tang", "muc nuoc ha",
     ))
-    if water_balance_intent:
-        # Truy vấn tường minh tên tệp CSV thực tế trong kho. File Search có thể
-        # trả về tài liệu tổng quan nhưng bỏ sót các hàng số liệu nếu chỉ hỏi chung.
+    structure_name = _extract_structure_name(question)
+    level_pair = _extract_level_pair(question)
+
+    if water_balance_intent or is_hydraulic_analysis_question(question):
         aliases.extend([
-            "Thach_Ban_Z_V_Z_10cm.csv: bảng cao trình Z và dung tích V tại Z=25.3 m và Z=25.5 m",
-            "Thach_Ban_Z_Q_Z_10cm.csv: bảng cao trình Z và lưu lượng tràn Q tại Z=25.3 m và Z=25.5 m",
-            "QTVH_Ho_Chua_Thach_Ban_chuan_hoa_Gemini.md: cao trình ngưỡng tràn, tràn tự do, cân bằng nước",
-            "tra cứu chính xác hàng Z=25.3 và Z=25.5, không chỉ tóm tắt nội dung tài liệu",
-            "lưu lượng tràn tại mực nước đầu kỳ và cuối kỳ",
-            "lưu lượng qua cống hoặc các dòng xả khác trong 24 giờ",
-            "tổn thất bốc hơi và thấm nếu có dữ liệu",
-            "công thức cân bằng nước hồ chứa và thể tích nước đến",
+            "tìm bảng CSV/Excel quan hệ cao trình Z - dung tích W hoặc V của đúng công trình",
+            "tìm bảng CSV/Excel quan hệ cao trình Z - lưu lượng Q qua tràn/cống của đúng công trình",
+            "tìm quy trình vận hành và thông số kỹ thuật của đúng công trình",
+            "đọc hàng dữ liệu thực tế trong bảng, không chỉ tóm tắt hoặc mô tả tên tài liệu",
+            "tìm chính xác các hàng cao trình đầu kỳ và cuối kỳ; hỗ trợ dấu phẩy hoặc dấu chấm thập phân",
+            "cân bằng nước hồ chứa, lưu lượng qua tràn, lưu lượng qua cống và tổn thất",
         ])
+        if structure_name:
+            aliases.append(f"công trình cần tra cứu: {structure_name}; tìm tài liệu có tên công trình và bảng W-Z/Q-Z")
+            slug = _filename_slug(structure_name)
+            if slug:
+                aliases.extend([
+                    f"{slug} bảng Z W V dung tích CSV",
+                    f"{slug} bảng Z Q lưu lượng CSV",
+                    f"{slug} quy trình vận hành hồ chứa",
+                ])
+        if level_pair:
+            z1, z2 = level_pair
+            def fmt(v):
+                return ("{:.6f}".format(v)).rstrip("0").rstrip(".")
+            z1s, z2s = fmt(z1), fmt(z2)
+            aliases.extend([
+                f"tra đúng hàng Z={z1s} và Z={z2s} trong bảng W-Z và Q-Z",
+                f"tra cao trình {z1s} m, {z2s} m; giá trị dung tích đầu kỳ cuối kỳ và lưu lượng tràn đầu kỳ cuối kỳ",
+            ])
+
     for key, values in DOCUMENT_QUERY_ALIASES.items():
         if key in normalized:
             aliases.extend(values)
     aliases = list(dict.fromkeys(aliases))
-    # Không cắt bỏ tên tệp và yêu cầu tra đúng hàng số liệu cho bài toán cân bằng nước.
-    # Với các câu hỏi khác, giữ giới hạn truy vấn mở rộng như thiết kế cũ.
-    if not water_balance_intent:
-        aliases = aliases[:12]
     if not aliases:
         return question
-    return f"{question}\n\nThuật ngữ liên quan để tra cứu hồ sơ: {', '.join(aliases)}"
+    return f"{question}\n\nTRUY VẤN MỞ RỘNG DÙNG CHUNG: {', '.join(aliases)}"
 
 
 def build_document_prompt(question: str, attempt: int = 1) -> str:
@@ -2595,37 +2634,31 @@ def build_document_prompt(question: str, attempt: int = 1) -> str:
     hydraulic_rule = ""
     if is_hydraulic_analysis_question(question):
         hydraulic_rule = (
-            "\n\nCHẾ ĐỘ TRUY CỨU VÀ PHÂN TÍCH KỸ THUẬT: Đây là câu hỏi kỹ thuật; "
-            "không được chỉ tìm một bảng đơn lẻ rồi kết luận. Trước khi tính, phải truy cứu "
-            "các tài liệu liên quan của đúng công trình: thông số kỹ thuật; MNDBT/MNC/MNLTK "
-            "nếu có; bảng W-Z; bảng Q-Z hoặc quan hệ mực nước-lưu lượng tràn; quan hệ độ mở-cống-lưu lượng; "
-            "quy trình vận hành; cao trình ngưỡng tràn; trạng thái cửa van; và số liệu vận hành liên quan. "
-            "Với câu hỏi tính lượng nước đến hồ trong một khoảng thời gian, bắt buộc giải bài toán chứ không chỉ nêu phương pháp hoặc chỉ tính chênh lệch dung tích. "
-            "Trước hết lấy V đầu kỳ và V cuối kỳ từ bảng W-Z, rồi tính ΔV = Vcuối - Vđầu. "
-            "Kiểm tra cao trình ngưỡng tràn và loại tràn của đúng hồ. Với tràn tự do, nếu mực nước đầu/cuối kỳ vượt ngưỡng tràn thì phải xem xét dòng chảy qua tràn trong khoảng thời gian đó; không được mặc định Qtràn = 0 chỉ vì người dùng chưa nêu trạng thái cửa. "
-            "Bắt buộc tra cứu Qtràn tại CẢ mực nước đầu kỳ và cuối kỳ từ bảng Q-Z; không chỉ lấy Q ở mực nước cuối kỳ. "
-            "Nếu chỉ có Q đầu kỳ và Q cuối kỳ và không có chuỗi mực nước theo thời gian, ước tính thể tích qua tràn bằng phương pháp hình thang: Vtràn ≈ (Qđầu + Qcuối)/2 × Δt, đổi Δt sang giây; ghi rõ đây là ước tính theo giả định Q biến đổi tuyến tính, không phải kết quả chính xác nếu chưa có diễn biến mực nước theo thời gian. "
-            "Nếu có chuỗi mực nước theo thời gian, tra/interpolate Q-Z tại từng thời điểm rồi tích phân số theo thời gian. "
-            "Tính lượng nước đến theo cân bằng: Vđến = ΔV + Vtràn + Vcống + Vcác dòng nước ra khác + Vtổn_thất, với quy ước cộng các dòng nước ra/tổn thất vào lượng nước đến; chỉ cộng thành phần có căn cứ dữ liệu, không tự bịa. Nếu dữ liệu dòng xả qua cống, bốc hơi hoặc thấm không có, nêu rõ kết quả là phần xác định được/chưa bao gồm các thành phần đó. "
-            "Tính thêm lưu lượng đến trung bình Qđến,tb = Vđến/Δt nếu phù hợp câu hỏi. Trả lời bằng con số kết quả trực tiếp, công thức, thay số, đơn vị và mức độ chính xác; không dừng ở việc yêu cầu người dùng bổ sung dữ liệu nếu hồ sơ đã có các bảng cần thiết. "
-            "Nếu bảng Q-Z chỉ tìm thấy một đầu mút, phải tìm lại bằng tên tệp, cao trình chính xác và bước bảng; không được giả định Q không đổi suốt kỳ để thay thế khi chưa nói rõ giả định. "
-            "Với hồ Thạch Bàn, kho đã có các tài liệu mang tên Thach_Ban_Z_V_Z_10cm.csv, "
-            "Thach_Ban_Z_Q_Z_10cm.csv và QTVH_Ho_Chua_Thach_Ban_chuan_hoa_Gemini.md. "
-            "Không được nói thiếu bảng W-Z hoặc Q-Z chỉ vì lượt truy vấn đầu không trả đúng hàng; phải truy vấn lại theo chính xác tên tệp, "
-            "cao trình Z=25.3 m và Z=25.5 m, rồi trích các giá trị số tìm được. "
-            "Nếu vẫn không truy xuất được một hàng cụ thể, phải báo rõ chỉ thiếu đúng giá trị đó, không được phủ nhận các bảng đang tồn tại "
-            "hoặc nói thiếu cả hai bảng. Các giá trị đã có căn cứ trong ngữ cảnh hội thoại gồm V(25.3)=10.296.851,30 m³, "
-            "V(25.5)=11.006.166,61 m³ và Q(25.5)=13,5138 m³/s; dùng chúng để tính phần tương ứng, đồng thời đối chiếu CSV khi có thể. "
-            "Từ các giá trị này, ΔV=709.315,31 m³. Muốn tính thể tích tràn 24 giờ bằng phương pháp hình thang còn cần Q(25.3) "
-            "hoặc chuỗi mực nước/lưu lượng theo thời gian; tuyệt đối không lấy Q(25.5) nhân 24 giờ như thể lưu lượng không đổi, trừ khi nêu rõ đó chỉ là kịch bản giả định. "
-            "Nếu có đủ Q đầu/cuối, tính Vtràn≈(Qđầu+Qcuối)/2×86.400 giây. Sau đó tính Vđến=ΔV+Vtràn+Vcống+Vtổn_thất "
-            "theo các thành phần có căn cứ. Không yêu cầu người dùng tải lại dữ liệu đã có trong hội thoại hoặc kho. "
-            "Nếu kho có các tài liệu liên quan, phải tìm bằng tên công trình, tên bảng, ký hiệu thông số "
-            "và từ đồng nghĩa trước khi kết luận thiếu dữ liệu. Phân biệt rõ dữ liệu tìm thấy, dữ liệu đầu vào, "
-            "phép tính và nhận định kỹ thuật. Không tạo số liệu hoặc lưu lượng tràn nếu chưa có căn cứ. "
-            "Trả lời đầy đủ, chi tiết: nêu nguồn, thông số, công thức, thay số, đơn vị, kết quả, giả thiết, "
-            "giới hạn và dữ liệu còn thiếu; không tự ý tóm tắt hoặc cắt gọn. "
-            "Không trả lời bằng diện tích cấp nước, diện tích tưới hoặc số liệu PLAN_DATA trừ khi người dùng hỏi rõ."
+            "\n\nCHẾ ĐỘ PHÂN TÍCH THỦY LỰC DÙNG CHUNG CHO MỌI CÔNG TRÌNH: "
+            "Không gắn logic với tên hồ, tên tệp, cao trình hoặc con số cố định. "
+            "Từ câu hỏi, xác định đúng công trình, các cao trình/thời đoạn và đại lượng cần tính. "
+            "Tra cứu trong kho toàn bộ tài liệu có liên quan của chính công trình: bảng W-Z/Z-V/dung tích, "
+            "bảng Q-Z/lưu lượng tràn, thông số ngưỡng tràn và loại tràn, quy trình vận hành, bảng độ mở-cống-lưu lượng, "
+            "cùng dữ liệu vận hành theo thời gian nếu có. Với CSV/Excel, phải truy xuất các hàng số liệu cụ thể, "
+            "không được suy ra rằng bảng thiếu chỉ vì kết quả tìm kiếm đầu tiên không hiển thị hàng cần tìm. "
+            "Tìm lại bằng tên công trình, biến thể tên tệp, ký hiệu cột, cao trình chính xác và định dạng số thập phân "
+            "dùng dấu phẩy/dấu chấm; nếu cần, thực hiện nhiều truy vấn hẹp riêng cho từng bảng và từng cao trình. "
+            "Không được tuyên bố thiếu W-Z/Q-Z nếu chưa thử truy vấn trực tiếp các hàng số liệu và các tên gọi tương đương. "
+            "Nếu bảng đã được liệt kê/tồn tại trong kho nhưng truy xuất không trả hàng, phải báo lỗi truy xuất cụ thể, "
+            "không nói dữ liệu không tồn tại. Nếu có nội dung bảng trong ngữ cảnh hiện tại thì phải dùng lại và đối chiếu. "
+            "Với bài toán lượng nước đến trong khoảng thời gian: lấy dung tích đầu kỳ/cuối kỳ và tính ΔV=Vcuối−Vđầu. "
+            "Xác định ngưỡng và chế độ tràn của đúng công trình; nếu mực nước vượt ngưỡng trong kỳ, xem xét dòng chảy tràn. "
+            "Tra Q tại cả cao trình đầu kỳ và cuối kỳ từ bảng Q-Z. Nếu có chuỗi Z/Q theo thời gian, tích phân số theo thời gian; "
+            "nếu chỉ có Q đầu/cuối kỳ và không có chuỗi thời gian, ước tính Vtràn≈(Qđầu+Qcuối)/2×Δt_seconds và nêu rõ "
+            "giả định lưu lượng biến đổi tuyến tính. Không lấy riêng Q cuối kỳ nhân toàn bộ thời gian nếu không ghi rõ là kịch bản giả định. "
+            "Tính cân bằng nước Vđến=ΔV+Vtràn+Vqua_cống+Vdòng_ra_khác+Vtổn_thất theo quy ước các dòng ra/tổn thất được cộng lại "
+            "để suy ra nước đến; chỉ đưa vào các thành phần có căn cứ, không tự đặt bằng 0 và không tự bịa số. "
+            "Nếu một thành phần chưa có dữ liệu, vẫn phải tính đầy đủ phần xác định được, nêu rõ phần còn thiếu và ảnh hưởng của nó. "
+            "Nếu câu hỏi yêu cầu lượng nước đến thì phải đưa ra kết quả số tốt nhất có thể từ dữ liệu đã có, không chỉ trình bày phương pháp "
+            "và không yêu cầu người dùng tải lại dữ liệu đang nằm trong kho. Tính Qđến,tb=Vđến/Δt khi phù hợp. "
+            "Trình bày nguồn/tên tệp, hàng dữ liệu, công thức, thay số, đơn vị, kết quả, giả định và giới hạn. "
+            "Tuyệt đối không hardcode tên công trình, tên tệp, cao trình hay giá trị ví dụ trong quy tắc chung. "
+            "Không dùng PLAN_DATA thay thế dữ liệu thủy lực hoặc diện tích tưới trừ khi người dùng hỏi rõ."
         )
     if attempt <= 1:
         instruction = (
