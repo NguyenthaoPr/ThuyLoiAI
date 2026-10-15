@@ -4830,6 +4830,32 @@ async def kml_gps_test(
                 "message": "Không tìm thấy tuyến LineString."
             }
 
+        # Chỉ dùng Placemark dạng Point có mốc lý trình đọc được từ tên/mô tả.
+        # Một mốc đơn lẻ không đủ để xác định chiều tăng lý trình.
+        chainage_markers = []
+        for gis_item in cong_trinh_items:
+            if gis_item.get("geometry_type") != "Point" or not gis_item.get("coordinates"):
+                continue
+            chainage_value = parse_chainage(
+                str(gis_item.get("name") or "") + " " + str(gis_item.get("description") or "")
+            )
+            if chainage_value is None:
+                continue
+            point = gis_item["coordinates"][0]
+            if isinstance(point, dict):
+                try:
+                    lat = float(point.get("lat"))
+                    lon = float(point.get("lon", point.get("lng")))
+                    if -90 <= lat <= 90 and -180 <= lon <= 180:
+                        chainage_markers.append({
+                            "name": gis_item.get("name", ""),
+                            "chainage_m": float(chainage_value),
+                            "lat": lat,
+                            "lon": lon,
+                        })
+                except (TypeError, ValueError):
+                    continue
+
         def get_lat_lon(point):
             if not isinstance(point, dict):
                 return None, None
@@ -4880,6 +4906,61 @@ async def kml_gps_test(
 
             return distance, nearest_lat, nearest_lon, t, segment_length
 
+        def verified_chainage_for_line(coordinates, target_along_m):
+            """Nội suy lý trình chỉ khi có >=2 mốc chuẩn cùng tuyến và chiều tăng nhất quán."""
+            if target_along_m is None or len(chainage_markers) < 2:
+                return None
+            anchors = []
+            for marker in chainage_markers:
+                cumulative = 0.0
+                best = None
+                for idx in range(len(coordinates) - 1):
+                    lat1, lon1 = get_lat_lon(coordinates[idx])
+                    lat2, lon2 = get_lat_lon(coordinates[idx + 1])
+                    if None in (lat1, lon1, lat2, lon2):
+                        continue
+                    dist, _, _, ratio, seg_len = distance_to_segment(
+                        marker["lat"], marker["lon"], lat1, lon1, lat2, lon2
+                    )
+                    along = cumulative + ratio * seg_len
+                    if best is None or dist < best[0]:
+                        best = (dist, along)
+                    cumulative += seg_len
+                # Không gán mốc nằm xa tuyến; ngăn nhầm mốc của tuyến kế cận.
+                if best and best[0] <= 15.0:
+                    anchors.append((best[1], marker["chainage_m"], best[0]))
+            anchors.sort(key=lambda x: x[0])
+            # Loại các mốc trùng vị trí dọc tuyến.
+            clean = []
+            for anchor in anchors:
+                if clean and abs(anchor[0] - clean[-1][0]) < 2.0:
+                    continue
+                clean.append(anchor)
+            if len(clean) < 2:
+                return None
+            deltas = [clean[i+1][1] - clean[i][1] for i in range(len(clean)-1)]
+            if not (all(d > 0 for d in deltas) or all(d < 0 for d in deltas)):
+                return None
+            # Khoảng cách dọc tuyến và chênh lý trình phải tương thích gần 1:1.
+            for i, delta in enumerate(deltas):
+                along_delta = clean[i+1][0] - clean[i][0]
+                if along_delta <= 0:
+                    return None
+                ratio = abs(delta) / along_delta
+                if not 0.75 <= ratio <= 1.25:
+                    return None
+            # Nội suy chỉ trong phạm vi các mốc chuẩn; không ngoại suy ngoài mốc.
+            for i in range(len(clean)-1):
+                a0, c0, _ = clean[i]
+                a1, c1, _ = clean[i+1]
+                if a0 <= target_along_m <= a1:
+                    return {
+                        "chainage_m": c0 + (target_along_m-a0) * (c1-c0)/(a1-a0),
+                        "reference_count": len(clean),
+                        "direction_verified": True,
+                    }
+            return None
+
         results = []
 
         for item in lines:
@@ -4913,12 +4994,18 @@ async def kml_gps_test(
                 cumulative_distance += seg_len
 
             if best_distance is not None:
+                chainage_result = verified_chainage_for_line(
+                    coordinates, best_distance_along_line
+                )
                 results.append({
                     "name": item.get("name", ""),
                     "geometry_type": "LineString",
                     "coordinate_count": len(coordinates),
                     "distance_m": round(best_distance, 2),
                     "distance_along_line_m": round(best_distance_along_line, 2),
+                    "chainage": format_chainage(chainage_result["chainage_m"]) if chainage_result else None,
+                    "chainage_reference_verified": bool(chainage_result),
+                    "chainage_reference_count": chainage_result["reference_count"] if chainage_result else 0,
                     "nearest_point": {
                         "latitude": round(best_lat, 8),
                         "longitude": round(best_lon, 8)
@@ -4964,6 +5051,9 @@ async def kml_gps_test(
                     "status": nearest.get("status", "CHƯA XÁC ĐỊNH"),
                     "status_code": nearest.get("status_code", "RED"),
                     "distance_along_line_m": nearest.get("distance_along_line_m"),
+                    "chainage": nearest.get("chainage"),
+                    "chainage_reference_verified": nearest.get("chainage_reference_verified", False),
+                    "chainage_reference_count": nearest.get("chainage_reference_count", 0),
                     "assessment": nearest.get("assessment", ""),
                     "source": "GIS MASTER KMZ"
                 }
@@ -7237,11 +7327,14 @@ async def field_report_image(
         if isinstance(gis_identification, dict) and gis_identification.get("identified"):
             name = str(gis_identification.get("name") or gis_identification.get("display_name") or "").strip()
             distance = gis_identification.get("distance_m")
-            chainage = str(gis_identification.get("chainage") or gis_identification.get("ly_trinh") or "").strip()
+            chainage = ""
             along = gis_identification.get("distance_along_line_m")
-            # Chỉ ghi lý trình chính thức khi API có thuộc tính lý trình rõ ràng.
-            if not chainage and along is not None and gis_identification.get("chainage_reference_verified") is True:
-                chainage = format_chainage(along) or ""
+            # Chỉ hiển thị lý trình nếu được nội suy từ ít nhất hai mốc chuẩn,
+            # cùng tuyến, chiều tăng nhất quán và nằm trong khoảng mốc đã biết.
+            if gis_identification.get("chainage_reference_verified") is True:
+                chainage = str(gis_identification.get("chainage") or "").strip()
+                if not chainage and along is not None:
+                    chainage = format_chainage(along) or ""
             lines.append("Công trình: " + (name or "Đã tìm thấy đối tượng GIS"))
             if chainage:
                 lines.append("Lý trình: " + chainage)
