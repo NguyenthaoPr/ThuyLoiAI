@@ -4830,32 +4830,6 @@ async def kml_gps_test(
                 "message": "Không tìm thấy tuyến LineString."
             }
 
-        # Chỉ dùng Placemark dạng Point có mốc lý trình đọc được từ tên/mô tả.
-        # Một mốc đơn lẻ không đủ để xác định chiều tăng lý trình.
-        chainage_markers = []
-        for gis_item in cong_trinh_items:
-            if gis_item.get("geometry_type") != "Point" or not gis_item.get("coordinates"):
-                continue
-            chainage_value = parse_chainage(
-                str(gis_item.get("name") or "") + " " + str(gis_item.get("description") or "")
-            )
-            if chainage_value is None:
-                continue
-            point = gis_item["coordinates"][0]
-            if isinstance(point, dict):
-                try:
-                    lat = float(point.get("lat"))
-                    lon = float(point.get("lon", point.get("lng")))
-                    if -90 <= lat <= 90 and -180 <= lon <= 180:
-                        chainage_markers.append({
-                            "name": gis_item.get("name", ""),
-                            "chainage_m": float(chainage_value),
-                            "lat": lat,
-                            "lon": lon,
-                        })
-                except (TypeError, ValueError):
-                    continue
-
         def get_lat_lon(point):
             if not isinstance(point, dict):
                 return None, None
@@ -4906,61 +4880,6 @@ async def kml_gps_test(
 
             return distance, nearest_lat, nearest_lon, t, segment_length
 
-        def verified_chainage_for_line(coordinates, target_along_m):
-            """Nội suy lý trình chỉ khi có >=2 mốc chuẩn cùng tuyến và chiều tăng nhất quán."""
-            if target_along_m is None or len(chainage_markers) < 2:
-                return None
-            anchors = []
-            for marker in chainage_markers:
-                cumulative = 0.0
-                best = None
-                for idx in range(len(coordinates) - 1):
-                    lat1, lon1 = get_lat_lon(coordinates[idx])
-                    lat2, lon2 = get_lat_lon(coordinates[idx + 1])
-                    if None in (lat1, lon1, lat2, lon2):
-                        continue
-                    dist, _, _, ratio, seg_len = distance_to_segment(
-                        marker["lat"], marker["lon"], lat1, lon1, lat2, lon2
-                    )
-                    along = cumulative + ratio * seg_len
-                    if best is None or dist < best[0]:
-                        best = (dist, along)
-                    cumulative += seg_len
-                # Không gán mốc nằm xa tuyến; ngăn nhầm mốc của tuyến kế cận.
-                if best and best[0] <= 15.0:
-                    anchors.append((best[1], marker["chainage_m"], best[0]))
-            anchors.sort(key=lambda x: x[0])
-            # Loại các mốc trùng vị trí dọc tuyến.
-            clean = []
-            for anchor in anchors:
-                if clean and abs(anchor[0] - clean[-1][0]) < 2.0:
-                    continue
-                clean.append(anchor)
-            if len(clean) < 2:
-                return None
-            deltas = [clean[i+1][1] - clean[i][1] for i in range(len(clean)-1)]
-            if not (all(d > 0 for d in deltas) or all(d < 0 for d in deltas)):
-                return None
-            # Khoảng cách dọc tuyến và chênh lý trình phải tương thích gần 1:1.
-            for i, delta in enumerate(deltas):
-                along_delta = clean[i+1][0] - clean[i][0]
-                if along_delta <= 0:
-                    return None
-                ratio = abs(delta) / along_delta
-                if not 0.75 <= ratio <= 1.25:
-                    return None
-            # Nội suy chỉ trong phạm vi các mốc chuẩn; không ngoại suy ngoài mốc.
-            for i in range(len(clean)-1):
-                a0, c0, _ = clean[i]
-                a1, c1, _ = clean[i+1]
-                if a0 <= target_along_m <= a1:
-                    return {
-                        "chainage_m": c0 + (target_along_m-a0) * (c1-c0)/(a1-a0),
-                        "reference_count": len(clean),
-                        "direction_verified": True,
-                    }
-            return None
-
         results = []
 
         for item in lines:
@@ -5007,34 +4926,6 @@ async def kml_gps_test(
                 })
 
         results.sort(key=lambda x: x["distance_m"])
-
-        # Chỉ tính lý trình cho tuyến gần nhất; không quét lại tất cả mốc
-        # trên mọi tuyến. Lỗi lý trình không được làm hỏng tạo ảnh/GIS.
-        if results:
-            nearest_result = results[0]
-            nearest_line = next(
-                (line for line in lines if line.get("name", "") == nearest_result.get("name", "")),
-                None
-            )
-            if nearest_line is not None:
-                try:
-                    chainage_result = verified_chainage_for_line(
-                        nearest_line.get("coordinates", []),
-                        nearest_result.get("distance_along_line_m")
-                    )
-                    if chainage_result:
-                        nearest_result["chainage"] = format_chainage(chainage_result["chainage_m"])
-                        nearest_result["chainage_reference_verified"] = True
-                        nearest_result["chainage_reference_count"] = chainage_result["reference_count"]
-                    else:
-                        nearest_result["chainage"] = None
-                        nearest_result["chainage_reference_verified"] = False
-                        nearest_result["chainage_reference_count"] = 0
-                except Exception as chainage_exc:
-                    logger.warning("[GIS CHAINAGE] Không tính được lý trình: %r", chainage_exc)
-                    nearest_result["chainage"] = None
-                    nearest_result["chainage_reference_verified"] = False
-                    nearest_result["chainage_reference_count"] = 0
 
         for item in results:
             distance = item.get("distance_m", 999999)
@@ -7347,10 +7238,21 @@ async def field_report_image(
             name = str(gis_identification.get("name") or gis_identification.get("display_name") or "").strip()
             distance = gis_identification.get("distance_m")
             chainage = str(gis_identification.get("chainage") or gis_identification.get("ly_trinh") or "").strip()
-            # Chỉ bổ sung lý trình nội suy khi đã xác minh từ mốc chuẩn và chiều tuyến.
-            # Không thay đổi lý trình tường minh mà hệ thống cũ đã cung cấp.
-            if not chainage and gis_identification.get("chainage_reference_verified") is True:
-                chainage = str(gis_identification.get("chainage") or "").strip()
+            along = gis_identification.get("distance_along_line_m")
+            # Đồng bộ chính xác với cách PDF đang tính lý trình:
+            # chỉ áp dụng cho tuyến kênh LineString và khi có khoảng cách dọc tuyến.
+            # Không lấy khoảng cách GPS vuông góc đến kênh làm lý trình.
+            if not chainage and gis_identification.get("geometry_type") == "LineString" and along is not None:
+                try:
+                    ly_trinh_m = max(0.0, float(along))
+                    km = int(ly_trinh_m // 1000)
+                    met = int(round(ly_trinh_m % 1000))
+                    if met >= 1000:
+                        km += 1
+                        met = 0
+                    chainage = f"K{km}+{met:03d}"
+                except (TypeError, ValueError, OverflowError):
+                    chainage = ""
             lines.append("Công trình: " + (name or "Đã tìm thấy đối tượng GIS"))
             if chainage:
                 lines.append("Lý trình: " + chainage)
@@ -7414,11 +7316,18 @@ async def field_report_image(
         text_font = _field_image_font(max(16, int(width * 0.024)), False)
         bold_font = _field_image_font(max(16, int(width * 0.024)), True)
         pad = int(width * 0.028)
-        outline = max(1, int(width * 0.0017))
+        # Tăng độ đậm và khả năng đọc trên nền ảnh sáng/tối, không phủ mảng nền đen.
+        outline = max(2, int(width * 0.0028))
         icon_size = max(28, int(width * 0.052))
         line_gap = max(4, int(5 * scale))
 
-        def flat_text(x, y, text, font, fill=(255,255,255,255), stroke=(10,30,48,235), sw=None):
+        def flat_text(x, y, text, font, fill=(255,255,255,255), stroke=(5,18,28,245), sw=None):
+            # Viền tối dày hơn + bóng lệch 1 chút để chữ rõ trên nền cỏ/nắng.
+            shadow = (0, 0, 0, 190)
+            draw.text((x + max(1, int(scale)), y + max(1, int(scale))), str(text),
+                      font=font, fill=shadow,
+                      stroke_width=(outline + 1) if sw is None else sw + 1,
+                      stroke_fill=(0,0,0,220))
             draw.text((x,y), str(text), font=font, fill=fill,
                       stroke_width=outline if sw is None else sw, stroke_fill=stroke)
 
@@ -7517,20 +7426,34 @@ async def field_report_image(
             else:
                 kind="chainage" if "khoảng cách" in low else "location"
             detail_items.append((kind,line))
-        detail_y = max(time_y+time_font.size+int(12*scale), height-pad-len(detail_items)*(text_font.size+line_gap))
+        detail_line_height = bold_font.size + line_gap
+        detail_y = max(time_y+time_font.size+int(12*scale), height-pad-len(detail_items)*detail_line_height)
         for kind, line in detail_items:
             icon=_make_field_icon(kind,icon_size)
-            iy=detail_y+max(0,int((text_font.size-icon_size)/2))
+            iy=detail_y+max(0,int((bold_font.size-icon_size)/2))
             source_rgba=source.convert("RGBA"); source_rgba.alpha_composite(icon,(pad,iy)); source=source_rgba.convert("RGB")
             draw=ImageDraw.Draw(source)
             tx=pad+icon_size+int(width*.014)
             max_width=max(80,map_x-tx-int(width*.012))
+            # Chữ đậm; tô vàng phần giá trị để giống mẫu ảnh nhưng giữ nguyên nội dung.
+            display_text = line
+            fill = (255,255,255,255)
+            if kind == "chainage":
+                fill = (255,218,45,255)
+            elif kind == "building" and ":" in line:
+                prefix, value = line.split(":", 1)
+                display_text = prefix + ": " + value.strip()
+                fill = (255,218,45,255)
+            elif "khoảng cách" in line.lower() and ":" in line:
+                prefix, value = line.split(":", 1)
+                display_text = prefix + ": " + value.strip()
+                fill = (255,218,45,255)
             # Cắt chữ theo giới hạn cột trái, tránh đè lên bản đồ.
-            shown=line
-            while shown and draw.textlength(shown,font=text_font) > max_width:
+            shown=display_text
+            while shown and draw.textlength(shown,font=bold_font) > max_width:
                 shown=shown[:-2].rstrip()+"…"
-            flat_text(tx,detail_y,shown,text_font)
-            detail_y += text_font.size+line_gap
+            flat_text(tx,detail_y,shown,bold_font,fill=fill)
+            detail_y += detail_line_height
 
         # Metadata JSON có thể ghi ra log để kiểm tra; không nhúng dữ liệu giả vào ảnh.
         logger.info("[FIELD IMAGE METADATA] %s", json.dumps(metadata, ensure_ascii=False, default=str))
