@@ -7336,28 +7336,60 @@ async def field_report_image(
         # nếu chưa có thì dùng icon giọt nước tối giản + tên thương hiệu.
         # ----------------------------------------------------
         assets_dir = BASE_DIR / "assets"
-        # QR góc trên bên trái mở Google Maps chỉ đường đến tọa độ GPS của ảnh.
-        # Chỉ tạo khi có tọa độ hợp lệ, tránh chỉ đường đến vị trí suy đoán.
-        qr_size = max(112, int(width * 0.155)) if latitude is not None and longitude is not None else 0
+        # QR góc trên bên trái mở Google Maps chỉ đường đến đúng GPS của ảnh.
+        # Dùng cùng cặp latitude/longitude đã nhận diện GIS; không thay bằng tâm bản đồ
+        # hoặc tọa độ công trình gần nhất. Chỉ tạo QR khi GPS hợp lệ.
+        qr_size = max(160, int(width * 0.17)) if (
+            latitude is not None and longitude is not None
+            and -90 <= float(latitude) <= 90
+            and -180 <= float(longitude) <= 180
+        ) else 0
         qr_x, qr_y = pad, pad
         brand_x = pad
         if qr_size:
             try:
-                destination = urllib.parse.quote(f"{float(latitude):.7f},{float(longitude):.7f}", safe=",")
-                directions_url = f"https://www.google.com/maps/dir/?api=1&destination={destination}"
-                qr_obj = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
+                lat_value = float(latitude)
+                lon_value = float(longitude)
+                # URL chỉ đường trực tiếp đến tọa độ GPS của ảnh.
+                # Encode dấu phẩy để các ứng dụng quét QR xử lý URL nhất quán.
+                destination = urllib.parse.quote(f"{lat_value:.7f},{lon_value:.7f}", safe="")
+                directions_url = (
+                    "https://www.google.com/maps/dir/?api=1"
+                    f"&destination={destination}&travelmode=driving"
+                )
+                # Quiet zone 4 modules theo khuyến nghị QR; giữ tỷ lệ vuông và không
+                # dùng thumbnail để tránh làm biến dạng/khiến module quá mảnh.
+                qr_obj = qrcode.QRCode(
+                    version=None,
+                    error_correction=qrcode.constants.ERROR_CORRECT_H,
+                    box_size=8,
+                    border=4,
+                )
                 qr_obj.add_data(directions_url)
                 qr_obj.make(fit=True)
-                qr_image = qr_obj.make_image(fill_color="black", back_color="white").convert("RGBA")
-                qr_image.thumbnail((qr_size, qr_size), Image.Resampling.NEAREST)
-                qr_canvas = Image.new("RGBA", (qr_size + 8, qr_size + 8), (255,255,255,255))
-                qr_canvas.alpha_composite(qr_image, (4,4))
+                qr_image = qr_obj.make_image(
+                    fill_color="black", back_color="white"
+                ).convert("RGBA")
+                # Resize nearest-neighbor về kích thước vuông đủ lớn để quét từ ảnh/Zalo.
+                qr_image = qr_image.resize((qr_size, qr_size), Image.Resampling.NEAREST)
+                quiet_zone = max(8, int(width * 0.006))
+                qr_canvas = Image.new(
+                    "RGBA",
+                    (qr_size + quiet_zone * 2, qr_size + quiet_zone * 2),
+                    (255, 255, 255, 255),
+                )
+                qr_canvas.alpha_composite(qr_image, (quiet_zone, quiet_zone))
                 source_rgba = source.convert("RGBA")
                 source_rgba.alpha_composite(qr_canvas, (qr_x, qr_y))
                 source = source_rgba.convert("RGB")
                 brand_x = qr_x + qr_canvas.width + int(width * 0.018)
+                logger.info(
+                    "[FIELD IMAGE] QR directions generated for GPS %.7f, %.7f",
+                    lat_value, lon_value
+                )
             except Exception as qr_exc:
-                logger.warning("[FIELD IMAGE] QR creation failed: %r", qr_exc)
+                # QR lỗi không làm hỏng tạo ảnh; ghi log để truy nguyên.
+                logger.exception("[FIELD IMAGE] QR creation failed: %r", qr_exc)
                 qr_size = 0
                 brand_x = pad
 
