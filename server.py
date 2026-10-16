@@ -7458,33 +7458,57 @@ async def field_report_image(
             else:
                 kind="chainage" if "khoảng cách" in low else "location"
             detail_items.append((kind,line))
-        detail_line_height = bold_font.size + line_gap
-        detail_y = max(time_y+time_font.size+int(12*scale), height-pad-len(detail_items)*detail_line_height)
+        # Tăng khoảng cách giữa các hàng thông tin nhưng vẫn giữ trong vùng trái bản đồ.
+        detail_line_height = bold_font.size + max(line_gap, int(12 * scale))
+        detail_y = max(
+            time_y + time_font.size + int(12 * scale),
+            height - pad - len(detail_items) * detail_line_height
+        )
         for kind, line in detail_items:
-            icon=_make_field_icon(kind,icon_size)
-            iy=detail_y+max(0,int((bold_font.size-icon_size)/2))
-            source_rgba=source.convert("RGBA"); source_rgba.alpha_composite(icon,(pad,iy)); source=source_rgba.convert("RGB")
-            draw=ImageDraw.Draw(source)
-            tx=pad+icon_size+int(width*.014)
-            max_width=max(80,map_x-tx-int(width*.012))
-            # Chữ đậm; tô vàng phần giá trị để giống mẫu ảnh nhưng giữ nguyên nội dung.
-            display_text = line
-            fill = (255,255,255,255)
-            if kind == "chainage":
-                fill = (255,218,45,255)
-            elif kind == "building" and ":" in line:
-                prefix, value = line.split(":", 1)
-                display_text = prefix + ": " + value.strip()
-                fill = (255,218,45,255)
-            elif "khoảng cách" in line.lower() and ":" in line:
-                prefix, value = line.split(":", 1)
-                display_text = prefix + ": " + value.strip()
-                fill = (255,218,45,255)
-            # Cắt chữ theo giới hạn cột trái, tránh đè lên bản đồ.
-            shown=display_text
-            while shown and draw.textlength(shown,font=bold_font) > max_width:
-                shown=shown[:-2].rstrip()+"…"
-            flat_text(tx,detail_y,shown,bold_font,fill=fill)
+            icon = _make_field_icon(kind, icon_size)
+            iy = detail_y + max(0, int((bold_font.size - icon_size) / 2))
+            source_rgba = source.convert("RGBA")
+            source_rgba.alpha_composite(icon, (pad, iy))
+            source = source_rgba.convert("RGB")
+            draw = ImageDraw.Draw(source)
+            tx = pad + icon_size + int(width * .014)
+            max_width = max(80, map_x - tx - int(width * .012))
+
+            # Nhãn luôn trắng; giá trị luôn vàng và đậm.
+            # Không đổi nội dung dòng, chỉ tách phần nhãn và giá trị khi vẽ.
+            label = ""
+            value = line
+            if ":" in line and kind in ("building", "chainage"):
+                label, value = line.split(":", 1)
+                label = label.strip() + ":"
+                value = value.strip()
+            elif ":" in line and "khoảng cách" in line.lower():
+                label, value = line.split(":", 1)
+                label = label.strip() + ":"
+                value = value.strip()
+
+            white = (255, 255, 255, 255)
+            yellow = (255, 218, 45, 255)
+            if label:
+                gap = int(width * .008)
+                label_width = draw.textlength(label + " ", font=bold_font)
+                # Nếu cả nhãn và giá trị vượt vùng trống, rút gọn giá trị trước;
+                # không để chữ chồng lên bản đồ GIS.
+                available_value_width = max(20, max_width - label_width - gap)
+                shown_value = value
+                while shown_value and draw.textlength(shown_value, font=bold_font) > available_value_width:
+                    shown_value = shown_value[:-2].rstrip() + "…"
+                flat_text(tx, detail_y, label, bold_font, fill=white)
+                value_x = tx + int(label_width) + gap
+                flat_text(value_x, detail_y, shown_value, bold_font, fill=yellow)
+            else:
+                # Các dòng cảnh báo/chưa xác định giữ nguyên màu trắng để không
+                # biến thông tin chưa được xác minh thành kết quả đã xác nhận.
+                shown = line
+                while shown and draw.textlength(shown, font=bold_font) > max_width:
+                    shown = shown[:-2].rstrip() + "…"
+                flat_text(tx, detail_y, shown, bold_font, fill=white)
+
             detail_y += detail_line_height
 
         # Metadata JSON có thể ghi ra log để kiểm tra; không nhúng dữ liệu giả vào ảnh.
