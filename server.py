@@ -6,6 +6,7 @@ import tempfile
 import httpx
 import logging
 import time
+import threading
 import hashlib
 import base64
 import math
@@ -55,6 +56,19 @@ from reportlab.pdfgen import canvas as pdfgen_canvas
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# GIS/Esri resilience controls. These are independent of the chatbot semaphore.
+# Only one outbound Esri export is allowed at a time to avoid request bursts.
+_GIS_MAP_BUILD_SEMAPHORE = threading.BoundedSemaphore(value=2)
+_GIS_ESRI_SEMAPHORE = threading.BoundedSemaphore(value=1)
+_GIS_SATELLITE_CACHE_LOCK = threading.Lock()
+_GIS_SATELLITE_CACHE = OrderedDict()
+_GIS_SATELLITE_CACHE_MAX_ENTRIES = 3
+_GIS_SATELLITE_CACHE_MAX_BYTES = 4 * 1024 * 1024
+_GIS_SATELLITE_MAX_RESPONSE_BYTES = 12 * 1024 * 1024
+_GIS_ESRI_RETRIES = 3
+_GIS_ESRI_TIMEOUT_SECONDS = 12
+
 
 # ============================================================
 # PLAN_DATA
@@ -5748,7 +5762,7 @@ def _pdf_section_header_table(text, doc_width, bg_color):
 # Chỉ dùng để trực quan hóa kết quả GIS đã xác định.
 # ============================================================
 
-def create_gis_location_map(
+def _create_gis_location_map_impl(
     latitude,
     longitude,
     gis_identification=None,
@@ -6053,81 +6067,138 @@ def create_gis_location_map(
         map_width = width - margin_left - margin_right
         map_height = height - margin_top - margin_bottom
         # ----------------------------------------------------
-        # 7B. TẢI NỀN VỆ TINH ESRI WORLD IMAGERY
+        # 7B. TẢI NỀN VỆ TINH ESRI WORLD IMAGERY (CÓ RETRY + CACHE)
         # ----------------------------------------------------
-        try:
-            satellite_params = urllib.parse.urlencode({
-                "bbox": (
-                    f"{min_lng},"
-                    f"{min_lat},"
-                    f"{max_lng},"
-                    f"{max_lat}"
-                ),
-                "bboxSR": "4326",
-                "size": f"{map_width},{map_height}",
-                "imageSR": "4326",
-                "format": "png",
-                "f": "image"
-            })
-        
-            satellite_url = (
-                "https://services.arcgisonline.com/"
-                "ArcGIS/rest/services/World_Imagery/"
-                "MapServer/export?"
-                + satellite_params
-            )
-        
+        # Esri đôi lúc trả HTTP 500 hoặc timeout. Thử lại có giới hạn,
+        # xác thực dữ liệu ảnh trước khi dùng, và dùng cache khi cùng khu vực.
+        # Nếu nhà cung cấp vẫn lỗi, giữ bản đồ GIS có nền bản đồ dự phòng
+        # (không để vùng bản đồ trắng và vẫn tiếp tục vẽ tuyến/điểm/nhãn).
+        satellite_params = urllib.parse.urlencode({
+            "bbox": f"{min_lng},{min_lat},{max_lng},{max_lat}",
+            "bboxSR": "4326",
+            "size": f"{map_width},{map_height}",
+            "imageSR": "4326",
+            "format": "png",
+            "f": "image",
+        })
+        satellite_url = (
+            "https://services.arcgisonline.com/"
+            "ArcGIS/rest/services/World_Imagery/MapServer/export?"
+            + satellite_params
+        )
+        # 5 chữ số thập phân giữ cache đủ sát cho các lần chụp gần cùng vị trí.
+        satellite_cache_key = (
+            round(min_lng, 5), round(min_lat, 5),
+            round(max_lng, 5), round(max_lat, 5),
+            map_width, map_height,
+        )
+        satellite_bytes = None
+        satellite_error = None
+
+        with _GIS_SATELLITE_CACHE_LOCK:
+            cached_satellite = _GIS_SATELLITE_CACHE.get(satellite_cache_key)
+            if cached_satellite:
+                _GIS_SATELLITE_CACHE.move_to_end(satellite_cache_key)
+                satellite_bytes = cached_satellite
+
+        if satellite_bytes:
+            print(f"🛰️ ESRI SATELLITE CACHE HIT: {len(satellite_bytes)} bytes")
+        else:
             request = urllib.request.Request(
                 satellite_url,
                 headers={
-                    "User-Agent": "ThuyLoiAI/1.0"
-                }
+                    "User-Agent": "ThuyLoiAI/1.1 (+GIS field report)",
+                    "Accept": "image/png,image/*;q=0.9,*/*;q=0.5",
+                    "Connection": "close",
+                },
             )
-        
-            with urllib.request.urlopen(
-                request,
-                timeout=20
-            ) as response:
-        
-                satellite_bytes = response.read()
-        
-            satellite_image = Image.open(
-                BytesIO(satellite_bytes)
-            ).convert("RGB")
-        
-            satellite_image = satellite_image.resize(
-                (map_width, map_height),
-                Image.Resampling.LANCZOS
-            )
-        
-            image.paste(
-                satellite_image,
-                (margin_left, margin_top)
-            )
-        
+            # Semaphore chỉ bảo vệ truy cập Esri; không ảnh hưởng chatbot/API khác.
+            with _GIS_ESRI_SEMAPHORE:
+                for attempt in range(1, _GIS_ESRI_RETRIES + 1):
+                    try:
+                        with urllib.request.urlopen(
+                            request,
+                            timeout=_GIS_ESRI_TIMEOUT_SECONDS,
+                        ) as response:
+                            status = getattr(response, "status", 200)
+                            content_type = (response.headers.get("Content-Type") or "").lower()
+                            payload = response.read(_GIS_SATELLITE_MAX_RESPONSE_BYTES + 1)
+                        if status != 200:
+                            raise RuntimeError(f"Esri HTTP status {status}")
+                        if not payload:
+                            raise ValueError("Esri returned an empty response")
+                        if len(payload) > _GIS_SATELLITE_MAX_RESPONSE_BYTES:
+                            raise ValueError(
+                                f"Esri image exceeds {_GIS_SATELLITE_MAX_RESPONSE_BYTES} bytes"
+                            )
+                        # Esri errors can occasionally arrive as HTML/JSON despite HTTP 200.
+                        if content_type and not (
+                            content_type.startswith("image/")
+                            or "application/octet-stream" in content_type
+                        ):
+                            raise ValueError(f"Unexpected Esri content type: {content_type}")
+                        with Image.open(BytesIO(payload)) as check_image:
+                            check_image.verify()
+                        satellite_bytes = payload
+                        with _GIS_SATELLITE_CACHE_LOCK:
+                            if len(payload) <= _GIS_SATELLITE_CACHE_MAX_BYTES:
+                                _GIS_SATELLITE_CACHE[satellite_cache_key] = payload
+                                _GIS_SATELLITE_CACHE.move_to_end(satellite_cache_key)
+                                while len(_GIS_SATELLITE_CACHE) > _GIS_SATELLITE_CACHE_MAX_ENTRIES:
+                                    _GIS_SATELLITE_CACHE.popitem(last=False)
+                        print(
+                            f"🛰️ ESRI SATELLITE LOADED: {len(payload)} bytes "
+                            f"(attempt {attempt}/{_GIS_ESRI_RETRIES})"
+                        )
+                        break
+                    except Exception as exc:
+                        satellite_error = exc
+                        print(
+                            f"⚠️ ESRI SATELLITE ATTEMPT {attempt}/"
+                            f"{_GIS_ESRI_RETRIES} FAILED: {type(exc).__name__}: {exc}"
+                        )
+                        if attempt < _GIS_ESRI_RETRIES:
+                            # Backoff ngắn, có giới hạn; không làm treo vô hạn request.
+                            time.sleep(0.45 * attempt)
+
+        if satellite_bytes:
+            try:
+                with Image.open(BytesIO(satellite_bytes)) as satellite_source:
+                    satellite_source.load()
+                    satellite_image = satellite_source.convert("RGB")
+                satellite_image = satellite_image.resize(
+                    (map_width, map_height), Image.Resampling.LANCZOS
+                )
+                image.paste(satellite_image, (margin_left, margin_top))
+            except Exception as decode_error:
+                satellite_error = decode_error
+                satellite_bytes = None
+                print("⚠️ ESRI SATELLITE DECODE ERROR:", repr(decode_error))
+
+        if not satellite_bytes:
             print(
-                f"🛰️ ESRI SATELLITE LOADED: "
-                f"{len(satellite_bytes)} bytes"
+                "⚠️ ESRI SATELLITE FALLBACK: using cached/neutral cartographic base; "
+                f"last_error={satellite_error!r}"
             )
-        
-        except Exception as satellite_error:
-        
-            print(
-                "⚠️ ESRI SATELLITE ERROR:",
-                repr(satellite_error)
-            )
-        
-            # Nếu không lấy được ảnh vệ tinh,
-            # vẫn giữ bản đồ GIS hoạt động như cũ.
+            # Nền dự phòng có màu bản đồ, lưới tọa độ tinh tế và tương phản tốt.
+            # Đây không giả làm ảnh vệ tinh; các tuyến GIS thật vẫn được vẽ phía trên.
             draw.rectangle(
-                [
-                    margin_left,
-                    margin_top,
-                    width - margin_right,
-                    height - margin_bottom
-                ],
-                fill="white"
+                [margin_left, margin_top, width - margin_right, height - margin_bottom],
+                fill="#eaf2f5",
             )
+            grid_color = "#d5e2e8"
+            grid_step_x = max(80, map_width // 8)
+            grid_step_y = max(80, map_height // 6)
+            for gx in range(margin_left, width - margin_right + 1, grid_step_x):
+                draw.line(
+                    (gx, margin_top, gx, height - margin_bottom),
+                    fill=grid_color, width=1,
+                )
+            for gy in range(margin_top, height - margin_bottom + 1, grid_step_y):
+                draw.line(
+                    (margin_left, gy, width - margin_right, gy),
+                    fill=grid_color, width=1,
+                )
 
         def geo_to_pixel(lng, lat):
             x_ratio = (
@@ -6515,6 +6586,15 @@ def create_gis_location_map(
 # ============================================================
 # CREATE FIELD REPORT PDF - ĐÃ SỬA LỖI CÚ PHÁP
 # ============================================================
+
+def create_gis_location_map(latitude, longitude, gis_identification=None):
+    """Giới hạn số bản đồ GIS dựng đồng thời để bảo vệ RAM/CPU của Render."""
+    with _GIS_MAP_BUILD_SEMAPHORE:
+        return _create_gis_location_map_impl(
+            latitude, longitude, gis_identification
+        )
+
+
 def create_field_report_pdf(
     report_title: str,
     answer: str,
