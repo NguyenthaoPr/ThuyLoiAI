@@ -6053,81 +6053,187 @@ def create_gis_location_map(
         map_width = width - margin_left - margin_right
         map_height = height - margin_top - margin_bottom
         # ----------------------------------------------------
-        # 7B. TẢI NỀN VỆ TINH ESRI WORLD IMAGERY
+        # 7B. TẢI NỀN BẢN ĐỒ CÓ DỰ PHÒNG NHIỀU LỚP
+        # Esri Export -> Esri tiles -> OSM tiles -> nền GIS dạng lưới.
+        # Không bao giờ tô trắng bản đồ khi dịch vụ vệ tinh lỗi.
         # ----------------------------------------------------
-        try:
-            satellite_params = urllib.parse.urlencode({
-                "bbox": (
-                    f"{min_lng},"
-                    f"{min_lat},"
-                    f"{max_lng},"
-                    f"{max_lat}"
-                ),
-                "bboxSR": "4326",
-                "size": f"{map_width},{map_height}",
-                "imageSR": "4326",
-                "format": "png",
-                "f": "image"
-            })
-        
-            satellite_url = (
-                "https://services.arcgisonline.com/"
-                "ArcGIS/rest/services/World_Imagery/"
-                "MapServer/export?"
-                + satellite_params
+        def _valid_basemap_bytes(data):
+            try:
+                with Image.open(BytesIO(data)) as test_img:
+                    test_img.verify()
+                with Image.open(BytesIO(data)) as test_img:
+                    if test_img.width < 64 or test_img.height < 64:
+                        return False
+                    rgb_test = test_img.convert("RGB")
+                    extrema = rgb_test.getextrema()
+                    # Từ chối ảnh gần như trắng/trống do upstream trả lỗi giả dạng ảnh.
+                    if all(lo >= 248 and hi >= 248 for lo, hi in extrema):
+                        return False
+                return True
+            except Exception:
+                return False
+
+        def _tile_xy(lon, lat, zoom):
+            lat = max(-85.05112878, min(85.05112878, float(lat)))
+            n = 2 ** zoom
+            x = (float(lon) + 180.0) / 360.0 * n
+            lat_rad = math.radians(lat)
+            y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
+            return x * 256.0, y * 256.0
+
+        def _load_tile_mosaic(tile_template, zoom=19, max_tiles=24):
+            """Tải các tile quanh khung GPS, ghép/cắt đúng extent địa lý."""
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import urllib.error
+
+            x0, y0 = _tile_xy(min_lng, max_lat, zoom)
+            x1, y1 = _tile_xy(max_lng, min_lat, zoom)
+            left_px, right_px = sorted((x0, x1))
+            top_px, bottom_px = sorted((y0, y1))
+            tx0, tx1 = int(left_px // 256), int((right_px - 1) // 256)
+            ty0, ty1 = int(top_px // 256), int((bottom_px - 1) // 256)
+            n = 2 ** zoom
+            # Giữ request có giới hạn; nếu vùng lớn quá thì hạ zoom một mức.
+            if (tx1 - tx0 + 1) * (ty1 - ty0 + 1) > max_tiles:
+                return None
+
+            jobs = []
+            for ty in range(ty0, ty1 + 1):
+                for tx in range(tx0, tx1 + 1):
+                    if 0 <= ty < n:
+                        jobs.append((tx % n, ty))
+            if not jobs or len(jobs) > max_tiles:
+                return None
+
+            def _fetch_tile(job):
+                tx, ty = job
+                url = tile_template.format(z=zoom, x=tx, y=ty)
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "ThuyLoiAI/1.0 (field inspection map)",
+                    "Accept": "image/avif,image/webp,image/png,image/*,*/*;q=0.8",
+                })
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        raw = response.read(2 * 1024 * 1024 + 1)
+                    if len(raw) > 2 * 1024 * 1024 or not _valid_basemap_bytes(raw):
+                        return job, None
+                    with Image.open(BytesIO(raw)) as tile:
+                        tile_rgb = tile.convert("RGB")
+                        if tile_rgb.size != (256, 256):
+                            tile_rgb = tile_rgb.resize((256, 256), Image.Resampling.BILINEAR)
+                    return job, tile_rgb
+                except Exception:
+                    return job, None
+
+            mosaic = Image.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256), "#dce9e8")
+            loaded = 0
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                futures = [pool.submit(_fetch_tile, job) for job in jobs]
+                for future in as_completed(futures):
+                    job, tile = future.result()
+                    if tile is None:
+                        continue
+                    tx, ty = job
+                    # Tọa độ tile đã wrap x; tìm vị trí tương ứng trong extent chưa wrap.
+                    original_tx = tx
+                    while original_tx < tx0:
+                        original_tx += n
+                    while original_tx > tx1 and original_tx - n >= tx0:
+                        original_tx -= n
+                    if not (tx0 <= original_tx <= tx1):
+                        continue
+                    mosaic.paste(tile, ((original_tx - tx0) * 256, (ty - ty0) * 256))
+                    loaded += 1
+
+            # Cần ít nhất một nửa số tile để tránh ghép bản đồ rỗng/đứt mảng.
+            if loaded < max(1, (len(jobs) + 1) // 2):
+                return None
+
+            crop_box = (
+                max(0, int(round(left_px - tx0 * 256))),
+                max(0, int(round(top_px - ty0 * 256))),
+                min(mosaic.width, int(round(right_px - tx0 * 256))),
+                min(mosaic.height, int(round(bottom_px - ty0 * 256))),
             )
-        
-            request = urllib.request.Request(
-                satellite_url,
-                headers={
-                    "User-Agent": "ThuyLoiAI/1.0"
-                }
-            )
-        
-            with urllib.request.urlopen(
-                request,
-                timeout=20
-            ) as response:
-        
-                satellite_bytes = response.read()
-        
-            satellite_image = Image.open(
-                BytesIO(satellite_bytes)
-            ).convert("RGB")
-        
-            satellite_image = satellite_image.resize(
-                (map_width, map_height),
-                Image.Resampling.LANCZOS
-            )
-        
-            image.paste(
-                satellite_image,
-                (margin_left, margin_top)
-            )
-        
-            print(
-                f"🛰️ ESRI SATELLITE LOADED: "
-                f"{len(satellite_bytes)} bytes"
-            )
-        
-        except Exception as satellite_error:
-        
-            print(
-                "⚠️ ESRI SATELLITE ERROR:",
-                repr(satellite_error)
-            )
-        
-            # Nếu không lấy được ảnh vệ tinh,
-            # vẫn giữ bản đồ GIS hoạt động như cũ.
+            if crop_box[2] <= crop_box[0] or crop_box[3] <= crop_box[1]:
+                return None
+            cropped = mosaic.crop(crop_box)
+            if cropped.width < 32 or cropped.height < 32:
+                return None
+            return cropped.resize((map_width, map_height), Image.Resampling.LANCZOS)
+
+        # Phương án 1: ArcGIS export ảnh toàn khung; retry ngắn để không treo lâu.
+        satellite_image = None
+        for attempt in range(1, 4):
+            try:
+                satellite_params = urllib.parse.urlencode({
+                    "bbox": f"{min_lng},{min_lat},{max_lng},{max_lat}",
+                    "bboxSR": "4326",
+                    "size": f"{map_width},{map_height}",
+                    "imageSR": "4326",
+                    "format": "png",
+                    "f": "image",
+                })
+                satellite_url = (
+                    "https://services.arcgisonline.com/ArcGIS/rest/services/"
+                    "World_Imagery/MapServer/export?" + satellite_params
+                )
+                request = urllib.request.Request(satellite_url, headers={
+                    "User-Agent": "ThuyLoiAI/1.0",
+                    "Accept": "image/png,image/*,*/*;q=0.8",
+                })
+                with urllib.request.urlopen(request, timeout=8) as response:
+                    satellite_bytes = response.read(8 * 1024 * 1024 + 1)
+                if len(satellite_bytes) <= 8 * 1024 * 1024 and _valid_basemap_bytes(satellite_bytes):
+                    satellite_image = Image.open(BytesIO(satellite_bytes)).convert("RGB")
+                    satellite_image = satellite_image.resize((map_width, map_height), Image.Resampling.LANCZOS)
+                    print(f"🛰️ ESRI SATELLITE LOADED: {len(satellite_bytes)} bytes (attempt {attempt}/3)")
+                    break
+                print(f"⚠️ ESRI SATELLITE ATTEMPT {attempt}/3: ảnh trả về không hợp lệ/trống")
+            except Exception as satellite_error:
+                print(f"⚠️ ESRI SATELLITE ATTEMPT {attempt}/3 FAILED: {type(satellite_error).__name__}: {satellite_error}")
+                if attempt < 3:
+                    time.sleep(0.25 * attempt)
+
+        # Phương án 2: Esri World Imagery dạng tile nếu export endpoint lỗi.
+        if satellite_image is None:
+            try:
+                esri_tile_url = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                satellite_image = _load_tile_mosaic(esri_tile_url, zoom=18)
+                if satellite_image is None:
+                    satellite_image = _load_tile_mosaic(esri_tile_url, zoom=17)
+                if satellite_image is not None:
+                    print("🛰️ ESRI SATELLITE TILE FALLBACK LOADED")
+            except Exception as tile_error:
+                print("⚠️ ESRI TILE FALLBACK ERROR:", repr(tile_error))
+
+        # Phương án 3: OpenStreetMap, để vẫn có nền đường/khu dân cư khi Esri lỗi.
+        if satellite_image is None:
+            try:
+                osm_tile_url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                satellite_image = _load_tile_mosaic(osm_tile_url, zoom=18)
+                if satellite_image is None:
+                    satellite_image = _load_tile_mosaic(osm_tile_url, zoom=17)
+                if satellite_image is not None:
+                    print("🗺️ OSM BASEMAP FALLBACK LOADED")
+            except Exception as tile_error:
+                print("⚠️ OSM TILE FALLBACK ERROR:", repr(tile_error))
+
+        if satellite_image is not None:
+            image.paste(satellite_image, (margin_left, margin_top))
+        else:
+            # Phương án 4: nền GIS có lưới tọa độ; tuyệt đối không tô trắng.
             draw.rectangle(
-                [
-                    margin_left,
-                    margin_top,
-                    width - margin_right,
-                    height - margin_bottom
-                ],
-                fill="white"
+                [margin_left, margin_top, width - margin_right, height - margin_bottom],
+                fill="#e7f0ef",
             )
+            grid_step = 70
+            for gx in range(margin_left, width - margin_right, grid_step):
+                draw.line((gx, margin_top, gx, height - margin_bottom), fill="#d3e1e0", width=1)
+            for gy in range(margin_top, height - margin_bottom, grid_step):
+                draw.line((margin_left, gy, width - margin_right, gy), fill="#d3e1e0", width=1)
+            # Dải nhạt tạo chiều sâu; tuyến GIS và điểm GPS sẽ được vẽ lên trên.
+            print("⚠️ GIS BASEMAP FALLBACK LOADED: nền lưới an toàn; không dùng nền trắng")
 
         def geo_to_pixel(lng, lat):
             x_ratio = (
