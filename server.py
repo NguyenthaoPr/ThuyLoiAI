@@ -5832,23 +5832,57 @@ def _create_gis_location_map_impl(
        
         # 4. CHỌN VÙNG BẢN ĐỒ
         # ----------------------------------------------------
-        # Khung bản đồ chuẩn hóa quanh GPS: bán kính tìm kiếm 200 m,
-        # cộng biên hiển thị nhỏ để dễ nhận biết tuyến và công trình lân cận.
-        # Tính theo mét, hiệu chỉnh kinh độ theo vĩ độ địa phương.
-        map_radius_m = 240.0
+        # Khung bản đồ mặc định quanh GPS. Nếu GIS đã tìm được tuyến gần nhất
+        # (kể cả chưa đủ điều kiện xác nhận), mở rộng khung để chứa cả GPS và
+        # điểm gần nhất; không tự biến ứng viên gần nhất thành kết luận xác nhận.
         meters_per_degree_lat = 111_320.0
         lat_scale = max(0.15, abs(math.cos(math.radians(gps_lat))))
-        map_radius_lat = map_radius_m / meters_per_degree_lat
-        map_radius_lng = map_radius_m / (meters_per_degree_lat * lat_scale)
-
-        # Giữ tỷ lệ địa lý nhất quán với khung bản đồ, tránh kéo giãn ảnh vệ tinh.
         map_aspect = 1392 / 892
-        required_lng_radius = map_radius_lat * map_aspect * lat_scale
-        map_radius_lng = max(map_radius_lng, required_lng_radius)
-        min_lng = gps_lng - map_radius_lng
-        max_lng = gps_lng + map_radius_lng
+        map_radius_m = 240.0
+        map_radius_lat = map_radius_m / meters_per_degree_lat
         min_lat = gps_lat - map_radius_lat
         max_lat = gps_lat + map_radius_lat
+        initial_lng_span = (2 * map_radius_lat * map_aspect) / lat_scale
+        min_lng = gps_lng - initial_lng_span / 2
+        max_lng = gps_lng + initial_lng_span / 2
+
+        nearest_point = None
+        nearest_distance_m = None
+        if isinstance(gis_identification, dict):
+            try:
+                np = gis_identification.get("nearest_point") or {}
+                nlat = float(np.get("latitude"))
+                nlng = float(np.get("longitude"))
+                ndist = float(gis_identification.get("distance_m"))
+                if -90 <= nlat <= 90 and -180 <= nlng <= 180 and 0 <= ndist <= 1000:
+                    nearest_point = (nlat, nlng)
+                    nearest_distance_m = ndist
+            except (TypeError, ValueError, AttributeError):
+                nearest_point = None
+
+        if nearest_point is not None:
+            # 150 m đệm quanh GPS và điểm gần nhất, tối đa mở rộng đến ứng viên
+            # cách 1 km; các đối tượng vẫn được vẽ theo tọa độ GIS thật.
+            nlat, nlng = nearest_point
+            padding_lat = 150.0 / meters_per_degree_lat
+            min_lat = min(gps_lat, nlat) - padding_lat
+            max_lat = max(gps_lat, nlat) + padding_lat
+            center_lat = (min_lat + max_lat) / 2
+            local_scale = max(0.15, abs(math.cos(math.radians(center_lat))))
+            padding_lng = 150.0 / (meters_per_degree_lat * local_scale)
+            min_lng = min(gps_lng, nlng) - padding_lng
+            max_lng = max(gps_lng, nlng) + padding_lng
+
+        # Chỉnh khung theo tỷ lệ ảnh, không cắt GPS hoặc điểm gần nhất.
+        center_lat = (min_lat + max_lat) / 2
+        local_scale = max(0.15, abs(math.cos(math.radians(center_lat))))
+        lat_span = max_lat - min_lat
+        required_lng_span = lat_span * map_aspect / local_scale
+        lng_span = max_lng - min_lng
+        if lng_span < required_lng_span:
+            center_lng = (min_lng + max_lng) / 2
+            min_lng = center_lng - required_lng_span / 2
+            max_lng = center_lng + required_lng_span / 2
 
         # ----------------------------------------------------
         # 5. KÍCH THƯỚC ẢNH
@@ -6270,34 +6304,40 @@ def _create_gis_location_map_impl(
         # ----------------------------------------------------
         # 10. VẼ TUYẾN LINESTRING
         # ----------------------------------------------------
+        visible_line_count = 0
         for item in items:
 
             if item.get("geometry_type") != "LineString":
                 continue
 
             coordinates = item.get("coordinates") or []
-
-            line_points = []
-
+            # Không lọc từng đỉnh theo khung bản đồ: một tuyến có thể cắt qua
+            # khung dù tất cả đỉnh KML đều nằm ngoài khung. Pillow tự cắt nét
+            # ở mép canvas; lọc theo bounding box trước để tránh vẽ tuyến xa.
+            parsed_coordinates = []
             for point in coordinates:
-
                 try:
-                    lng = float(point["lng"])
-                    lat = float(point["lat"])
-
-                    if (
-                        min_lng <= lng <= max_lng
-                        and
-                        min_lat <= lat <= max_lat
-                    ):
-                        line_points.append(
-                            geo_to_pixel(lng, lat)
-                        )
-
-                except Exception:
+                    lng = float(point.get("lng", point.get("lon")))
+                    lat = float(point.get("lat"))
+                    if math.isfinite(lng) and math.isfinite(lat):
+                        parsed_coordinates.append((lng, lat))
+                except (TypeError, ValueError, AttributeError):
                     continue
 
+            if len(parsed_coordinates) < 2:
+                continue
+            line_min_lng = min(p[0] for p in parsed_coordinates)
+            line_max_lng = max(p[0] for p in parsed_coordinates)
+            line_min_lat = min(p[1] for p in parsed_coordinates)
+            line_max_lat = max(p[1] for p in parsed_coordinates)
+            if (line_max_lng < min_lng or line_min_lng > max_lng or
+                    line_max_lat < min_lat or line_min_lat > max_lat):
+                continue
+
+            line_points = [geo_to_pixel(lng, lat) for lng, lat in parsed_coordinates]
+
             if len(line_points) >= 2:
+                visible_line_count += 1
 
              
                 # Tuyến kênh đậm, có viền tương phản để đọc rõ trên nền vệ tinh.
@@ -6324,16 +6364,19 @@ def _create_gis_location_map_impl(
                     item.get("construction_type", "")
                 ).upper().strip()
         
+                visible_label_points = [
+                    (px, py) for px, py in line_points
+                    if margin_left <= px <= width - margin_right
+                    and margin_top <= py <= height - margin_bottom
+                ]
                 if (
                     gis_class != "KHU_TUOI"
                     and item.get("name")
                     and identified_name
                     and str(item.get("name", "")).strip() == identified_name
-                    and len(line_points) >= 2
+                    and visible_label_points
                 ):
-                    mid_index = len(line_points) // 2
-        
-                    target_x, target_y = line_points[mid_index]
+                    target_x, target_y = visible_label_points[len(visible_label_points) // 2]
         
                     draw_gis_callout(
                         draw,
@@ -6345,6 +6388,13 @@ def _create_gis_location_map_impl(
                         height,
                         accent="#1769AA"
                     )
+        print(
+            f"[GIS MAP] GPS={gps_lat:.7f},{gps_lng:.7f}; "
+            f"bounds=({min_lat:.7f},{min_lng:.7f})-({max_lat:.7f},{max_lng:.7f}); "
+            f"visible_lines={visible_line_count}; identified_name={identified_name or '-'}; "
+            f"nearest_distance_m={nearest_distance_m if nearest_distance_m is not None else '-'}"
+        )
+
         # ----------------------------------------------------
         # 11. VẼ CÁC CÔNG TRÌNH POINT
         # ----------------------------------------------------
@@ -7279,6 +7329,16 @@ async def field_report_image(
                 if isinstance(gis_result, dict):
                     gis_identification = gis_result.get("gis_identification")
                     nearby_candidates = gis_result.get("nearby_candidates") or []
+                    # Giữ tuyến gần nhất cho mục đích HIỂN THỊ BẢN ĐỒ ngay cả khi
+                    # chưa đủ điều kiện xác nhận. Nhãn ảnh vẫn ghi "cần xác nhận".
+                    nearest_rows = gis_result.get("nearest") or []
+                    nearest_row = nearest_rows[0] if nearest_rows else None
+                    if isinstance(gis_identification, dict) and not gis_identification.get("identified") and isinstance(nearest_row, dict):
+                        gis_identification = dict(gis_identification)
+                        gis_identification.setdefault("name", nearest_row.get("name", ""))
+                        gis_identification.setdefault("geometry_type", nearest_row.get("geometry_type", "LineString"))
+                        gis_identification.setdefault("nearest_point", nearest_row.get("nearest_point"))
+                        gis_identification.setdefault("distance_m", nearest_row.get("distance_m"))
                     # Một số phiên bản API trả trường nhận diện trực tiếp.
                     if gis_identification is None and gis_result.get("name"):
                         gis_identification = gis_result
@@ -7291,6 +7351,7 @@ async def field_report_image(
                             "name": candidate.get("name", ""),
                             "distance_m": candidate.get("distance_m"),
                             "geometry_type": candidate.get("geometry_type"),
+                            "nearest_point": candidate.get("nearest_point"),
                             "source": "GIS MASTER KMZ; ứng viên cần xác minh",
                         }
             except Exception as exc:
@@ -7301,12 +7362,19 @@ async def field_report_image(
             except Exception as exc:
                 logger.warning("[FIELD IMAGE] GIS map unavailable: %r", exc)
 
-        # Nếu GIS trả tuyến gần nhất nhưng cách >200m, không gán làm công trình của điểm chụp.
+        # Tuyến cách GPS >200 m không được coi là công trình tại điểm chụp.
+        # Tuy vậy, giữ tên/điểm gần nhất để bản đồ có thể vẽ ngữ cảnh GIS thật
+        # (nếu nằm trong phạm vi hiển thị), không làm mất dữ liệu cần kiểm chứng.
         if isinstance(gis_identification, dict):
             try:
                 distance = float(gis_identification.get("distance_m"))
                 if distance > 200:
-                    gis_identification = {"identified": False, "distance_m": distance}
+                    gis_identification = dict(gis_identification)
+                    gis_identification["identified"] = False
+                    gis_identification.pop("distance_along_line_m", None)
+                    if distance > 1000:
+                        gis_identification.pop("nearest_point", None)
+                        gis_identification["name"] = ""
                     gis_map_bytes = await asyncio.to_thread(create_gis_location_map, latitude, longitude, gis_identification) if latitude is not None and longitude is not None else None
             except (TypeError, ValueError):
                 pass
