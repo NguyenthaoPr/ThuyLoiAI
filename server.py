@@ -6,7 +6,6 @@ import tempfile
 import httpx
 import logging
 import time
-import threading
 import hashlib
 import base64
 import math
@@ -56,19 +55,6 @@ from reportlab.pdfgen import canvas as pdfgen_canvas
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-
-# GIS/Esri resilience controls. These are independent of the chatbot semaphore.
-# Only one outbound Esri export is allowed at a time to avoid request bursts.
-_GIS_MAP_BUILD_SEMAPHORE = threading.BoundedSemaphore(value=2)
-_GIS_ESRI_SEMAPHORE = threading.BoundedSemaphore(value=1)
-_GIS_SATELLITE_CACHE_LOCK = threading.Lock()
-_GIS_SATELLITE_CACHE = OrderedDict()
-_GIS_SATELLITE_CACHE_MAX_ENTRIES = 3
-_GIS_SATELLITE_CACHE_MAX_BYTES = 4 * 1024 * 1024
-_GIS_SATELLITE_MAX_RESPONSE_BYTES = 12 * 1024 * 1024
-_GIS_ESRI_RETRIES = 3
-_GIS_ESRI_TIMEOUT_SECONDS = 12
-
 
 # ============================================================
 # PLAN_DATA
@@ -5762,7 +5748,7 @@ def _pdf_section_header_table(text, doc_width, bg_color):
 # Chỉ dùng để trực quan hóa kết quả GIS đã xác định.
 # ============================================================
 
-def _create_gis_location_map_impl(
+def create_gis_location_map(
     latitude,
     longitude,
     gis_identification=None,
@@ -5832,57 +5818,23 @@ def _create_gis_location_map_impl(
        
         # 4. CHỌN VÙNG BẢN ĐỒ
         # ----------------------------------------------------
-        # Khung bản đồ mặc định quanh GPS. Nếu GIS đã tìm được tuyến gần nhất
-        # (kể cả chưa đủ điều kiện xác nhận), mở rộng khung để chứa cả GPS và
-        # điểm gần nhất; không tự biến ứng viên gần nhất thành kết luận xác nhận.
+        # Khung bản đồ chuẩn hóa quanh GPS: bán kính tìm kiếm 200 m,
+        # cộng biên hiển thị nhỏ để dễ nhận biết tuyến và công trình lân cận.
+        # Tính theo mét, hiệu chỉnh kinh độ theo vĩ độ địa phương.
+        map_radius_m = 240.0
         meters_per_degree_lat = 111_320.0
         lat_scale = max(0.15, abs(math.cos(math.radians(gps_lat))))
-        map_aspect = 1392 / 892
-        map_radius_m = 240.0
         map_radius_lat = map_radius_m / meters_per_degree_lat
+        map_radius_lng = map_radius_m / (meters_per_degree_lat * lat_scale)
+
+        # Giữ tỷ lệ địa lý nhất quán với khung bản đồ, tránh kéo giãn ảnh vệ tinh.
+        map_aspect = 1392 / 892
+        required_lng_radius = map_radius_lat * map_aspect * lat_scale
+        map_radius_lng = max(map_radius_lng, required_lng_radius)
+        min_lng = gps_lng - map_radius_lng
+        max_lng = gps_lng + map_radius_lng
         min_lat = gps_lat - map_radius_lat
         max_lat = gps_lat + map_radius_lat
-        initial_lng_span = (2 * map_radius_lat * map_aspect) / lat_scale
-        min_lng = gps_lng - initial_lng_span / 2
-        max_lng = gps_lng + initial_lng_span / 2
-
-        nearest_point = None
-        nearest_distance_m = None
-        if isinstance(gis_identification, dict):
-            try:
-                np = gis_identification.get("nearest_point") or {}
-                nlat = float(np.get("latitude"))
-                nlng = float(np.get("longitude"))
-                ndist = float(gis_identification.get("distance_m"))
-                if -90 <= nlat <= 90 and -180 <= nlng <= 180 and 0 <= ndist <= 1000:
-                    nearest_point = (nlat, nlng)
-                    nearest_distance_m = ndist
-            except (TypeError, ValueError, AttributeError):
-                nearest_point = None
-
-        if nearest_point is not None:
-            # 150 m đệm quanh GPS và điểm gần nhất, tối đa mở rộng đến ứng viên
-            # cách 1 km; các đối tượng vẫn được vẽ theo tọa độ GIS thật.
-            nlat, nlng = nearest_point
-            padding_lat = 150.0 / meters_per_degree_lat
-            min_lat = min(gps_lat, nlat) - padding_lat
-            max_lat = max(gps_lat, nlat) + padding_lat
-            center_lat = (min_lat + max_lat) / 2
-            local_scale = max(0.15, abs(math.cos(math.radians(center_lat))))
-            padding_lng = 150.0 / (meters_per_degree_lat * local_scale)
-            min_lng = min(gps_lng, nlng) - padding_lng
-            max_lng = max(gps_lng, nlng) + padding_lng
-
-        # Chỉnh khung theo tỷ lệ ảnh, không cắt GPS hoặc điểm gần nhất.
-        center_lat = (min_lat + max_lat) / 2
-        local_scale = max(0.15, abs(math.cos(math.radians(center_lat))))
-        lat_span = max_lat - min_lat
-        required_lng_span = lat_span * map_aspect / local_scale
-        lng_span = max_lng - min_lng
-        if lng_span < required_lng_span:
-            center_lng = (min_lng + max_lng) / 2
-            min_lng = center_lng - required_lng_span / 2
-            max_lng = center_lng + required_lng_span / 2
 
         # ----------------------------------------------------
         # 5. KÍCH THƯỚC ẢNH
@@ -6101,228 +6053,81 @@ def _create_gis_location_map_impl(
         map_width = width - margin_left - margin_right
         map_height = height - margin_top - margin_bottom
         # ----------------------------------------------------
-        # 7B. TẢI NỀN VỆ TINH ESRI WORLD IMAGERY (CÓ RETRY + CACHE)
+        # 7B. TẢI NỀN VỆ TINH ESRI WORLD IMAGERY
         # ----------------------------------------------------
-        # Esri đôi lúc trả HTTP 500 hoặc timeout. Thử lại có giới hạn,
-        # xác thực dữ liệu ảnh trước khi dùng, và dùng cache khi cùng khu vực.
-        # Nếu nhà cung cấp vẫn lỗi, giữ bản đồ GIS có nền bản đồ dự phòng
-        # (không để vùng bản đồ trắng và vẫn tiếp tục vẽ tuyến/điểm/nhãn).
-        satellite_params = urllib.parse.urlencode({
-            "bbox": f"{min_lng},{min_lat},{max_lng},{max_lat}",
-            "bboxSR": "4326",
-            "size": f"{map_width},{map_height}",
-            "imageSR": "4326",
-            "format": "png",
-            "f": "image",
-        })
-        satellite_url = (
-            "https://services.arcgisonline.com/"
-            "ArcGIS/rest/services/World_Imagery/MapServer/export?"
-            + satellite_params
-        )
-        # 5 chữ số thập phân giữ cache đủ sát cho các lần chụp gần cùng vị trí.
-        satellite_cache_key = (
-            round(min_lng, 5), round(min_lat, 5),
-            round(max_lng, 5), round(max_lat, 5),
-            map_width, map_height,
-        )
-        satellite_bytes = None
-        satellite_error = None
-
-        with _GIS_SATELLITE_CACHE_LOCK:
-            cached_satellite = _GIS_SATELLITE_CACHE.get(satellite_cache_key)
-            if cached_satellite:
-                _GIS_SATELLITE_CACHE.move_to_end(satellite_cache_key)
-                satellite_bytes = cached_satellite
-
-        if satellite_bytes:
-            print(f"🛰️ ESRI SATELLITE CACHE HIT: {len(satellite_bytes)} bytes")
-        else:
+        try:
+            satellite_params = urllib.parse.urlencode({
+                "bbox": (
+                    f"{min_lng},"
+                    f"{min_lat},"
+                    f"{max_lng},"
+                    f"{max_lat}"
+                ),
+                "bboxSR": "4326",
+                "size": f"{map_width},{map_height}",
+                "imageSR": "4326",
+                "format": "png",
+                "f": "image"
+            })
+        
+            satellite_url = (
+                "https://services.arcgisonline.com/"
+                "ArcGIS/rest/services/World_Imagery/"
+                "MapServer/export?"
+                + satellite_params
+            )
+        
             request = urllib.request.Request(
                 satellite_url,
                 headers={
-                    "User-Agent": "ThuyLoiAI/1.1 (+GIS field report)",
-                    "Accept": "image/png,image/*;q=0.9,*/*;q=0.5",
-                    "Connection": "close",
-                },
+                    "User-Agent": "ThuyLoiAI/1.0"
+                }
             )
-            # Semaphore chỉ bảo vệ truy cập Esri; không ảnh hưởng chatbot/API khác.
-            with _GIS_ESRI_SEMAPHORE:
-                for attempt in range(1, _GIS_ESRI_RETRIES + 1):
-                    try:
-                        with urllib.request.urlopen(
-                            request,
-                            timeout=_GIS_ESRI_TIMEOUT_SECONDS,
-                        ) as response:
-                            status = getattr(response, "status", 200)
-                            content_type = (response.headers.get("Content-Type") or "").lower()
-                            payload = response.read(_GIS_SATELLITE_MAX_RESPONSE_BYTES + 1)
-                        if status != 200:
-                            raise RuntimeError(f"Esri HTTP status {status}")
-                        if not payload:
-                            raise ValueError("Esri returned an empty response")
-                        if len(payload) > _GIS_SATELLITE_MAX_RESPONSE_BYTES:
-                            raise ValueError(
-                                f"Esri image exceeds {_GIS_SATELLITE_MAX_RESPONSE_BYTES} bytes"
-                            )
-                        # Esri errors can occasionally arrive as HTML/JSON despite HTTP 200.
-                        if content_type and not (
-                            content_type.startswith("image/")
-                            or "application/octet-stream" in content_type
-                        ):
-                            raise ValueError(f"Unexpected Esri content type: {content_type}")
-                        with Image.open(BytesIO(payload)) as check_image:
-                            check_image.verify()
-                        satellite_bytes = payload
-                        with _GIS_SATELLITE_CACHE_LOCK:
-                            if len(payload) <= _GIS_SATELLITE_CACHE_MAX_BYTES:
-                                _GIS_SATELLITE_CACHE[satellite_cache_key] = payload
-                                _GIS_SATELLITE_CACHE.move_to_end(satellite_cache_key)
-                                while len(_GIS_SATELLITE_CACHE) > _GIS_SATELLITE_CACHE_MAX_ENTRIES:
-                                    _GIS_SATELLITE_CACHE.popitem(last=False)
-                        print(
-                            f"🛰️ ESRI SATELLITE LOADED: {len(payload)} bytes "
-                            f"(attempt {attempt}/{_GIS_ESRI_RETRIES})"
-                        )
-                        break
-                    except Exception as exc:
-                        satellite_error = exc
-                        print(
-                            f"⚠️ ESRI SATELLITE ATTEMPT {attempt}/"
-                            f"{_GIS_ESRI_RETRIES} FAILED: {type(exc).__name__}: {exc}"
-                        )
-                        if attempt < _GIS_ESRI_RETRIES:
-                            # Backoff ngắn, có giới hạn; không làm treo vô hạn request.
-                            time.sleep(0.45 * attempt)
-
-        basemap_source = "Esri World Imagery"
-        if satellite_bytes:
-            try:
-                with Image.open(BytesIO(satellite_bytes)) as satellite_source:
-                    satellite_source.load()
-                    satellite_image = satellite_source.convert("RGB")
-                satellite_image = satellite_image.resize(
-                    (map_width, map_height), Image.Resampling.LANCZOS
-                )
-                image.paste(satellite_image, (margin_left, margin_top))
-            except Exception as decode_error:
-                satellite_error = decode_error
-                satellite_bytes = None
-                print("⚠️ ESRI SATELLITE DECODE ERROR:", repr(decode_error))
-
-        if not satellite_bytes:
-            # Fallback 1: lấy ảnh vệ tinh dạng XYZ tile của Esri. Endpoint tile
-            # thường hoạt động ngay cả khi endpoint MapServer/export tạm lỗi.
-            # Fallback 2: OpenStreetMap raster tile để không để bản đồ thành ô lưới.
-            # Tuyến GIS/GPS vẫn được vẽ trên cùng ảnh sau bước này.
-            def _load_xyz_basemap(tile_url_template, provider, max_tiles=16):
-                lat_limit = 85.05112878
-                south = max(-lat_limit, min(lat_limit, min_lat))
-                north = max(-lat_limit, min(lat_limit, max_lat))
-                west, east = min_lng, max_lng
-                if east <= west or north <= south:
-                    return None
-
-                def world_pixel(lng, lat, zoom):
-                    scale = 256 * (2 ** zoom)
-                    lat_rad = math.radians(max(-lat_limit, min(lat_limit, lat)))
-                    px = (lng + 180.0) / 360.0 * scale
-                    py = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * scale
-                    return px, py
-
-                # Chọn zoom gần độ phân giải đầu ra, nhưng giới hạn số tile
-                # để không tạo bùng nổ request khi nhiều điện thoại cùng dùng.
-                zoom = int(math.floor(math.log(max(1.0, map_width * 360.0 / (256.0 * max(0.0001, east-west))), 2)))
-                zoom = max(3, min(19, zoom))
-                while zoom > 3:
-                    px1, py1 = world_pixel(west, north, zoom)
-                    px2, py2 = world_pixel(east, south, zoom)
-                    tile_count = (math.floor(px2 / 256) - math.floor(px1 / 256) + 1) * (math.floor(py2 / 256) - math.floor(py1 / 256) + 1)
-                    if tile_count <= max_tiles:
-                        break
-                    zoom -= 1
-
-                px1, py1 = world_pixel(west, north, zoom)
-                px2, py2 = world_pixel(east, south, zoom)
-                tx0, ty0 = math.floor(px1 / 256), math.floor(py1 / 256)
-                tx1, ty1 = math.floor(px2 / 256), math.floor(py2 / 256)
-                tile_count = (tx1 - tx0 + 1) * (ty1 - ty0 + 1)
-                if tile_count < 1 or tile_count > max_tiles:
-                    return None
-
-                mosaic = Image.new("RGB", ((tx1-tx0+1)*256, (ty1-ty0+1)*256), "#edf2f4")
-                loaded = 0
-                for ty in range(ty0, ty1 + 1):
-                    for tx in range(tx0, tx1 + 1):
-                        tile_url = tile_url_template.format(z=zoom, x=tx, y=ty)
-                        try:
-                            tile_request = urllib.request.Request(
-                                tile_url,
-                                headers={
-                                    "User-Agent": "ThuyLoiAI/5.2 (GIS field report; contact administrator)",
-                                    "Accept": "image/jpeg,image/png,image/*,*/*;q=0.5",
-                                },
-                            )
-                            with urllib.request.urlopen(tile_request, timeout=1.8) as response:
-                                tile_data = response.read(2 * 1024 * 1024)
-                            with Image.open(BytesIO(tile_data)) as tile_image:
-                                tile_image.load()
-                                tile_image = tile_image.convert("RGB")
-                            if tile_image.size != (256, 256):
-                                tile_image = tile_image.resize((256, 256), Image.Resampling.BILINEAR)
-                            mosaic.paste(tile_image, ((tx-tx0)*256, (ty-ty0)*256))
-                            loaded += 1
-                        except Exception as tile_error:
-                            print(f"[GIS BASEMAP] {provider} tile failed z={zoom} x={tx} y={ty}: {type(tile_error).__name__}")
-                if loaded == 0:
-                    return None
-
-                # Cắt đúng khung địa lý yêu cầu rồi đưa về kích thước bản đồ.
-                crop_left = max(0, int(round(px1 - tx0*256)))
-                crop_top = max(0, int(round(py1 - ty0*256)))
-                crop_right = min(mosaic.width, int(round(px2 - tx0*256)))
-                crop_bottom = min(mosaic.height, int(round(py2 - ty0*256)))
-                if crop_right <= crop_left or crop_bottom <= crop_top:
-                    return None
-                cropped = mosaic.crop((crop_left, crop_top, crop_right, crop_bottom))
-                return cropped.resize((map_width, map_height), Image.Resampling.LANCZOS), loaded
-
-            satellite_image = None
-            # Thử lại bằng tiled satellite của Esri trước, rồi mới dùng nền đường.
-            fallback_sources = [
-                ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Esri World Imagery tiles"),
-                ("https://tile.openstreetmap.org/{z}/{x}/{y}.png", "OpenStreetMap"),
-            ]
-            for tile_template, provider in fallback_sources:
-                try:
-                    tile_result = _load_xyz_basemap(tile_template, provider)
-                    if tile_result:
-                        satellite_image, loaded_tiles = tile_result
-                        basemap_source = provider
-                        image.paste(satellite_image, (margin_left, margin_top))
-                        print(f"🗺️ GIS BASEMAP FALLBACK LOADED: provider={provider}, tiles={loaded_tiles}")
-                        break
-                except Exception as fallback_error:
-                    print(f"⚠️ GIS BASEMAP FALLBACK ERROR ({provider}): {fallback_error!r}")
-
-            if satellite_image is None:
-                # Chỉ dùng lưới nếu cả nguồn vệ tinh lẫn bản đồ đường đều không truy cập được.
-                basemap_source = "Grid fallback (network basemaps unavailable)"
-                print(
-                    "❌ GIS BASEMAP: Esri export, Esri tiles and OSM tiles unavailable; "
-                    f"last_error={satellite_error!r}"
-                )
-                draw.rectangle(
-                    [margin_left, margin_top, width - margin_right, height - margin_bottom],
-                    fill="#eaf2f5",
-                )
-                grid_color = "#d5e2e8"
-                grid_step_x = max(80, map_width // 8)
-                grid_step_y = max(80, map_height // 6)
-                for gx in range(margin_left, width - margin_right + 1, grid_step_x):
-                    draw.line((gx, margin_top, gx, height - margin_bottom), fill=grid_color, width=1)
-                for gy in range(margin_top, height - margin_bottom + 1, grid_step_y):
-                    draw.line((margin_left, gy, width - margin_right, gy), fill=grid_color, width=1)
+        
+            with urllib.request.urlopen(
+                request,
+                timeout=20
+            ) as response:
+        
+                satellite_bytes = response.read()
+        
+            satellite_image = Image.open(
+                BytesIO(satellite_bytes)
+            ).convert("RGB")
+        
+            satellite_image = satellite_image.resize(
+                (map_width, map_height),
+                Image.Resampling.LANCZOS
+            )
+        
+            image.paste(
+                satellite_image,
+                (margin_left, margin_top)
+            )
+        
+            print(
+                f"🛰️ ESRI SATELLITE LOADED: "
+                f"{len(satellite_bytes)} bytes"
+            )
+        
+        except Exception as satellite_error:
+        
+            print(
+                "⚠️ ESRI SATELLITE ERROR:",
+                repr(satellite_error)
+            )
+        
+            # Nếu không lấy được ảnh vệ tinh,
+            # vẫn giữ bản đồ GIS hoạt động như cũ.
+            draw.rectangle(
+                [
+                    margin_left,
+                    margin_top,
+                    width - margin_right,
+                    height - margin_bottom
+                ],
+                fill="white"
+            )
 
         def geo_to_pixel(lng, lat):
             x_ratio = (
@@ -6394,40 +6199,34 @@ def _create_gis_location_map_impl(
         # ----------------------------------------------------
         # 10. VẼ TUYẾN LINESTRING
         # ----------------------------------------------------
-        visible_line_count = 0
         for item in items:
 
             if item.get("geometry_type") != "LineString":
                 continue
 
             coordinates = item.get("coordinates") or []
-            # Không lọc từng đỉnh theo khung bản đồ: một tuyến có thể cắt qua
-            # khung dù tất cả đỉnh KML đều nằm ngoài khung. Pillow tự cắt nét
-            # ở mép canvas; lọc theo bounding box trước để tránh vẽ tuyến xa.
-            parsed_coordinates = []
+
+            line_points = []
+
             for point in coordinates:
+
                 try:
-                    lng = float(point.get("lng", point.get("lon")))
-                    lat = float(point.get("lat"))
-                    if math.isfinite(lng) and math.isfinite(lat):
-                        parsed_coordinates.append((lng, lat))
-                except (TypeError, ValueError, AttributeError):
+                    lng = float(point["lng"])
+                    lat = float(point["lat"])
+
+                    if (
+                        min_lng <= lng <= max_lng
+                        and
+                        min_lat <= lat <= max_lat
+                    ):
+                        line_points.append(
+                            geo_to_pixel(lng, lat)
+                        )
+
+                except Exception:
                     continue
 
-            if len(parsed_coordinates) < 2:
-                continue
-            line_min_lng = min(p[0] for p in parsed_coordinates)
-            line_max_lng = max(p[0] for p in parsed_coordinates)
-            line_min_lat = min(p[1] for p in parsed_coordinates)
-            line_max_lat = max(p[1] for p in parsed_coordinates)
-            if (line_max_lng < min_lng or line_min_lng > max_lng or
-                    line_max_lat < min_lat or line_min_lat > max_lat):
-                continue
-
-            line_points = [geo_to_pixel(lng, lat) for lng, lat in parsed_coordinates]
-
             if len(line_points) >= 2:
-                visible_line_count += 1
 
              
                 # Tuyến kênh đậm, có viền tương phản để đọc rõ trên nền vệ tinh.
@@ -6454,19 +6253,16 @@ def _create_gis_location_map_impl(
                     item.get("construction_type", "")
                 ).upper().strip()
         
-                visible_label_points = [
-                    (px, py) for px, py in line_points
-                    if margin_left <= px <= width - margin_right
-                    and margin_top <= py <= height - margin_bottom
-                ]
                 if (
                     gis_class != "KHU_TUOI"
                     and item.get("name")
                     and identified_name
                     and str(item.get("name", "")).strip() == identified_name
-                    and visible_label_points
+                    and len(line_points) >= 2
                 ):
-                    target_x, target_y = visible_label_points[len(visible_label_points) // 2]
+                    mid_index = len(line_points) // 2
+        
+                    target_x, target_y = line_points[mid_index]
         
                     draw_gis_callout(
                         draw,
@@ -6478,13 +6274,6 @@ def _create_gis_location_map_impl(
                         height,
                         accent="#1769AA"
                     )
-        print(
-            f"[GIS MAP] GPS={gps_lat:.7f},{gps_lng:.7f}; "
-            f"bounds=({min_lat:.7f},{min_lng:.7f})-({max_lat:.7f},{max_lng:.7f}); "
-            f"visible_lines={visible_line_count}; identified_name={identified_name or '-'}; "
-            f"nearest_distance_m={nearest_distance_m if nearest_distance_m is not None else '-'}"
-        )
-
         # ----------------------------------------------------
         # 11. VẼ CÁC CÔNG TRÌNH POINT
         # ----------------------------------------------------
@@ -6689,7 +6478,7 @@ def _create_gis_location_map_impl(
         # ----------------------------------------------------
         draw.text(
             (width - 500, height - 55),
-            f"Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: {basemap_source}",
+            "Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: Esri World Imagery",
             fill="gray",
             font=font_small
         )
@@ -6726,15 +6515,6 @@ def _create_gis_location_map_impl(
 # ============================================================
 # CREATE FIELD REPORT PDF - ĐÃ SỬA LỖI CÚ PHÁP
 # ============================================================
-
-def create_gis_location_map(latitude, longitude, gis_identification=None):
-    """Giới hạn số bản đồ GIS dựng đồng thời để bảo vệ RAM/CPU của Render."""
-    with _GIS_MAP_BUILD_SEMAPHORE:
-        return _create_gis_location_map_impl(
-            latitude, longitude, gis_identification
-        )
-
-
 def create_field_report_pdf(
     report_title: str,
     answer: str,
@@ -7293,37 +7073,40 @@ def _crop_gis_whitespace(image: Image.Image, threshold: int = 246, padding: int 
 
 
 def _make_field_icon(kind: str, size: int = 46) -> Image.Image:
-    """Tạo icon PNG RGBA nhỏ, nhất quán, dùng nền tròn trắng viền xanh dương."""
+    """Tạo icon RGBA đa sắc theo nhóm thông tin; chỉ thay đổi trình bày."""
     from PIL import ImageDraw
-    im = Image.new("RGBA", (size,size), (0,0,0,0))
-    d = ImageDraw.Draw(im)
-    blue=(17,112,205,255); navy=(12,56,99,255); white=(255,255,255,255)
-    m=max(2,size//18)
-    d.ellipse((m,m,size-m-1,size-m-1), fill=white, outline=blue, width=max(2,size//15))
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    palette = {"time":(20,126,235,255), "date":(20,126,235,255), "building":(20,126,235,255),
+        "location":(232,42,48,255), "chainage":(13,158,96,255), "compass":(130,52,220,255), "weather":(244,132,24,255)}
+    accent=palette.get(kind,(20,126,235,255)); white=(255,255,255,255)
+    m=max(2,size//18); d.ellipse((m,m,size-m-1,size-m-1),fill=white,outline=accent,width=max(2,size//13))
     cx=size//2; cy=size//2; sw=max(2,size//13)
     if kind == "location":
-        r=size*.16; d.ellipse((cx-r,cy-size*.24,cx+r,cy+size*.08),outline=blue,width=sw)
-        d.polygon([(cx-size*.14,cy),(cx+size*.14,cy),(cx,cy+size*.27)],fill=blue)
-        d.ellipse((cx-size*.05,cy-size*.18,cx+size*.05,cy-size*.08),fill=blue)
+        r=size*.16; d.ellipse((cx-r,cy-size*.24,cx+r,cy+size*.08),outline=accent,width=sw)
+        d.polygon([(cx-size*.14,cy),(cx+size*.14,cy),(cx,cy+size*.27)],fill=accent)
+        d.ellipse((cx-size*.05,cy-size*.18,cx+size*.05,cy-size*.08),fill=accent)
     elif kind == "chainage":
-        r=size*.10
-        d.ellipse((cx-size*.23,cy-size*.16,cx-size*.03,cy+size*.04),outline=blue,width=sw)
-        d.ellipse((cx+size*.03,cy-size*.04,cx+size*.23,cy+size*.16),outline=blue,width=sw)
-        d.line((cx-size*.10,cy+size*.09,cx+size*.10,cy-size*.09),fill=blue,width=sw)
+        d.ellipse((cx-size*.23,cy-size*.16,cx-size*.03,cy+size*.04),outline=accent,width=sw)
+        d.ellipse((cx+size*.03,cy-size*.04,cx+size*.23,cy+size*.16),outline=accent,width=sw)
+        d.line((cx-size*.10,cy+size*.09,cx+size*.10,cy-size*.09),fill=accent,width=sw)
     elif kind == "building":
         x1=int(size*.28); x2=int(size*.72); y1=int(size*.28); y2=int(size*.73)
-        d.rectangle((x1,y1,x2,y2),outline=blue,width=sw)
+        d.rectangle((x1,y1,x2,y2),outline=accent,width=sw)
         for xx in (int(size*.38),int(size*.52),int(size*.64)):
             for yy in (int(size*.38),int(size*.52)):
-                d.rectangle((xx,yy,xx+2,yy+2),fill=blue)
-        d.line((cx,y2,cx,y2-size*.12),fill=blue,width=sw)
+                d.rectangle((xx,yy,xx+max(2,size//18),yy+max(2,size//18)),fill=accent)
+        d.line((cx,y2,cx,y2-size*.12),fill=accent,width=sw)
     elif kind == "compass":
-        d.ellipse((cx-size*.25,cy-size*.25,cx+size*.25,cy+size*.25),outline=blue,width=sw)
-        d.polygon([(cx,cy-size*.23),(cx-size*.08,cy+size*.06),(cx,cy),(cx+size*.08,cy+size*.06)],fill=blue)
+        d.ellipse((cx-size*.25,cy-size*.25,cx+size*.25,cy+size*.25),outline=accent,width=sw)
+        d.polygon([(cx,cy-size*.23),(cx-size*.08,cy+size*.06),(cx,cy),(cx+size*.08,cy+size*.06)],fill=accent)
     elif kind == "weather":
-        d.ellipse((cx-size*.22,cy-size*.05,cx+size*.02,cy+size*.18),outline=blue,width=sw)
-        d.ellipse((cx-size*.06,cy-size*.17,cx+size*.18,cy+size*.14),outline=blue,width=sw)
-        d.line((cx-size*.20,cy+size*.14,cx+size*.20,cy+size*.14),fill=blue,width=sw)
+        import math
+        d.ellipse((cx-size*.13,cy-size*.13,cx+size*.13,cy+size*.13),fill=accent)
+        for angle in range(0,360,45):
+            a=math.radians(angle); d.line((cx+math.cos(a)*size*.19,cy+math.sin(a)*size*.19,cx+math.cos(a)*size*.28,cy+math.sin(a)*size*.28),fill=accent,width=sw)
+    else:
+        d.ellipse((cx-size*.24,cy-size*.24,cx+size*.24,cy+size*.24),outline=accent,width=sw)
+        d.line((cx,cy,cx,cy-size*.14),fill=accent,width=sw); d.line((cx,cy,cx+size*.12,cy+size*.08),fill=accent,width=sw)
     return im
 
 
@@ -7419,16 +7202,6 @@ async def field_report_image(
                 if isinstance(gis_result, dict):
                     gis_identification = gis_result.get("gis_identification")
                     nearby_candidates = gis_result.get("nearby_candidates") or []
-                    # Giữ tuyến gần nhất cho mục đích HIỂN THỊ BẢN ĐỒ ngay cả khi
-                    # chưa đủ điều kiện xác nhận. Nhãn ảnh vẫn ghi "cần xác nhận".
-                    nearest_rows = gis_result.get("nearest") or []
-                    nearest_row = nearest_rows[0] if nearest_rows else None
-                    if isinstance(gis_identification, dict) and not gis_identification.get("identified") and isinstance(nearest_row, dict):
-                        gis_identification = dict(gis_identification)
-                        gis_identification.setdefault("name", nearest_row.get("name", ""))
-                        gis_identification.setdefault("geometry_type", nearest_row.get("geometry_type", "LineString"))
-                        gis_identification.setdefault("nearest_point", nearest_row.get("nearest_point"))
-                        gis_identification.setdefault("distance_m", nearest_row.get("distance_m"))
                     # Một số phiên bản API trả trường nhận diện trực tiếp.
                     if gis_identification is None and gis_result.get("name"):
                         gis_identification = gis_result
@@ -7441,7 +7214,6 @@ async def field_report_image(
                             "name": candidate.get("name", ""),
                             "distance_m": candidate.get("distance_m"),
                             "geometry_type": candidate.get("geometry_type"),
-                            "nearest_point": candidate.get("nearest_point"),
                             "source": "GIS MASTER KMZ; ứng viên cần xác minh",
                         }
             except Exception as exc:
@@ -7452,19 +7224,12 @@ async def field_report_image(
             except Exception as exc:
                 logger.warning("[FIELD IMAGE] GIS map unavailable: %r", exc)
 
-        # Tuyến cách GPS >200 m không được coi là công trình tại điểm chụp.
-        # Tuy vậy, giữ tên/điểm gần nhất để bản đồ có thể vẽ ngữ cảnh GIS thật
-        # (nếu nằm trong phạm vi hiển thị), không làm mất dữ liệu cần kiểm chứng.
+        # Nếu GIS trả tuyến gần nhất nhưng cách >200m, không gán làm công trình của điểm chụp.
         if isinstance(gis_identification, dict):
             try:
                 distance = float(gis_identification.get("distance_m"))
                 if distance > 200:
-                    gis_identification = dict(gis_identification)
-                    gis_identification["identified"] = False
-                    gis_identification.pop("distance_along_line_m", None)
-                    if distance > 1000:
-                        gis_identification.pop("nearest_point", None)
-                        gis_identification["name"] = ""
+                    gis_identification = {"identified": False, "distance_m": distance}
                     gis_map_bytes = await asyncio.to_thread(create_gis_location_map, latitude, longitude, gis_identification) if latitude is not None and longitude is not None else None
             except (TypeError, ValueError):
                 pass
@@ -7577,7 +7342,8 @@ async def field_report_image(
         # QR góc trên bên trái mở Google Maps chỉ đường đến đúng GPS của ảnh.
         # Dùng cùng cặp latitude/longitude đã nhận diện GIS; không thay bằng tâm bản đồ
         # hoặc tọa độ công trình gần nhất. Chỉ tạo QR khi GPS hợp lệ.
-        qr_size = max(160, int(width * 0.17)) if (
+        # QR gọn hơn nhưng vẫn giữ độ phân giải để quét từ ảnh/Zalo.
+        qr_size = max(120, int(width * 0.12)) if (
             latitude is not None and longitude is not None
             and -90 <= float(latitude) <= 90
             and -180 <= float(longitude) <= 180
@@ -7611,16 +7377,26 @@ async def field_report_image(
                 # Resize nearest-neighbor về kích thước vuông đủ lớn để quét từ ảnh/Zalo.
                 qr_image = qr_image.resize((qr_size, qr_size), Image.Resampling.NEAREST)
                 quiet_zone = max(8, int(width * 0.006))
-                qr_canvas = Image.new(
-                    "RGBA",
-                    (qr_size + quiet_zone * 2, qr_size + quiet_zone * 2),
-                    (255, 255, 255, 255),
-                )
-                qr_canvas.alpha_composite(qr_image, (quiet_zone, quiet_zone))
-                source_rgba = source.convert("RGBA")
-                source_rgba.alpha_composite(qr_canvas, (qr_x, qr_y))
-                source = source_rgba.convert("RGB")
-                brand_x = qr_x + qr_canvas.width + int(width * 0.018)
+                # Thẻ QR bo góc, viền xanh và nhãn navy theo mẫu nhận diện.
+                from PIL import ImageDraw
+                label_h=max(24,int(qr_size*.20)); side_pad=max(quiet_zone,int(qr_size*.055))
+                card_w=qr_size+side_pad*2; card_h=qr_size+side_pad*2+label_h
+                qr_card=Image.new("RGBA",(card_w,card_h),(0,0,0,0)); card_draw=ImageDraw.Draw(qr_card)
+                radius=max(8,int(qr_size*.07))
+                card_draw.rounded_rectangle((0,0,card_w-1,card_h-1),radius=radius,fill=(255,255,255,250),outline=(25,137,230,255),width=max(2,int(width*.0025)))
+                qr_card.alpha_composite(qr_image,(side_pad,side_pad))
+                label_top=side_pad+qr_size+side_pad
+                card_draw.rounded_rectangle((2,label_top,card_w-3,card_h-2),radius=max(6,int(qr_size*.045)),fill=(10,43,82,255))
+                card_draw.rectangle((2,label_top,card_w-3,label_top+max(3,radius//2)),fill=(10,43,82,255))
+                label_font=_field_image_font(max(9,int(qr_size*.075)),True); label="VỊ TRÍ CÔNG TRÌNH"
+                while label_font.size>9 and card_draw.textlength(label,font=label_font)>card_w-side_pad:
+                    label_font=_field_image_font(label_font.size-1,True)
+                bbox=card_draw.textbbox((0,0),label,font=label_font)
+                label_x=max(4,(card_w-(bbox[2]-bbox[0]))//2)
+                label_y=label_top+max(1,(label_h-(bbox[3]-bbox[1]))//2)-bbox[1]
+                card_draw.text((label_x,label_y),label,font=label_font,fill=(255,255,255,255))
+                source_rgba=source.convert("RGBA"); source_rgba.alpha_composite(qr_card,(qr_x,qr_y)); source=source_rgba.convert("RGB")
+                brand_x=qr_x+qr_card.width+int(width*.018)
                 logger.info(
                     "[FIELD IMAGE] QR directions generated for GPS %.7f, %.7f",
                     lat_value, lon_value
@@ -7687,14 +7463,16 @@ async def field_report_image(
                 kind="building"
             elif low.startswith("lý trình") or "lý trình" in low:
                 kind="chainage"
-            elif low.startswith("địa điểm"):
+            elif low.startswith("địa điểm") or "gps hiện trường" in low:
                 kind="location"
-            elif low.startswith("tọa độ"):
+            elif low.startswith(("tọa độ", "gps tọa độ")):
                 kind="compass"
             elif low.startswith(("thời tiết", "weather")):
                 kind="weather"
+            elif "khoảng cách" in low or low.startswith("khoảng cách"):
+                kind="chainage"
             else:
-                kind="chainage" if "khoảng cách" in low else "location"
+                kind="location"
             detail_items.append((kind,line))
         # Tăng khoảng cách giữa các hàng thông tin nhưng vẫn giữ trong vùng trái bản đồ.
         detail_line_height = bold_font.size + max(line_gap, int(12 * scale))
