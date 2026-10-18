@@ -6195,6 +6195,7 @@ def _create_gis_location_map_impl(
                             # Backoff ngắn, có giới hạn; không làm treo vô hạn request.
                             time.sleep(0.45 * attempt)
 
+        basemap_source = "Esri World Imagery"
         if satellite_bytes:
             try:
                 with Image.open(BytesIO(satellite_bytes)) as satellite_source:
@@ -6210,29 +6211,118 @@ def _create_gis_location_map_impl(
                 print("⚠️ ESRI SATELLITE DECODE ERROR:", repr(decode_error))
 
         if not satellite_bytes:
-            print(
-                "⚠️ ESRI SATELLITE FALLBACK: using cached/neutral cartographic base; "
-                f"last_error={satellite_error!r}"
-            )
-            # Nền dự phòng có màu bản đồ, lưới tọa độ tinh tế và tương phản tốt.
-            # Đây không giả làm ảnh vệ tinh; các tuyến GIS thật vẫn được vẽ phía trên.
-            draw.rectangle(
-                [margin_left, margin_top, width - margin_right, height - margin_bottom],
-                fill="#eaf2f5",
-            )
-            grid_color = "#d5e2e8"
-            grid_step_x = max(80, map_width // 8)
-            grid_step_y = max(80, map_height // 6)
-            for gx in range(margin_left, width - margin_right + 1, grid_step_x):
-                draw.line(
-                    (gx, margin_top, gx, height - margin_bottom),
-                    fill=grid_color, width=1,
+            # Fallback 1: lấy ảnh vệ tinh dạng XYZ tile của Esri. Endpoint tile
+            # thường hoạt động ngay cả khi endpoint MapServer/export tạm lỗi.
+            # Fallback 2: OpenStreetMap raster tile để không để bản đồ thành ô lưới.
+            # Tuyến GIS/GPS vẫn được vẽ trên cùng ảnh sau bước này.
+            def _load_xyz_basemap(tile_url_template, provider, max_tiles=16):
+                lat_limit = 85.05112878
+                south = max(-lat_limit, min(lat_limit, min_lat))
+                north = max(-lat_limit, min(lat_limit, max_lat))
+                west, east = min_lng, max_lng
+                if east <= west or north <= south:
+                    return None
+
+                def world_pixel(lng, lat, zoom):
+                    scale = 256 * (2 ** zoom)
+                    lat_rad = math.radians(max(-lat_limit, min(lat_limit, lat)))
+                    px = (lng + 180.0) / 360.0 * scale
+                    py = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * scale
+                    return px, py
+
+                # Chọn zoom gần độ phân giải đầu ra, nhưng giới hạn số tile
+                # để không tạo bùng nổ request khi nhiều điện thoại cùng dùng.
+                zoom = int(math.floor(math.log(max(1.0, map_width * 360.0 / (256.0 * max(0.0001, east-west))), 2)))
+                zoom = max(3, min(19, zoom))
+                while zoom > 3:
+                    px1, py1 = world_pixel(west, north, zoom)
+                    px2, py2 = world_pixel(east, south, zoom)
+                    tile_count = (math.floor(px2 / 256) - math.floor(px1 / 256) + 1) * (math.floor(py2 / 256) - math.floor(py1 / 256) + 1)
+                    if tile_count <= max_tiles:
+                        break
+                    zoom -= 1
+
+                px1, py1 = world_pixel(west, north, zoom)
+                px2, py2 = world_pixel(east, south, zoom)
+                tx0, ty0 = math.floor(px1 / 256), math.floor(py1 / 256)
+                tx1, ty1 = math.floor(px2 / 256), math.floor(py2 / 256)
+                tile_count = (tx1 - tx0 + 1) * (ty1 - ty0 + 1)
+                if tile_count < 1 or tile_count > max_tiles:
+                    return None
+
+                mosaic = Image.new("RGB", ((tx1-tx0+1)*256, (ty1-ty0+1)*256), "#edf2f4")
+                loaded = 0
+                for ty in range(ty0, ty1 + 1):
+                    for tx in range(tx0, tx1 + 1):
+                        tile_url = tile_url_template.format(z=zoom, x=tx, y=ty)
+                        try:
+                            tile_request = urllib.request.Request(
+                                tile_url,
+                                headers={
+                                    "User-Agent": "ThuyLoiAI/5.2 (GIS field report; contact administrator)",
+                                    "Accept": "image/jpeg,image/png,image/*,*/*;q=0.5",
+                                },
+                            )
+                            with urllib.request.urlopen(tile_request, timeout=1.8) as response:
+                                tile_data = response.read(2 * 1024 * 1024)
+                            with Image.open(BytesIO(tile_data)) as tile_image:
+                                tile_image.load()
+                                tile_image = tile_image.convert("RGB")
+                            if tile_image.size != (256, 256):
+                                tile_image = tile_image.resize((256, 256), Image.Resampling.BILINEAR)
+                            mosaic.paste(tile_image, ((tx-tx0)*256, (ty-ty0)*256))
+                            loaded += 1
+                        except Exception as tile_error:
+                            print(f"[GIS BASEMAP] {provider} tile failed z={zoom} x={tx} y={ty}: {type(tile_error).__name__}")
+                if loaded == 0:
+                    return None
+
+                # Cắt đúng khung địa lý yêu cầu rồi đưa về kích thước bản đồ.
+                crop_left = max(0, int(round(px1 - tx0*256)))
+                crop_top = max(0, int(round(py1 - ty0*256)))
+                crop_right = min(mosaic.width, int(round(px2 - tx0*256)))
+                crop_bottom = min(mosaic.height, int(round(py2 - ty0*256)))
+                if crop_right <= crop_left or crop_bottom <= crop_top:
+                    return None
+                cropped = mosaic.crop((crop_left, crop_top, crop_right, crop_bottom))
+                return cropped.resize((map_width, map_height), Image.Resampling.LANCZOS), loaded
+
+            satellite_image = None
+            # Thử lại bằng tiled satellite của Esri trước, rồi mới dùng nền đường.
+            fallback_sources = [
+                ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Esri World Imagery tiles"),
+                ("https://tile.openstreetmap.org/{z}/{x}/{y}.png", "OpenStreetMap"),
+            ]
+            for tile_template, provider in fallback_sources:
+                try:
+                    tile_result = _load_xyz_basemap(tile_template, provider)
+                    if tile_result:
+                        satellite_image, loaded_tiles = tile_result
+                        basemap_source = provider
+                        image.paste(satellite_image, (margin_left, margin_top))
+                        print(f"🗺️ GIS BASEMAP FALLBACK LOADED: provider={provider}, tiles={loaded_tiles}")
+                        break
+                except Exception as fallback_error:
+                    print(f"⚠️ GIS BASEMAP FALLBACK ERROR ({provider}): {fallback_error!r}")
+
+            if satellite_image is None:
+                # Chỉ dùng lưới nếu cả nguồn vệ tinh lẫn bản đồ đường đều không truy cập được.
+                basemap_source = "Grid fallback (network basemaps unavailable)"
+                print(
+                    "❌ GIS BASEMAP: Esri export, Esri tiles and OSM tiles unavailable; "
+                    f"last_error={satellite_error!r}"
                 )
-            for gy in range(margin_top, height - margin_bottom + 1, grid_step_y):
-                draw.line(
-                    (margin_left, gy, width - margin_right, gy),
-                    fill=grid_color, width=1,
+                draw.rectangle(
+                    [margin_left, margin_top, width - margin_right, height - margin_bottom],
+                    fill="#eaf2f5",
                 )
+                grid_color = "#d5e2e8"
+                grid_step_x = max(80, map_width // 8)
+                grid_step_y = max(80, map_height // 6)
+                for gx in range(margin_left, width - margin_right + 1, grid_step_x):
+                    draw.line((gx, margin_top, gx, height - margin_bottom), fill=grid_color, width=1)
+                for gy in range(margin_top, height - margin_bottom + 1, grid_step_y):
+                    draw.line((margin_left, gy, width - margin_right, gy), fill=grid_color, width=1)
 
         def geo_to_pixel(lng, lat):
             x_ratio = (
@@ -6599,7 +6689,7 @@ def _create_gis_location_map_impl(
         # ----------------------------------------------------
         draw.text(
             (width - 500, height - 55),
-            "Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: Esri World Imagery",
+            f"Nguồn GIS: GIS MASTER / master.kmz | Ảnh nền: {basemap_source}",
             fill="gray",
             font=font_small
         )
